@@ -9,11 +9,13 @@ import re as _re
 from enum import IntEnum as _IntEnum
 
 class Label(_IntEnum):
+    """ Possible labels. """
     TEXT=0
     TREFI=1
     DEFI=2
 
 def _envs2label(envs, binary_labels):
+    """ Determines label by looking a list of environments. """
     TREFI_PATTERN = _re.compile(r"""[ma]*trefi+s?""")
     DEFI_PATTERN = _re.compile(r"""[ma]*defi+s?""")
     if any(map(TREFI_PATTERN.fullmatch, envs)):
@@ -23,6 +25,15 @@ def _envs2label(envs, binary_labels):
     return Label.TEXT
 
 def _is_ignore(doc, begin, end, envs):
+    """ Determines if the token between begin, end from the tex document doc should be ignored.
+    Arguments:
+        :param doc: TexDocument for reference.
+        :param begin: Begin offset of the token to be ignored.
+        :param end: End offset of the token to be ignored.
+        :param envs: Environments of the token.
+    Return:
+        Returns True if the token between begin and end is to be ignored.
+    """
     # Ignore all OArgs
     if 'OArg' in envs:
         return True
@@ -35,7 +46,22 @@ def _is_ignore(doc, begin, end, envs):
                 return alt_begin <= begin and end <= alt_end
     return False
 
-def load(binary_labels=False, lang='en', save_dir='data/', return_X_y=False, return_original_documents=False, n_jobs=4, silent=False):
+def load(binary_labels=False, lang='en', save_dir='data/', n_jobs=4, silent=False):
+    """ First step of loading smglom dataset.
+        Downloads all smglom repositories from github and parses the .tex files for the specified language.
+        After the documents have been parsed, use parse() in order to parse the tokens and associated labels in each file.
+
+    Keyword Arguments:
+        :param binary_labels: Replaces DEFI label with TREFI label if set to true.
+        :param lang: Language of files to load. Uses the pattern: "filename.lang.tex".
+        :param save_dir: Directory to where the git repositories are downloaded.
+        :param n_jobs: Number of processes to use to parse tex files.
+        :param silent: Uses tqdm to display loading progress.
+    
+    Returns:
+        List of successfully parsed latex documents.
+        
+    """
     
     files = [
         file
@@ -51,8 +77,21 @@ def load(binary_labels=False, lang='en', save_dir='data/', return_X_y=False, ret
         else:
             documents = pool.map(_TexDocument, files)
     
-    documents = list(filter(lambda doc: doc.success, documents))
+    return list(filter(lambda doc: doc.success, documents))
 
+def parse(documents, return_X_y=True)
+    """ Parses labels and tokens from TexDocuments
+    
+    Arguments:
+        :param documents: List of TexDocuments.
+    
+    Keyword Arguments:
+        :param return_X_y: Returns a tuple of X (tokens) and y (labels) if set to true.
+    
+    Returns:
+        List of documents of (token, label) pair lists.
+        To return a single pair X, y use the return_X_y argument.
+    """
     labeled_tokens = [
         [
             (lexeme, _envs2label(envs, binary_labels))
@@ -69,14 +108,8 @@ def load(binary_labels=False, lang='en', save_dir='data/', return_X_y=False, ret
     ]
 
     if not return_X_y:
-        if return_original_documents:
-            return documents, list_of_X_y_pairs
-        else:
-            return list_of_X_y_pairs
+        return list_of_X_y_pairs
 
     X, y = list(zip(*list_of_X_y_pairs))
 
-    if return_original_documents:
-        return documents, (X, y)
-    else:
-        return X, y
+    return X, y

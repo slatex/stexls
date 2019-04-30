@@ -51,21 +51,23 @@ class TexDocument:
             self.file = document_or_path
         else:
             self._source = document_or_path
-        self.mapping, mapped_source = TexDocument.map_math_regions(self.source)
+        self._mapping, mapped_source = TexDocument._map_math_regions(self.source)
         try:
             parsed = _TexSoup.TexSoup(mapped_source)
-            self.offset = 0
+            self._offset = 0
             self._envs = []
             self.tokens = []
             self.environments = _collections.defaultdict(list)
-            self.env_begins = _collections.defaultdict(list)
+            self._env_begins = _collections.defaultdict(list)
             self._environment_token_stack = []
-            self.onNode(parsed)
-            self.tokens = [sub for token in TexDocument.fix_inner_environments(self.tokens) for sub in token.subtokens()]
+            self._onNode(parsed)
+            self.tokens = [sub for token in TexDocument._fix_inner_environments(self.tokens) for sub in token.subtokens()]
             self.success = True
         except Exception as exception:
             self.exception = exception
         finally:
+            if hasattr(self, '_offset'):
+                del self._offset
             if hasattr(self, '_envs'):
                 del self._envs
             if hasattr(self, '_environment_token_stack'):
@@ -101,14 +103,14 @@ class TexDocument:
 
     def _map_token_end(self, internal_offset:int):
         """ Mapps the interal offset to the original end offset. """
-        return self.mapping[internal_offset - 1][1]
+        return self._mapping[internal_offset - 1][1]
 
     def _map_token_begin(self, internal_offset:int):
         """ Mapps the interal offset to the original begin offset. """
-        return self.mapping[internal_offset][0]
+        return self._mapping[internal_offset][0]
 
     @staticmethod
-    def map_math_regions(doc, repl='$?$'):
+    def _map_math_regions(doc, repl='$?$'):
         """Creates a mapping of positions of the output text document to math regions of the input document
         
         Arguments:
@@ -166,7 +168,7 @@ class TexDocument:
         return mapping, doc
 
     @staticmethod
-    def fix_inner_environments(tokens):
+    def _fix_inner_environments(tokens):
         """Fixes inner environments of CMDs TexSoup fails to parse
         E.g. the tex line "\outer{a}{b\inner{c}d}{e}"
         would be parsed as the tokens "a, b, inner, c, d, e" all inside the "outer" environment
@@ -210,79 +212,79 @@ class TexDocument:
 
         return tokens
 
-    def visit(self, child):
+    def _visit(self, child):
         if type(child) is _TexSoup.TokenWithPosition:
-            self.onToken(child)
+            self._onToken(child)
         elif type(child) in (_TexSoup.OArg, _TexSoup.RArg):
-            self.onArg(child)
+            self._onArg(child)
         elif type(child) is _TexSoup.TexNode:
             if type(child.expr) is _TexSoup.TexCmd:
-                self.onCmd(child.expr)
+                self._onCmd(child.expr)
             elif type(child.expr) is _TexSoup.TexEnv:
-                self.onEnv(child.expr)
+                self._onEnv(child.expr)
             else:
-                self.onNode(child)
+                self._onNode(child)
         elif type(child) is _TexSoup.TexCmd:
-            self.onCmd(child)
+            self._onCmd(child)
         elif type(child) is _TexSoup.TexEnv:
-            self.onEnv(child)
+            self._onEnv(child)
         else:
             raise Exception("Unknown node type:" + str(type(child)))
     
-    def onNode(self, node):
+    def _onNode(self, node):
         for child in node:
-            self.visit(child)
+            self._visit(child)
     
-    def onToken(self, token):
+    def _onToken(self, token):
         if token.startswith("%"):
             return
         begin = token.position
         end = begin + len(str(token))
         #assert(self.source[begin:end] == str(token))
-        if self.offset <= begin:
-            self.offset = end
+        if self._offset <= begin:
+            self._offset = end
             if '$' in self._envs and len(self.tokens) and self._envs == self.tokens[-1].envs:
                 # extend previous math token instead of adding a new one
                 self.tokens[-1].end = self._map_token_end(end)
             else:
                 self.tokens.append(TokenWithEnvironments(self, self._map_token_begin(begin), self._map_token_end(end), self._envs.copy()))
     
-    def onCmd(self, cmd):
-        self.enter_env(str(cmd.name))
+    def _onCmd(self, cmd):
+        self._enter_env(str(cmd.name))
         for arg in cmd.args:
-            self.onArg(arg)
+            self._onArg(arg)
         for content in cmd.contents:
-            self.visit(content)
-        self.exit_env(str(cmd.name), self.mapping[cmd.name.position - 1][0]) # -1 for the  slash in front
+            self._visit(content)
+        self._exit_env(str(cmd.name), self._mapping[cmd.name.position - 1][0]) # -1 for the  slash in front
     
-    def onEnv(self, env):
-        self.enter_env(str(env.name))
+    def _onEnv(self, env):
+        self._enter_env(str(env.name))
         for arg in env.args:
-            self.onArg(arg)
+            self._onArg(arg)
         for content in env.contents:
-            self.visit(content)
+            self._visit(content)
         if hasattr(env.name, 'position'):
-            self.exit_env(str(env.name), self.mapping[env.name.position-1][0])
+            self._exit_env(str(env.name), self._mapping[env.name.position-1][0])
         else:
-            self.exit_env(str(env.name), env.name)
+            self._exit_env(str(env.name), env.name)
 
-    def onArg(self, arg):
+    def _onArg(self, arg):
         if type(arg) is _TexSoup.OArg:
             env_name = 'OArg'
         elif type(arg) is _TexSoup.RArg:
             env_name = 'RArg'
-        self.enter_env(env_name)
+        self._enter_env(env_name)
         for a in arg.exprs:
-            self.visit(a)
-        self.exit_env(env_name)
+            self._visit(a)
+        self._exit_env(env_name)
 
-    def enter_env(self, name):
+    def _enter_env(self, name):
         assert type(name) == str
         self._envs.append(name)
         # remember token position before entering the env
         self._environment_token_stack.append(len(self.tokens))
     
-    def exit_env(self, name, position=None):
+    def _exit_env(self, name, position=None):
         assert type(name) == str
         assert(self._envs[-1] == name)
         del self._envs[-1]
@@ -290,7 +292,7 @@ class TexDocument:
         envid = self._environment_token_stack[-1]
         del self._environment_token_stack[-1]
         self.environments[name].append(self.tokens[envid:])
-        self.env_begins[name].append(position)
+        self._env_begins[name].append(position)
 
     def find_all(self, name, return_position=False, pattern=False, return_env_name=False):
         """Finds all distinct environments with the given name
@@ -312,7 +314,7 @@ class TexDocument:
         else:
             names = set([name])
         if return_position:
-            return [result + (name,) if return_env_name else result for name in names for result in zip(self.environments.get(name, []), self.env_begins.get(name, []))]
+            return [result + (name,) if return_env_name else result for name in names for result in zip(self.environments.get(name, []), self._env_begins.get(name, []))]
         else:
             return [(result, name) if return_env_name else result for name in names for result in self.environments.get(name, [])]
 

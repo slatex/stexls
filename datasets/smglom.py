@@ -39,12 +39,10 @@ def _is_ignore(doc, begin, end, envs):
     # Ignore all OArgs
     if 'OArg' in envs:
         return True
-    # Else find a* trefi/defis in this document
+    # Ignore first argument of an 'a*' environment (e.g.: atrefii or madefis)
     for alt in doc.find_all('m?am?(tr|d)efi+s?', pattern=True):
         for _, alt_begin, alt_end, envs in alt:
-            # ignore preceding OArgs and only use the first RArg
             if 'RArg' in envs: 
-                # Ignore token between 'begin' and 'end' if it is contained inside the first token of an 'a*' symbol
                 return alt_begin <= begin and end <= alt_end
     return False
 

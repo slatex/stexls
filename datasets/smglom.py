@@ -1,12 +1,14 @@
 
-from ..downloads import smglom as _download_smglom
 from glob import glob as _glob
 from os import path as _path
-from ..tokens import TexDocument as _TexDocument
 from multiprocessing import pool as _pool
-from tqdm import tqdm as _tqdm
-import re as _re
 from enum import IntEnum as _IntEnum
+import re as _re
+
+from tqdm import tqdm as _tqdm
+
+from ..downloads import smglom as _download_smglom
+from ..tokenization import TexDocument as _TexDocument
 
 class Label(_IntEnum):
     """ Possible labels. """

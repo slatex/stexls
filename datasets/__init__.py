@@ -1,2 +1,2 @@
 
-from . import smglom
+from . import smglom, treebank

@@ -1,2 +1,2 @@
 
-from . import core, cli, downloads, tokens
+from . import core, cli, downloads, tokens, datasets

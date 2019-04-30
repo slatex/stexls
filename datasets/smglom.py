@@ -46,13 +46,10 @@ def _is_ignore(doc, begin, end, envs):
                 return alt_begin <= begin and end <= alt_end
     return False
 
-def load(binary_labels=False, lang='en', save_dir='data/', n_jobs=4, silent=False):
-    """ First step of loading smglom dataset.
-        Downloads all smglom repositories from github and parses the .tex files for the specified language.
-        After the documents have been parsed, use parse() in order to parse the tokens and associated labels in each file.
+def load_documents(lang='en', save_dir='data/', n_jobs=4, silent=False):
+    """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
 
     Keyword Arguments:
-        :param binary_labels: Replaces DEFI label with TREFI label if set to true.
         :param lang: Language of files to load. Uses the pattern: "filename.lang.tex".
         :param save_dir: Directory to where the git repositories are downloaded.
         :param n_jobs: Number of processes to use to parse tex files.
@@ -79,22 +76,27 @@ def load(binary_labels=False, lang='en', save_dir='data/', n_jobs=4, silent=Fals
     
     return list(filter(lambda doc: doc.success, documents))
 
-def parse(documents, return_X_y=True)
+def parse(documents, binary_labels=False, return_X_y=True, math_token='<MathFormula>', lower=True):
     """ Parses labels and tokens from TexDocuments
     
     Arguments:
         :param documents: List of TexDocuments.
     
     Keyword Arguments:
+        :param binary_labels: Replaces DEFI label with TREFI label if set to true.
         :param return_X_y: Returns a tuple of X (tokens) and y (labels) if set to true.
-    
+        :param math_token: The token that replaces math. If None, nothing is replaced.
+        :param lower: calls str.lower on all tokens if set to True.
+
     Returns:
-        List of documents of (token, label) pair lists.
-        To return a single pair X, y use the return_X_y argument.
+        List of documents with (token, label) pairs or a tuple of all tokens X and all labels y
+        depending on the return_X_y argument.
     """
+    lower = str.lower if lower else lambda str: str
+
     labeled_tokens = [
         [
-            (lexeme, _envs2label(envs, binary_labels))
+            (lower(math_token if math_token and '$' in envs else lexeme), _envs2label(envs, binary_labels))
             for (lexeme, begin, end, envs)
             in doc.tokens
             if not _is_ignore(doc, begin, end, envs)

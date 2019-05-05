@@ -1,16 +1,19 @@
 import scipy.stats as _stats
 import collections as _collections
+import numpy as _np
 
 class ChiSquareModel:
-    def __init__(self, X=None):
+    def __init__(self, X=None, norm_order=1):
         """Initializes Chi-Square Model
 
         Calls fit(X) if X is not None.
         
         Keyword Arguments:
-            X {list} -- List of documents of tokens
+            X: List of documents of tokens
+            norm_order: Normal order or None for no normalization.
         """
         self.word_counts = None
+        self.norm_order = norm_order
         if X is not None:
             self.fit(X)
 
@@ -26,16 +29,6 @@ class ChiSquareModel:
         """
         self._num_documents = len(X)
         self.word_counts = _collections.Counter(word for doc in X for word in doc)
-
-    def _chisquare(self, phrase_in_document, all_other_phrases_in_document, phrase_in_other_documents, all_other_phrases_in_all_other_documents, num_documents):
-        statistic, p_value = _stats.chisquare([
-            phrase_in_document, 
-            all_other_phrases_in_document,
-        ], [
-            phrase_in_other_documents / num_documents,
-            all_other_phrases_in_all_other_documents / num_documents
-        ])
-        return statistic
     
     def transform(self, X):
         """Transforms a list of documents to chi-sq values
@@ -64,7 +57,11 @@ class ChiSquareModel:
                         all_other_phrases_in_all_other_documents,
                         self._num_documents)
                 transform[phrase] = value
-            result.append([transform[word] for word in doc])
+            
+            vec = _np.array([transform[word] for word in doc])
+            if self.norm_order is not None:
+                vec /= _np.linalg.norm(vec, ord=self.norm_order)
+            result.append(vec)
         return result
     
     def fit_transform(self, X):
@@ -94,5 +91,27 @@ class ChiSquareModel:
                         all_other_phrases_in_all_other_documents,
                         self._num_documents - 1)
                 transform[phrase] = value
-            result.append([transform[word] for word in doc])
+            vec = _np.array([transform[word] for word in doc])
+            if self.norm_order is not None:
+                vec /= _np.linalg.norm(vec, ord=self.norm_order)
+            result.append(vec)
         return result
+    
+    @staticmethod
+    def test_transform():
+        X = ['this is document # 1 .'.split(), 'this is document number 2 .'.split(), 'that is the doc number 3 .'.split()]
+
+        t1 = ChiSquareModel(X[1:]).transform([X[0]])
+        t2 = ChiSquareModel().fit_transform(X)[0]
+
+        assert all(_np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
+
+    def _chisquare(self, phrase_in_document, all_other_phrases_in_document, phrase_in_other_documents, all_other_phrases_in_all_other_documents, num_documents):
+        statistic, p_value = _stats.chisquare([
+            phrase_in_document, 
+            all_other_phrases_in_document,
+        ], [
+            phrase_in_other_documents / num_documents,
+            all_other_phrases_in_all_other_documents / num_documents
+        ])
+        return statistic

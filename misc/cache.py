@@ -17,19 +17,19 @@ class FailedToReadCacheError(CacheException):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-class InstanceCache:
-    """ In 'with' statements: Loads a instance from cache or caches a new instanced created by a factory method. """
+class Cache:
+    """ In 'with' statements: Saves and loads cached data initialized by a factory in the constructor. """
     
-    def __init__(self, factory, path, write_on_exit=True):
+    def __init__(self, path, factory=None, write_on_exit=True):
         """ Initializes the cache.
         
         Arguments:
-            :param factory: Factory used to create a new instance in case no cached instance was found.
             :param path: Path to the cache file location.
+            :param factory: Factory used to create the data if no cached data found at the specified path.
         """
-        self.factory = factory
         self.path = path
-        self.instance = None
+        self.factory = factory
+        self.data = None
         self.write_on_exit = write_on_exit
     
     def delete(self):
@@ -46,7 +46,7 @@ class InstanceCache:
     
     def write(self, path:str=None):
         """
-        Writes the instance to the cache file.
+        Writes the data to the cache file.
         Throws a FailedToWriteCacheError if the path points to a non-file.
 
         Arguments:
@@ -58,33 +58,34 @@ class InstanceCache:
         if os.path.exists(path) and not os.path.isfile(path):
             raise FailedToWriteCacheError("Cache file %s can't be written to, because it exists but is not a file." % path)
         with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), prefix='.', delete=False) as tf:
-            pickle.dump(self.instance, tf)
+            pickle.dump(self.data, tf)
             tf.flush()
             os.fsync(tf.fileno())
         shutil.move(tf.name, path)
     
     def load(self, path:str=None):
         """
-        Attempts to load the instance from the path, else creates a new instance using the provided factory method.
+        Attempts to load the data from the path, else creates new data using the provided factory method.
         Raises FailedToReachCacheError if the target file exists but is not a file.
 
         Arguments:
             :param path: Explicit path to cache file.
         """
         path = path or self.path
-        # Always create instance if no path is selected and there is no instance yet
-        if path is None:
-            self.instance = self.factory()
-            return self.instance
+        # Always create data if no path is selected and there is no data yet
+        if path is None and self.factory is not None:
+            self.data = self.factory()
+            return self.data
         # Else load from cache or create a new one
         if os.path.isfile(path):
             with open(path, 'rb') as file:
-                self.instance = pickle.load(file)
+                self.data = pickle.load(file)
         elif os.path.exists(path):
             raise FailedToReadCacheError("Cache \"%s\" can't be loaded, because it exists but is not a file." % path)
         else:
-            self.instance = self.factory()
-        return self.instance
+            if self.factory is not None:
+                self.data = self.factory()
+        return self.data
     
     def __enter__(self):
         self.load()

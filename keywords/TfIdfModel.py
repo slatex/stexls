@@ -2,12 +2,17 @@ import numpy as _np
 import collections as _collections
 
 class TfIdfModel:
-    def __init__(self, X=None, normalize=True):
+    def __init__(self, X=None, normalize_order=1):
+        """ Computes tfidf values for all tokens in the corpus X.
+        Arguments:
+            X: List of lists of tokens.
+            normalize_order: Order to normalize with or None for no normalization.
+        """
         self.dfs = None
         self.idfs = None
         self._num_documents:int = None
         self._epsilon = 1e-12
-        self.normalize = normalize
+        self.normalize_order = normalize_order
         if X is not None:
             self.fit(X)
 
@@ -77,9 +82,9 @@ class TfIdfModel:
                 tfs[word] * self._idf(self._num_documents - 1, self.dfs[word] - 1)
                 if self.dfs[word] > 1 else 0
                 for word in doc
-            ], dtype=_np.float32)
-            if self.normalize:
-                vec /= _np.linalg.norm(vec)
+            ])
+            if self.normalize_order is not None:
+                vec /= _np.linalg.norm(vec, ord=self.normalize_order)
             result.append(vec)
         return result
 
@@ -87,8 +92,11 @@ class TfIdfModel:
         result = []
         for doc in X:
             tfs = {word:self._tf(count, len(doc)) for word, count in _collections.Counter(doc).items()}
-            result.append([
+            vec = _np.array([
                 tfs[word] * self.idfs.get(word, 0)
                 for word in doc
             ])
+            if self.normalize_order is not None:
+                vec /= _np.linalg.norm(vec, ord=self.normalize_order)
+            result.append(vec)
         return result

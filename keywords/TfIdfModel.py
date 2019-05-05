@@ -83,10 +83,10 @@ class TfIdfModel:
     def test_transform():
         X = ['this is document # 1 .'.split(), 'this is document number 2 .'.split(), 'that is the doc number 3 .'.split()]
 
-        t1 = TfIdfModel(X[1:]).transform([X[0]])
+        t1 = TfIdfModel(X[1:]).transform([X[0]])[0]
         t2 = TfIdfModel().fit_transform(X)[0]
 
-        assert _np.abs(_np.sum(t1) - _np.sum(t2)) < 1e-6, "transform() and fit_transform() result not equal."
+        assert all(_np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
         
     def _idf(self, num_documents, document_frequency):
         """Calculates the inverse-document-frequency value for phrase

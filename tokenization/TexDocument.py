@@ -30,9 +30,14 @@ class TexDocument:
         lines = self.source.split('\n')
         lines = list(map(len, lines[:position[0]-1]))
         return sum(lines) + len(lines) + position[1]-1
-
-    def __iter__(self):
-        return iter(self.tokens if self.success else ())
+    
+    @property
+    def parsed(self):
+        return _TexSoup.TexSoup(self.source)
+    
+    @property
+    def lexemes(self):
+        return [lexeme for lexeme, _, _, _ in self.tokens]
 
     def parse(self, document_or_path):
         """Loads a document and/or parses a tex file and mapps regions to environments
@@ -96,10 +101,33 @@ class TexDocument:
             else:
                 self._source = self._source
         return self._source
-    
-    @property
-    def parsed(self):
-        return _TexSoup.TexSoup(self.source)
+
+    def find_all(self, name, return_position=False, pattern=False, return_env_name=False):
+        """Finds all distinct environments with the given name
+        
+        Arguments:
+            name {str} -- Name of the environment to find
+        
+        Keyword Arguments:
+            return_position {bool} -- If true, also returns the position of the environment (default: {False})
+            pattern {bool} -- If set, treats name as a regex (default: {False})
+            return_env_name {bool} -- Returns also the environment name
+        
+        Returns:
+            list -- List of tokens for each of the specified environment's occurences
+        """
+        names = set()
+        if pattern:
+            names = set(filter(lambda env: _re.fullmatch(name, env), self.environments))
+        else:
+            names = set([name])
+        if return_position:
+            return [result + (name,) if return_env_name else result for name in names for result in zip(self.environments.get(name, []), self._env_begins.get(name, []))]
+        else:
+            return [(result, name) if return_env_name else result for name in names for result in self.environments.get(name, [])]
+
+    def __iter__(self):
+        return iter(self.tokens if self.success else ())
 
     def _map_token_end(self, internal_offset:int):
         """ Mapps the interal offset to the original end offset. """
@@ -293,30 +321,6 @@ class TexDocument:
         del self._environment_token_stack[-1]
         self.environments[name].append(self.tokens[envid:])
         self._env_begins[name].append(position)
-
-    def find_all(self, name, return_position=False, pattern=False, return_env_name=False):
-        """Finds all distinct environments with the given name
-        
-        Arguments:
-            name {str} -- Name of the environment to find
-        
-        Keyword Arguments:
-            return_position {bool} -- If true, also returns the position of the environment (default: {False})
-            pattern {bool} -- If set, treats name as a regex (default: {False})
-            return_env_name {bool} -- Returns also the environment name
-        
-        Returns:
-            list -- List of tokens for each of the specified environment's occurences
-        """
-        names = set()
-        if pattern:
-            names = set(filter(lambda env: _re.fullmatch(name, env), self.environments))
-        else:
-            names = set([name])
-        if return_position:
-            return [result + (name,) if return_env_name else result for name in names for result in zip(self.environments.get(name, []), self._env_begins.get(name, []))]
-        else:
-            return [(result, name) if return_env_name else result for name in names for result in self.environments.get(name, [])]
 
 
 class TokenWithEnvironments:

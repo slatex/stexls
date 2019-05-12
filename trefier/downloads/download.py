@@ -110,8 +110,8 @@ def maybe_download_and_extract(url, silent=False, return_name_of_single_file=Tru
     # silent print function
     def sprint(*msg, endln=False, flush=True):
         if not silent:
-            if endln: print(*msg, lush=flush)
-            else: print(*msg, end='', lush=flush)
+            if endln: print(*msg, flush=flush)
+            else: print(*msg, end='', flush=flush)
     
     # create missing directories
     if exists(cache) and not isdir(cache):

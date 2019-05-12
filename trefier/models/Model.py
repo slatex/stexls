@@ -23,7 +23,7 @@ class Model:
         assert all(isinstance(y, str) for y in label_names.values())
 
         self.settings = {
-            'model_class': type(model).__name__,
+            'model_class': type(self).__name__,
             'prediction_type': ModelPredictionType(prediction_type),
             'label_names': label_names
         }

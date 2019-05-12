@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import sklearn.metrics
+import sklearn.metrics as metrics
 
 from .ConfusionMatrix import plot_confusion_matrix
 

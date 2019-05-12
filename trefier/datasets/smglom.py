@@ -7,9 +7,9 @@ import re
 from tqdm import tqdm
 
 from ..downloads import smglom as download_smglom
-from ..tokenization import TexDocument
+from ..tokenization import TexDocument, TexTokenizer
 
-__all__ = ['Label', 'load_documents', 'parse']
+__all__ = ['Label', 'parse_files', 'parse_dataset']
 
 class Label(IntEnum):
     """ Possible labels. """
@@ -17,7 +17,7 @@ class Label(IntEnum):
     TREFI=1
     DEFI=2
 
-def load_documents(lang='en', save_dir='data/', n_jobs=4, silent=False):
+def parse_files(lang='en', save_dir='data/', n_jobs=4, silent=False):
     """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
 
     Keyword Arguments:
@@ -47,8 +47,8 @@ def load_documents(lang='en', save_dir='data/', n_jobs=4, silent=False):
     
     return list(filter(lambda doc: doc.success, documents))
 
-def parse(documents, binary_labels=False, return_X_y=True, math_token='<MathFormula>', lower=True):
-    """ Parses labels and tokens from TexDocuments
+def parse_dataset(documents, binary_labels=False, return_X_y=True, math_token='<math>', lower=True):
+    """ Parses tex documents for labels and tokens.
     
     Arguments:
         :param documents: List of TexDocuments.

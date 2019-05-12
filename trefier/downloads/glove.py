@@ -44,6 +44,7 @@ def load_raw(embedding_dim:int, num_words:int=None, vocabulary:set=None):
 
 def load(
     embedding_dim:int,
+    oov_token:str='<oov>',
     num_words:int=None,
     vocabulary:set=None,
     perform_pca:bool=False,
@@ -55,6 +56,7 @@ def load(
 
     Arguments:
         :param embedding_dim: Source embedding dimensionality to load.
+        :param oov_token: If specified, adds a random vector for oov tokens.
         :param max_sequence_length: Max length for the keras layer.
         :param num_words: Maximum number of words to load. None loads all words.
         :param perform_pca: Wether pca should be performed.
@@ -82,6 +84,9 @@ def load(
     else:
         print(f"{len(embeddings_index)} embedding vectors loaded {len(oov_words)} words not in vocabulary")
 
+    # create an one indexed word_index dictionary
+    word_index = {word:index+1 for index, word in enumerate(embeddings_index)}
+
     # create matrix of known embeddings
     embedding_matrix = np.array(list(embeddings_index.values()))
 
@@ -98,9 +103,13 @@ def load(
     embedding_matrix = np.concatenate([
         np.zeros((1, *embedding_matrix.shape[1:])),
         embedding_matrix])
-
-    # create an one indexed word_index dictionary
-    word_index = {word:index+1 for index, word in enumerate(embeddings_index)}
+    
+    if oov_token is not None:
+        word_index[oov_token] = len(word_index) + 1
+        # add a random vector at the end
+        embedding_matrix = np.concatenate([
+            embedding_matrix,
+            np.random.normal(size=(1, *embedding_matrix.shape[1:]))])
     
     num_words = len(word_index)
             

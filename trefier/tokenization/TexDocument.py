@@ -1,8 +1,10 @@
-import collections as _collections
-import TexSoup as _TexSoup
-from os import path as _path
-import re as _re
+import collections
+import TexSoup
+from os import path
+import re
 from .filters import TokenizerFilters
+
+__all__ = ['TexDocument']
 
 class TexDocument:
     def __init__(self, document_or_path=None, lower=False):
@@ -33,7 +35,7 @@ class TexDocument:
     
     @property
     def parsed(self):
-        return _TexSoup.TexSoup(self.source)
+        return TexSoup.TexSoup(self.source)
     
     @property
     def lexemes(self):
@@ -52,18 +54,18 @@ class TexDocument:
         self.exception = None
         self._source = None
         self.file = None
-        if _path.isfile(document_or_path):
+        if path.isfile(document_or_path):
             self.file = document_or_path
         else:
             self._source = document_or_path
         self._mapping, mapped_source = TexDocument._map_math_regions(self.source)
         try:
-            parsed = _TexSoup.TexSoup(mapped_source)
+            parsed = TexSoup.TexSoup(mapped_source)
             self._offset = 0
             self._envs = []
             self.tokens = []
-            self.environments = _collections.defaultdict(list)
-            self._env_begins = _collections.defaultdict(list)
+            self.environments = collections.defaultdict(list)
+            self._env_begins = collections.defaultdict(list)
             self._environment_token_stack = []
             self._onNode(parsed)
             self.tokens = [sub for token in TexDocument._fix_inner_environments(self.tokens) for sub in token.subtokens()]
@@ -118,7 +120,7 @@ class TexDocument:
         """
         names = set()
         if pattern:
-            names = set(filter(lambda env: _re.fullmatch(name, env), self.environments))
+            names = set(filter(lambda env: re.fullmatch(name, env), self.environments))
         else:
             names = set([name])
         if return_position:
@@ -151,7 +153,7 @@ class TexDocument:
             str -- String where all math environments are replaced with thet 'repl' string
         """
 
-        EXPRS = list(map(lambda e: _re.compile(e, _re.DOTALL | _re.M), [
+        EXPRS = list(map(lambda e: re.compile(e, re.DOTALL | re.M), [
             r'(?<!\$)\$[^\$]+?\$(?!\$)',
             r'\$\$.+?\$\$',
             r'\\\[.+?\\\]',
@@ -166,7 +168,7 @@ class TexDocument:
             #r'\\begin{eq.*?\*}.+?\\end{eq.*?\*}'
         ]))
         
-        regions = [match.span() for matches in filter(len, map(list, [_re.finditer(e, doc) for e in EXPRS])) for match in matches]
+        regions = [match.span() for matches in filter(len, map(list, [re.finditer(e, doc) for e in EXPRS])) for match in matches]
 
         collisions = [
             j for s1, e1 in regions
@@ -192,13 +194,13 @@ class TexDocument:
         for i in range(end, len(doc)):
             mapping[i + acc] = (i, i + 1)
         for e in EXPRS:
-            doc = _re.sub(e, repl, doc)
+            doc = re.sub(e, repl, doc)
         return mapping, doc
 
     @staticmethod
     def _fix_inner_environments(tokens):
         """Fixes inner environments of CMDs TexSoup fails to parse
-        E.g. the tex line "\outer{a}{b\inner{c}d}{e}"
+        E.g. the tex line "\\outer{a}{b\\inner{c}d}{e}"
         would be parsed as the tokens "a, b, inner, c, d, e" all inside the "outer" environment
         This method fixes that to be:
         (a, [outer]), (b, [outer]), (c, [outer, inner]), (d, [outer]), (e, [outer])
@@ -241,20 +243,20 @@ class TexDocument:
         return tokens
 
     def _visit(self, child):
-        if type(child) is _TexSoup.TokenWithPosition:
+        if type(child) is TexSoup.TokenWithPosition:
             self._onToken(child)
-        elif type(child) in (_TexSoup.OArg, _TexSoup.RArg):
+        elif type(child) in (TexSoup.OArg, TexSoup.RArg):
             self._onArg(child)
-        elif type(child) is _TexSoup.TexNode:
-            if type(child.expr) is _TexSoup.TexCmd:
+        elif type(child) is TexSoup.TexNode:
+            if type(child.expr) is TexSoup.TexCmd:
                 self._onCmd(child.expr)
-            elif type(child.expr) is _TexSoup.TexEnv:
+            elif type(child.expr) is TexSoup.TexEnv:
                 self._onEnv(child.expr)
             else:
                 self._onNode(child)
-        elif type(child) is _TexSoup.TexCmd:
+        elif type(child) is TexSoup.TexCmd:
             self._onCmd(child)
-        elif type(child) is _TexSoup.TexEnv:
+        elif type(child) is TexSoup.TexEnv:
             self._onEnv(child)
         else:
             raise Exception("Unknown node type:" + str(type(child)))
@@ -297,9 +299,9 @@ class TexDocument:
             self._exit_env(str(env.name), env.name)
 
     def _onArg(self, arg):
-        if type(arg) is _TexSoup.OArg:
+        if type(arg) is TexSoup.OArg:
             env_name = 'OArg'
-        elif type(arg) is _TexSoup.RArg:
+        elif type(arg) is TexSoup.RArg:
             env_name = 'RArg'
         self._enter_env(env_name)
         for a in arg.exprs:
@@ -347,7 +349,7 @@ class TokenWithEnvironments:
         if '$' in self.envs:
             yield self
         else:
-            splitter = _re.compile("([%s])" % ''.join(map(_re.escape, delimeters)))
+            splitter = re.compile("([%s])" % ''.join(map(re.escape, delimeters)))
             running_start = self.begin
             submatches = []
             for m in splitter.finditer(self.lexeme):

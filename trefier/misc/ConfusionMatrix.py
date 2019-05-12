@@ -3,7 +3,9 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 import itertools
 
-def plot(y_true=None, y_pred=None, classes=None, normalize=True, title='Confusion matrix', automatically_close_figure=True, display_values=True, cmap='Blues', cm=None):
+__all__ = ['plot_confusion_matrix']
+
+def plot_confusion_matrix(y_true=None, y_pred=None, classes=None, normalize=True, title='Confusion matrix', automatically_close_figure=True, display_values=True, cmap='Blues', cm=None):
     """Plots a confusion matrix.
 
     The confusion matrix will be computed from y_true and y_pred or

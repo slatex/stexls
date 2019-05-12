@@ -1,5 +1,7 @@
-from os import path as _path
-from . import download as _download
+from os import path
+from . import download
+
+__all__ = ['maybe_download']
 
 def maybe_download(
     save_dir='./data',
@@ -22,9 +24,9 @@ def maybe_download(
         Paths to all downloaded repository folders.
     """
     return [
-        _download.maybe_download_git(
-            repo_url=_path.join(base_url, repo),
+        download.maybe_download_git(
+            repo_url=path.join(base_url, repo),
             silent=silent,
-            save_dir=_path.join(save_dir, '/'.join(repo.split('/')[:-1])))
+            save_dir=path.join(save_dir, '/'.join(repo.split('/')[:-1])))
         for repo in repositories
     ]

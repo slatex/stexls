@@ -1,5 +1,7 @@
-import numpy as _np
-import collections as _collections
+import numpy as np
+import collections
+
+__all__ = ['TfIdfModel']
 
 class TfIdfModel:
     def __init__(self, X=None, norm_order=1):
@@ -29,7 +31,7 @@ class TfIdfModel:
         self._num_documents = len(X)
 
         # document frequencies: Number of documents a word appears in
-        self.dfs = dict(_collections.Counter([word for doc in X for word in set(doc)]))
+        self.dfs = dict(collections.Counter([word for doc in X for word in set(doc)]))
 
         # inverse document frequncies
         self.idfs = {word: self._idf(self._num_documents, df) for word, df in self.dfs.items()}
@@ -57,12 +59,12 @@ class TfIdfModel:
         result = []
         for doc in X:
             tfs = self._tf(doc)
-            vec = _np.array([
+            vec = np.array([
                 tfs[word] * self._idf(self._num_documents - 1, self.dfs[word] - 1)
                 for word in doc
             ])
             if self.norm_order is not None:
-                vec /= _np.linalg.norm(vec, ord=self.norm_order)
+                vec /= np.linalg.norm(vec, ord=self.norm_order)
             result.append(vec)
         return result
 
@@ -70,12 +72,12 @@ class TfIdfModel:
         result = []
         for doc in X:
             tfs = self._tf(doc)
-            vec = _np.array([
+            vec = np.array([
                 tfs[word] * self.idfs.get(word, 0)
                 for word in doc
             ])
             if self.norm_order is not None:
-                vec /= _np.linalg.norm(vec, ord=self.norm_order)
+                vec /= np.linalg.norm(vec, ord=self.norm_order)
             result.append(vec)
         return result
     
@@ -86,7 +88,7 @@ class TfIdfModel:
         t1 = TfIdfModel(X[1:]).transform([X[0]])[0]
         t2 = TfIdfModel().fit_transform(X)[0]
 
-        assert all(_np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
+        assert all(np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
         
     def _idf(self, num_documents, document_frequency):
         """Calculates the inverse-document-frequency value for phrase
@@ -100,7 +102,7 @@ class TfIdfModel:
         """
         if document_frequency <= 0:
             return 0
-        return _np.log2(float(num_documents) / document_frequency)
+        return np.log2(float(num_documents) / document_frequency)
 
     def _tf(self, doc):
         """Calculates term frequency of all words in a document
@@ -113,4 +115,4 @@ class TfIdfModel:
             Dict of term frequencies
         """
         doc_len = len(doc)
-        return {word: term_count / doc_len for word, term_count in _collections.Counter(doc).items()}
+        return {word: term_count / doc_len for word, term_count in collections.Counter(doc).items()}

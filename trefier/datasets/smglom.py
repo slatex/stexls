@@ -1,50 +1,21 @@
 
-from glob import glob as _glob
-from os import path as _path
-from multiprocessing import pool as _pool
-from enum import IntEnum as _IntEnum
-import re as _re
+from glob import glob
+from os import path
+from multiprocessing.pool import Pool
+from enum import IntEnum
+import re
+from tqdm import tqdm
 
-from tqdm import tqdm as _tqdm
+from ..downloads import smglom as download_smglom
+from ..tokenization import TexDocument
 
-from ..downloads import smglom as _download_smglom
-from ..tokenization import TexDocument as _TexDocument
+__all__ = ['Label', 'load_documents', 'parse']
 
-class Label(_IntEnum):
+class Label(IntEnum):
     """ Possible labels. """
     TEXT=0
     TREFI=1
     DEFI=2
-
-def _envs2label(envs, binary_labels):
-    """ Determines label by looking a list of environments. """
-    TREFI_PATTERN = _re.compile(r"""[ma]*trefi+s?""")
-    DEFI_PATTERN = _re.compile(r"""[ma]*defi+s?""")
-    if any(map(TREFI_PATTERN.fullmatch, envs)):
-        return Label.TREFI
-    if any(map(DEFI_PATTERN.fullmatch, envs)):
-        return Label.TREFI if binary_labels else Label.DEFI
-    return Label.TEXT
-
-def _is_ignore(doc, begin, end, envs):
-    """ Determines if the token between begin, end from the tex document doc should be ignored.
-    Arguments:
-        :param doc: TexDocument for reference.
-        :param begin: Begin offset of the token to be ignored.
-        :param end: End offset of the token to be ignored.
-        :param envs: Environments of the token.
-    Return:
-        Returns True if the token between begin and end is to be ignored.
-    """
-    # Ignore all OArgs
-    if 'OArg' in envs:
-        return True
-    # Ignore first argument of an 'a*' environment (e.g.: atrefii or madefis)
-    for alt in doc.find_all('m?am?(tr|d)efi+s?', pattern=True):
-        for _, alt_begin, alt_end, envs in alt:
-            if 'RArg' in envs: 
-                return alt_begin <= begin and end <= alt_end
-    return False
 
 def load_documents(lang='en', save_dir='data/', n_jobs=4, silent=False):
     """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
@@ -63,16 +34,16 @@ def load_documents(lang='en', save_dir='data/', n_jobs=4, silent=False):
     files = [
         file
         for folder
-        in _download_smglom.maybe_download(save_dir=save_dir, silent=silent)
+        in download_smglom.maybe_download(save_dir=save_dir, silent=silent)
         for file
-        in _glob(_path.join(folder, f'**/*.{lang}.tex'))
+        in glob(path.join(folder, f'**/*.{lang}.tex'))
     ]
 
-    with _pool.Pool(n_jobs) as pool:
+    with Pool(n_jobs) as pool:
         if not silent:
-            documents = [doc for doc in _tqdm(pool.imap_unordered(_TexDocument, files))]
+            documents = [doc for doc in tqdm(pool.imap_unordered(TexDocument, files))]
         else:
-            documents = pool.map(_TexDocument, files)
+            documents = pool.map(TexDocument, files)
     
     return list(filter(lambda doc: doc.success, documents))
 
@@ -115,3 +86,34 @@ def parse(documents, binary_labels=False, return_X_y=True, math_token='<MathForm
     X, y = list(zip(*list_of_X_y_pairs))
 
     return X, y
+
+
+def _envs2label(envs, binary_labels):
+    """ Determines label by looking a list of environments. """
+    TREFI_PATTERN = re.compile(r"""[ma]*trefi+s?""")
+    DEFI_PATTERN = re.compile(r"""[ma]*defi+s?""")
+    if any(map(TREFI_PATTERN.fullmatch, envs)):
+        return Label.TREFI
+    if any(map(DEFI_PATTERN.fullmatch, envs)):
+        return Label.TREFI if binary_labels else Label.DEFI
+    return Label.TEXT
+
+def _is_ignore(doc, begin, end, envs):
+    """ Determines if the token between begin, end from the tex document doc should be ignored.
+    Arguments:
+        :param doc: TexDocument for reference.
+        :param begin: Begin offset of the token to be ignored.
+        :param end: End offset of the token to be ignored.
+        :param envs: Environments of the token.
+    Return:
+        Returns True if the token between begin and end is to be ignored.
+    """
+    # Ignore all OArgs
+    if 'OArg' in envs:
+        return True
+    # Ignore first argument of an 'a*' environment (e.g.: atrefii or madefis)
+    for alt in doc.find_all('m?am?(tr|d)efi+s?', pattern=True):
+        for _, alt_begin, alt_end, envs in alt:
+            if 'RArg' in envs: 
+                return alt_begin <= begin and end <= alt_end
+    return False

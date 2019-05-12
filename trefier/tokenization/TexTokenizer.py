@@ -1,10 +1,12 @@
-from multiprocessing.pool import Pool as _Pool
-from functools import partial as _partial
+from multiprocessing.pool import Pool
+from functools import partial
 
 from keras.preprocessing.text import Tokenizer
 
-from .TexDocument import TexDocument as _TexDocument
+from .TexDocument import TexDocument
 from .filters import TokenizerFilters
+
+__all__ = ['TexTokenizer']
 
 class TexTokenizer:
     def __init__(
@@ -18,8 +20,8 @@ class TexTokenizer:
     
     def _parse_files_in_parallel(self, X, n_jobs):
         # parse documents in parallel
-        with _Pool(n_jobs) as pool:
-            documents = pool.map(_partial(_TexDocument, lower=self.tokenizer.lower), X)
+        with Pool(n_jobs) as pool:
+            documents = pool.map(partial(TexDocument, lower=self.tokenizer.lower), X)
         
         # return all successfully parsed documents
         return list(filter(lambda doc: doc.success, documents))

@@ -1,5 +1,5 @@
 
-from .Cache import Cache
-from .FileWatcher import FileWatcher
-from .ConfusionMatrix import plot
-from .Evaluation import Evaluation
+from .Cache import *
+from .FileWatcher import *
+from .ConfusionMatrix import *
+from .Evaluation import *

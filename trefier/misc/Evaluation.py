@@ -1,8 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as _plt
-import sklearn.metrics as _metrics
+import matplotlib.pyplot as plt
+import sklearn.metrics
 
-from .plot_confusion_matrix import plot_confusion_matrix as _plot_confusion_matrix
+from .ConfusionMatrix import plot_confusion_matrix
+
+__all__ = ['Evaluation']
 
 class Evaluation:
     def __init__(self, history=None, history_series=('loss', 'acc',)):
@@ -45,21 +47,21 @@ class Evaluation:
                 'metrics': ['accuracy', 'f1', 'recall', 'precision'],
                 'labels': ['average (%s)' % average] + list(classes.values()),
                 'score_matrix': np.array([
-                    [_metrics.accuracy_score(y_true, y_pred),
-                     _metrics.f1_score(y_true, y_pred, average=average),
-                     _metrics.recall_score(y_true, y_pred, average=average),
-                     _metrics.precision_score(y_true, y_pred, average=average)],
+                    [metrics.accuracy_score(y_true, y_pred),
+                     metrics.f1_score(y_true, y_pred, average=average),
+                     metrics.recall_score(y_true, y_pred, average=average),
+                     metrics.precision_score(y_true, y_pred, average=average)],
                 ] + [
                     [metric_func(y_true == label, y_pred == label)
                     for metric_func
-                    in (_metrics.accuracy_score,
-                        _metrics.f1_score,
-                        _metrics.recall_score,
-                        _metrics.precision_score)]
+                    in (metrics.accuracy_score,
+                        metrics.f1_score,
+                        metrics.recall_score,
+                        metrics.precision_score)]
                     for label in classes]),
                 'orientation': 'labels-first'
             },
-            'confusion_matrix': _metrics.confusion_matrix(y_true, y_pred, sample_weight=sample_weights)
+            'confusion_matrix': metrics.confusion_matrix(y_true, y_pred, sample_weight=sample_weights)
         }
         if ignore_binary_average:
             self.evaluation['scores']['labels'] = self.evaluation['scores']['labels'][1:]
@@ -74,29 +76,29 @@ class Evaluation:
         """
         # plot loss and other series
         if self.history is not None:            
-            _plt.figure()
+            plt.figure()
             for i, series in enumerate(self.history_series):
                 # plot series
-                _plt.subplot(len(self.history_series), 1, i+1)
-                _plt.plot(self.history[series], '-x')
+                plt.subplot(len(self.history_series), 1, i+1)
+                plt.plot(self.history[series], '-x')
                 legend = ['Train']
                 if 'val_%s' % series in self.history:
-                    _plt.plot(self.history['val_%s' % series], '-o')
+                    plt.plot(self.history['val_%s' % series], '-o')
                     legend.append('Validation')
-                _plt.xticks(range(len(self.history[series])))
-                _plt.xlabel("Epoch")
-                _plt.ylabel('Accuracy' if series == 'acc' else series.capitalize())
-                _plt.locator_params(axis='y', nbins=4)
-                _plt.locator_params(axis='x', nbins=10)
-                _plt.legend(legend)
-            _plt.show()
+                plt.xticks(range(len(self.history[series])))
+                plt.xlabel("Epoch")
+                plt.ylabel('Accuracy' if series == 'acc' else series.capitalize())
+                plt.locator_params(axis='y', nbins=4)
+                plt.locator_params(axis='x', nbins=10)
+                plt.legend(legend)
+            plt.show()
 
         # plot confusion matrix
-        _plot_confusion_matrix(cm=self.evaluation['confusion_matrix'], classes=list(self.classes.values()))
+        plot_confusion_matrix(cm=self.evaluation['confusion_matrix'], classes=list(self.classes.values()))
 
         # plot metrics
-        _plt.figure()
-        ax = _plt.subplot(111)
+        plt.figure()
+        ax = plt.subplot(111)
 
         series_labels = self.evaluation['scores']['labels']
         x_ticks = self.evaluation['scores']['metrics']
@@ -121,4 +123,4 @@ class Evaluation:
         ax.set_xticklabels(x_ticks)
         ax.set_xticks(indices + width*1.5) # *1.5 because there are 4 metrics and I want to position it in the center
         ax.legend(rects_for_legend, series_labels, loc='lower center', ncol=N)
-        _plt.show()
+        plt.show()

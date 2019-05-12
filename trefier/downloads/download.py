@@ -13,6 +13,8 @@ import io
 import datetime
 from tqdm import tqdm
 
+__all__ = ['maybe_download_git','maybe_download_and_extract']
+
 class Downloader:
     def __init__(self, url, download_location):
         self.url = url

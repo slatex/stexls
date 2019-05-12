@@ -3,6 +3,8 @@ import pickle
 import tempfile
 import shutil
 
+__all__ = ['Cache', 'CacheException', 'FailedToWriteCacheError', 'FailedToReadCacheError']
+
 class CacheException(RuntimeError):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

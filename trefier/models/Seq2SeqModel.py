@@ -5,6 +5,8 @@ from keras.layers import Embedding, Dense, Dropout, GRU, Bidirectional, InputLay
 from . import ModelPredictionType, Model
 from .. import datasets, keywords, tokenization, downloads
 
+__all__ = ['Seq2SeqModel']
+
 class Seq2SeqModel(Model):
     def __init__(self):
         super().__init__(
@@ -25,9 +27,9 @@ class Seq2SeqModel(Model):
             Bidirectional(GRU(32, dropout=0.1, activation='tanh', return_sequences=True)),
             Bidirectional(GRU(32, dropout=0.1, activation='tanh', return_sequences=True)),
             Dense(128, activation='sigmoid'),
-            Dropout(0.5)
+            Dropout(0.5),
             Dense(128, activation='sigmoid'),
-            Dropout(0.5)
+            Dropout(0.5),
             Dense(1, activation='sigmoid')
         ])
         self.model.compile(optimizer='Adam', loss='binary_crossentropy', metrics=['acc'])

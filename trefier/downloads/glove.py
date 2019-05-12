@@ -1,13 +1,16 @@
 # visit https://nlp.stanford.edu/projects/glove/ for information
 
-from . import download  as _download
 import numpy as np
-from sklearn.decomposition import PCA as _PCA
-from sklearn.manifold import LocallyLinearEmbedding as _LLE
-from keras.layers import Embedding as _Embedding
+from sklearn.manifold import LocallyLinearEmbedding as LLE
+from sklearn.decomposition import PCA
+from keras.layers import Embedding
+
+from . import download
+
+__all__ = ['maybe_download_and_extract', 'load']
 
 def maybe_download_and_extract():
-    return _download.maybe_download_and_extract("http://nlp.stanford.edu/data/glove.6B.zip")
+    return download.maybe_download_and_extract("http://nlp.stanford.edu/data/glove.6B.zip")
 
 def load_raw(embedding_dim:int, num_words:int=None, vocabulary:set=None):
     """Loads the raw glove embedding from file
@@ -84,11 +87,11 @@ def load(
 
     # do dimensionality reduction on known embeddings
     if perform_pca:
-        embedding_matrix = _PCA(**kwargs).fit_transform(embedding_matrix)
+        embedding_matrix = PCA(**kwargs).fit_transform(embedding_matrix)
         embedding_dim = embedding_matrix.shape[1]
     
     if perform_lle:
-        embedding_matrix = _LLE(**kwargs).fit_transform(embedding_matrix)
+        embedding_matrix = LLE(**kwargs).fit_transform(embedding_matrix)
         embedding_dim = embedding_matrix.shape[1]
 
     # add zero vector
@@ -103,7 +106,7 @@ def load(
             
     # create the untrainable keras layer
     if make_keras_layer:
-        embedding_layer = _Embedding(num_words + 1,
+        embedding_layer = Embedding(num_words + 1,
                                     embedding_dim,
                                     weights=[embedding_matrix],
                                     input_length=max_sequence_length,

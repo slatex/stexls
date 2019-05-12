@@ -1,3 +1,3 @@
 
-from .Model import Model, ModelPredictionType
-from .Seq2SeqModel import Seq2SeqModel
+from .Model import *
+from .Seq2SeqModel import *

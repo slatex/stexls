@@ -1,6 +1,8 @@
 from enum import Enum
 import sys
 
+__all__ = ['ModelPredictionType', 'Model']
+
 class ModelPredictionType(Enum):
     # If the model predicts a single number representing the label
     LABELS = 'labels'
@@ -22,7 +24,7 @@ class Model:
 
         self.settings = {
             'model_class': type(model).__name__,
-            'prediction_type': ModelPredictionType(prediction_type)
+            'prediction_type': ModelPredictionType(prediction_type),
             'label_names': label_names
         }
     

@@ -1,4 +1,6 @@
-import collections as _collections
+import collections
+
+__all__ = ['KeyphrasenessModel']
 
 class KeyphrasenessModel:
     def __init__(self, X=None, Y=None):
@@ -39,13 +41,13 @@ class KeyphrasenessModel:
             Y {list} -- List of documents of labels
         """
         self.keyphraseness = {}
-        self.dfs = _collections.defaultdict(float) # document frequency
-        self.kfs = _collections.defaultdict(int) # keyphrase frequency
+        self.dfs = collections.defaultdict(float) # document frequency
+        self.kfs = collections.defaultdict(int) # keyphrase frequency
         for doc, labels in zip(X, Y):
             for word in set(doc):
                 self.dfs[word] += 1
             keywords = (word for word, label in zip(doc, labels) if label != 0)
-            for word, count in _collections.Counter(keywords).items():
+            for word, count in collections.Counter(keywords).items():
                 self.kfs[word] += count
         for word in self.dfs:
             self.keyphraseness[word] = self.kfs[word] / self.dfs[word]
@@ -64,7 +66,7 @@ class KeyphrasenessModel:
         self.fit(X, Y)
         result = []
         for doc, labels in zip(X, Y):
-            keywords = _collections.Counter(word for word, label in zip(doc, labels) if label != 0)
+            keywords = collections.Counter(word for word, label in zip(doc, labels) if label != 0)
             result.append([
                 (self.kfs[word] - keywords.get(word, 0)) / (self.dfs[word] - 1)
                 if self.dfs[word] > 1 else 0

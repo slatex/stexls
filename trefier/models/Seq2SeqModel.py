@@ -11,6 +11,9 @@ from sklearn.utils.class_weight import compute_sample_weight, compute_class_weig
 
 from itertools import chain
 from collections import Counter
+from zipfile import ZipFile
+from tempfile import NamedTemporaryFile
+import pickle
 
 from . import ModelPredictionType, Model
 from .. import datasets, keywords, tokenization, downloads
@@ -55,8 +58,8 @@ class Seq2SeqModel(Model):
         self.glove_tokenizer = tokenization.TexTokenizer(oov_token=oov_token, math_token=math_token)
         self.glove_tokenizer.word_index = glove_word_index
 
-        self.tfidf = keywords.TfIdfModel(X)
-        self.keyphraseness = keywords.KeyphrasenessModel(X, Y)
+        self.tfidf_model = keywords.TfIdfModel(X)
+        self.keyphraseness_model = keywords.KeyphrasenessModel(X, Y)
         
         trainable_embedding_layer = Embedding(
             input_dim=len(self.oov_tokenizer.word_index) + 1,
@@ -102,23 +105,23 @@ class Seq2SeqModel(Model):
 
         train_indices, test_indices = train_test_split(np.arange(len(Y)))
 
-        self.class_counts = np.array(list(dict(sorted(Counter(y_ for y_ in Y for y_ in y_).items(), key=lambda x: x[0])).values()))
-        self.class_weights = -np.log(self.class_counts / np.sum(self.class_counts))
-        self.sample_weights = [[self.class_weights[int(y_)] for y_ in Y[i]] for i in train_indices]
-        self.sample_weights = pad_sequences(self.sample_weights, maxlen=max(map(len, X)), dtype=np.float32)
+        class_counts = np.array(list(dict(sorted(Counter(y_ for y_ in Y for y_ in y_).items(), key=lambda x: x[0])).values()))
+        class_weights = -np.log(class_counts / np.sum(class_counts))
+        sample_weights = [[class_weights[int(y_)] for y_ in Y[i]] for i in train_indices]
+        sample_weights = pad_sequences(sample_weights, maxlen=max(map(len, X)), dtype=np.float32)
 
         X_glove = pad_sequences(self.glove_tokenizer.tokens_to_sequences(X))
         X_oov = pad_sequences(self.oov_tokenizer.tokens_to_sequences(X))
 
-        X_tfidf = pad_sequences(self.tfidf.fit_transform(X), dtype=np.float32)
-        X_keyphraseness = pad_sequences(self.keyphraseness.fit_transform(X, Y), dtype=np.float32)
+        X_tfidf = pad_sequences(self.tfidf_model.fit_transform(X), dtype=np.float32)
+        X_keyphraseness = pad_sequences(self.keyphraseness_model.fit_transform(X, Y), dtype=np.float32)
 
         Y = np.expand_dims(pad_sequences(Y), axis=-1)
         
         callbacks = [EarlyStopping(patience=3)]
 
         fit_result = self.model.fit(
-            sample_weight=self.sample_weights,
+            sample_weight=sample_weights,
             epochs=epochs,
             callbacks=callbacks,
             x={
@@ -160,4 +163,48 @@ class Seq2SeqModel(Model):
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0:'text', 1:'keyword'})
     
     def predict(self, path_or_tex_document, ignore_tagged_tokens):
-        return self.model.predict(self.tokenizer.tex_files_to_sequences([path_or_tex_document]))
+        tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([path_or_tex_document], return_offsets_and_envs=True)
+        X_glove = np.array(self.glove_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
+        X_oov = np.array(self.oov_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
+        X_tfidf = np.array(self.tfidf_model.transform(tokens), dtype=np.float32)
+        X_keyphraseness = np.array(self.keyphraseness_model.transform(tokens), dtype=np.float32)
+        return X_glove, X_oov, X_tfidf, X_keyphraseness, self.model.predict({
+            'tokens_glove': X_glove,
+            'tokens_oov': X_oov,
+            'tfidf': X_tfidf,
+            'keyphraseness': X_keyphraseness
+        })
+    
+    def save(self, path):
+        """ Saves the current state """
+        with ZipFile(path, mode='w') as package:
+            with NamedTemporaryFile() as ref:
+                models.save_model(self.model, ref.name)
+                ref.flush()
+                package.write(ref.name, 'model.hdf5')
+            package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
+            package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
+            #package.writestr('pos_embedder.bin', pickle.dumps(self.pos_embedder))
+            package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+            package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+            package.writestr('evaluation.bin', pickle.dumps(self.evaluation))
+            package.writestr('settings.bin', pickle.dumps(self.settings))
+
+    
+    @staticmethod
+    def load(path, append_extension=False):
+        self = Seq2SeqModel()
+        """ Loads the model from file """
+        with ZipFile(path) as package:
+            with NamedTemporaryFile() as ref:
+                ref.write(package.read('model.hdf5'))
+                ref.flush()
+                self.model = models.load_model(ref.name)
+            self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
+            self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
+            #self.pos_embedder = pickle.loads(package.read('pos_embedder.bin'))
+            self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
+            self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+            self.evaluation = pickle.loads(package.read('evaluation.bin'))
+            self.settings = pickle.loads(package.read('settings.bin'))
+        return self

@@ -27,7 +27,7 @@ class Seq2SeqModel(Model):
     def __init__(self):
         super().__init__(
             prediction_type=ModelPredictionType.PROBABILITIES,
-            label_names={0:'text', 1:'keyword'})
+            class_names={0:'text', 1:'keyword'})
     
     def train(self, epochs=50, save_dir='data/', n_jobs=6):
         oov_token = '<oov>'
@@ -163,7 +163,10 @@ class Seq2SeqModel(Model):
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0:'text', 1:'keyword'})
     
     def predict(self, path_or_tex_document):
-        tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([path_or_tex_document], return_offsets_and_envs=True)
+        document = tokenization.TexDocument(path_or_tex_document)
+        if not document.success:
+            return np.array([]), np.array([]), np.array([])
+        tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)
         X_glove = np.array(self.glove_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_oov = np.array(self.oov_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_tfidf = np.array(self.tfidf_model.transform(tokens), dtype=np.float32)
@@ -175,7 +178,9 @@ class Seq2SeqModel(Model):
             'keyphraseness': X_keyphraseness
         }).squeeze(axis=-1)
 
-        return y_pred[0], offsets[0], envs[0]
+        positions = [tuple(map(document.offset_to_position, offset)) for offset in offsets[0]]
+
+        return y_pred[0], positions, envs[0]
     
     def save(self, path):
         """ Saves the current state """

@@ -1,5 +1,7 @@
 from enum import Enum
 import sys
+from zipfile import ZipFile
+import pickle
 
 __all__ = ['ModelPredictionType', 'Model']
 
@@ -12,20 +14,20 @@ class ModelPredictionType(Enum):
 
 
 class Model:
-    def __init__(self, prediction_type, label_names):
+    def __init__(self, prediction_type, class_names):
         """ Model base
         Arguments:
             prediction_type: ModelPredictionType
-            label_names: A dict of {int: str} that translates an integer label id to its text representation
+            class_names: A dict of {int: str} that translates an integer label id to its text representation
         """
-        assert isinstance(label_names, dict)
-        assert all(isinstance(x, int) for x in label_names)
-        assert all(isinstance(y, str) for y in label_names.values())
+        assert isinstance(class_names, dict)
+        assert all(isinstance(x, int) for x in class_names)
+        assert all(isinstance(y, str) for y in class_names.values())
 
         self.settings = {
             'model_class': type(self).__name__,
             'prediction_type': ModelPredictionType(prediction_type),
-            'label_names': label_names
+            'class_names': class_names
         }
     
     def train(self):
@@ -42,11 +44,9 @@ class Model:
     
     def predict(self, path_or_tex_document):
         pass
-
+    
     @classmethod
     def verify_loadable(self, path):
-        from zipfile import ZipFile
-        import pickle
         try:
             with ZipFile(path) as package:
                 settings = pickle.loads(package.read('settings.bin'))

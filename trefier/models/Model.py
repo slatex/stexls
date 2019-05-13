@@ -42,3 +42,14 @@ class Model:
     
     def predict(self, path_or_tex_document):
         pass
+
+    @classmethod
+    def verify_loadable(self, path):
+        from zipfile import ZipFile
+        import pickle
+        try:
+            with ZipFile(path) as package:
+                settings = pickle.loads(package.read('settings.bin'))
+            return settings['model_class'] == self.__name__
+        except:
+            return False

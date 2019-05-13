@@ -31,14 +31,14 @@ class Model:
     def train(self):
         pass
     
-    def predict_from_stdin(self, num_lines, ignore_tagged_tokens):
+    def predict_from_stdin(self, num_lines):
         # TODO: let the cli handle this function instead
         document = '\n'.join(
             line
             for line_num, line
             in zip(range(num_lines), sys.stdin)
         )
-        return self.predict(document, ignore_tagged_tokens=ignore_tagged_tokens)
+        return self.predict(document)
     
-    def predict(self, path_or_tex_document, ignore_tagged_tokens):
+    def predict(self, path_or_tex_document):
         pass

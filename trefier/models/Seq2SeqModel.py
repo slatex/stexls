@@ -162,18 +162,20 @@ class Seq2SeqModel(Model):
         self.evaluation = Evaluation(fit_result.history)
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0:'text', 1:'keyword'})
     
-    def predict(self, path_or_tex_document, ignore_tagged_tokens):
+    def predict(self, path_or_tex_document):
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([path_or_tex_document], return_offsets_and_envs=True)
         X_glove = np.array(self.glove_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_oov = np.array(self.oov_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_tfidf = np.array(self.tfidf_model.transform(tokens), dtype=np.float32)
         X_keyphraseness = np.array(self.keyphraseness_model.transform(tokens), dtype=np.float32)
-        return X_glove, X_oov, X_tfidf, X_keyphraseness, self.model.predict({
+        y_pred = self.model.predict({
             'tokens_glove': X_glove,
             'tokens_oov': X_oov,
             'tfidf': X_tfidf,
             'keyphraseness': X_keyphraseness
-        })
+        }).squeeze(axis=-1)
+
+        return y_pred[0], offsets[0], envs[0]
     
     def save(self, path):
         """ Saves the current state """

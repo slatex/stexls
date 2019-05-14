@@ -35,7 +35,7 @@ class ModelCLI(CLI):
             return
 
         labels = '{' + ','.join(
-            f'"{name}":"{index}"'
+            f'"{name}":{index}'
             for index, name
             in self.model.settings['class_names'].items()
         ) + '}'

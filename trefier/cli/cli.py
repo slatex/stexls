@@ -6,6 +6,7 @@ from itertools import chain
 import argparse
 from pathlib import Path
 import itertools
+import json
 
 __all__ = ['CLI', 'CLIException', 'CLIExitException','CLIRestartException']
 
@@ -25,21 +26,20 @@ class CLI:
     """ Contains basic pattern of argh.dispatch_commands in a for line in stdin loop and error handling. """
 
     def return_result(self, command, status, **kwargs):
-        """ Helper for returning results. """
-        extra = ','.join(f'"{arg}":{value}' for arg, value in kwargs.items())
-        result = f'{{"command":"{command.__name__}","status":{status}{"," if extra else ""}{extra}}}'
-        print(result, flush=True)
-        return result
+        """ Returns the result of a command over stdou in json format. """
+        kwargs.update({
+                "command": command.__name__,
+                "status": status
+        })
+        print(json.dumps(kwargs), flush=True)
 
-    def run(self, commands, initial_command_list:list=None):
-        """ Dispatches given commands and writes caught exceptions to the log file.
-        
+    def run(self, commands):
+        """ Runs the cli.
         Arguments:
-            :param commands: Commands to dispatch for each line.
-            :param initial_command_list: List of arguments that will be executed before drawing lines froms stdin.
+            :param commands: Commands available.
         """
         try:
-            for line in chain(initial_command_list or [], sys.stdin):
+            for line in sys.stdin:
                 try:
                     argh.dispatch_commands(commands + [self.exit, self.echo], shlex.split(line))
                 except SystemExit:

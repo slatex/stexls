@@ -5,9 +5,11 @@ import tempfile
 from os.path import isfile, exists, isdir
 import argh
 import re
+import json
 
 from .cli import CLI
-from ..models import Seq2SeqModel, ModelPredictionType
+from ..models import Seq2SeqModel
+from ..tokenization import TexDocument
 
 __all__ = ['ModelCLI']
 
@@ -34,40 +36,39 @@ class ModelCLI(CLI):
             self.return_result(self.load_model, 1, message="Could not create model from '%s'" % path)
             return
 
-        labels = '{' + ','.join(
-            f'"{name}":{index}'
-            for index, name
-            in self.model.settings['class_names'].items()
-        ) + '}'
-
-        prediction_type = self.model.settings['prediction_type'].value
-
-        self.return_result(
-            self.load_model,
-            0,
-            prediction_type=f'"{prediction_type}"',
-            class_names=labels)
+        self.return_result(self.load_model, 0, settings=self.model.settings)
     
     def _return_predictions(self, y_pred, positions, envs, ignore_tagged_tokens=False):
-        predictions = ','.join(
-            f'{{"range":{{"begin":{{"line":{bl},"column":{bc}}},"end":{{"line":{el},"column":{ec}}}}},"y_pred":{preds}}}'
-            for preds, ((bl, bc), (el, ec)), envs
+        predictions = [
+            {
+                "range": {
+                    "begin":{"line":begin_line, "column": begin_column},
+                    "end":{"line":end_line, "column": end_column},
+                },
+                "y_pred": preds.tolist()
+            }
+            for preds, ((begin_line, begin_column), (end_line, end_column)), envs
             in zip(y_pred, positions, envs)
             if not ignore_tagged_tokens or not any(map(re.compile(r'[ma]*(tr|d)efi+s?').fullmatch, envs))
-        )
-        self.return_result(self.predict_from_file, 0, predictions=f"[{predictions}]")
+        ]
+        self.return_result(self.predict, 0, predictions=predictions)
     
     @argh.arg('path', help="Path to the file.")
-    @argh.aliases('predict')
-    def predict_from_file(self, path):
+    def predict(self, path):
         try:
-            if not isfile(path):
-                self.return_result(self.predict_from_file, 1, predictions="[]", message=f'"Failed to open file {path}"')
-            else:
-                y_pred, positions, envs = self.model.predict(path)
-                self._return_predictions(y_pred, positions, envs)
+            y_pred, positions, envs = self.model.predict(path)
+            self._return_predictions(y_pred, positions, envs)
         except Exception as e:
-            self.return_result(self.predict_from_file, 0, predictions="[]", message=f'"{str(e)}"')
+            self.return_result(self.predict, 1, predictions="[]", message=f'"{str(e)}"')
+
+    @argh.arg('num_lines', type=int, help="Number of lines sent over stdin.")
+    def predict_from_stdin(self, num_lines):
+        document = '\n'.join(
+            line
+            for line_num, line
+            in zip(range(num_lines), sys.stdin)
+        )
+        return self.predict(document)
     
     @argh.aliases('evaluation')
     def show_evaluation(self):
@@ -96,6 +97,7 @@ class ModelCLI(CLI):
         super().run([
             self.train,
             self.load_model,
-            self.predict_from_file,
+            self.predict,
+            self.predict_from_stdin,
             self.show_evaluation,
         ])

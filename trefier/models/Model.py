@@ -3,21 +3,13 @@ import sys
 from zipfile import ZipFile
 import pickle
 
-__all__ = ['ModelPredictionType', 'Model']
-
-class ModelPredictionType(Enum):
-    # If the model predicts a single number representing the label
-    LABELS = 'labels'
-    
-    # If the model predicts a probability value for all classes in a vector
-    PROBABILITIES = 'probabilities'
-
+__all__ = ['Model']
 
 class Model:
-    def __init__(self, prediction_type, class_names):
+    def __init__(self, predicts_probabilities, class_names):
         """ Model base
         Arguments:
-            prediction_type: ModelPredictionType
+            predicts_probabilities: True if model predicts probabilities, False if class labels.
             class_names: A dict of {int: str} that translates an integer label id to its text representation
         """
         assert isinstance(class_names, dict)
@@ -26,21 +18,12 @@ class Model:
 
         self.settings = {
             'model_class': type(self).__name__,
-            'prediction_type': ModelPredictionType(prediction_type),
+            'predicts_probabilities': predicts_probabilities,
             'class_names': class_names
         }
     
     def train(self):
         pass
-    
-    def predict_from_stdin(self, num_lines):
-        # TODO: let the cli handle this function instead
-        document = '\n'.join(
-            line
-            for line_num, line
-            in zip(range(num_lines), sys.stdin)
-        )
-        return self.predict(document)
     
     def predict(self, path_or_tex_document):
         pass

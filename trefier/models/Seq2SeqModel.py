@@ -15,7 +15,7 @@ from zipfile import ZipFile
 from tempfile import NamedTemporaryFile
 import pickle
 
-from . import ModelPredictionType, Model
+from . import Model
 from .. import datasets, keywords, tokenization, downloads
 from ..misc import Evaluation
 
@@ -26,7 +26,7 @@ from ..misc import Cache
 class Seq2SeqModel(Model):
     def __init__(self):
         super().__init__(
-            prediction_type=ModelPredictionType.PROBABILITIES,
+            predicts_probabilities=True,
             class_names={0:'text', 1:'keyword'})
     
     def train(self, epochs=50, save_dir='data/', n_jobs=6):
@@ -163,7 +163,8 @@ class Seq2SeqModel(Model):
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0:'text', 1:'keyword'})
     
     def predict(self, path_or_tex_document):
-        document = tokenization.TexDocument(path_or_tex_document)
+        if not isinstance(path_or_tex_document, tokenization.TexDocument):
+            document = tokenization.TexDocument(path_or_tex_document)
         if not document.success:
             return np.array([]), np.array([]), np.array([])
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)

@@ -59,11 +59,11 @@ class ModelCLI(CLI):
             y_pred, positions, envs = self.model.predict(path)
             self._return_predictions(y_pred, positions, envs)
         except Exception as e:
-            self.return_result(self.predict, 1, predictions="[]", message=f'"{str(e)}"')
+            self.return_result(self.predict, 1, predictions=[], message=str(e))
 
     @argh.arg('num_lines', type=int, help="Number of lines sent over stdin.")
     def predict_from_stdin(self, num_lines):
-        document = '\n'.join(
+        document = ''.join(
             line
             for line_num, line
             in zip(range(num_lines), sys.stdin)
@@ -86,6 +86,12 @@ class ModelCLI(CLI):
         self.model.train()
         self.model.save(save_dir)
     
+    @argh.arg('s', help="Number of seconds to sleep.", type=float)
+    def wait(self, s):
+        import time
+        time.sleep(s)
+        self.return_result(self.wait, 0, message="Waited %.02f seconds." % s)
+    
     def run(self, path=None):
         """ Runs model cli.
         Arguments:
@@ -95,6 +101,7 @@ class ModelCLI(CLI):
         if path:
             self.load_model(path)
         super().run([
+            self.wait,
             self.train,
             self.load_model,
             self.predict,

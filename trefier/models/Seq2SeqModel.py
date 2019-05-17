@@ -166,7 +166,7 @@ class Seq2SeqModel(Model):
         if not isinstance(path_or_tex_document, tokenization.TexDocument):
             document = tokenization.TexDocument(path_or_tex_document)
         if not document.success:
-            return np.array([]), np.array([]), np.array([])
+            raise Exception("Failed to parse file")
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)
         X_glove = np.array(self.glove_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_oov = np.array(self.oov_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)

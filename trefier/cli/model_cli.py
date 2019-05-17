@@ -56,10 +56,13 @@ class ModelCLI(CLI):
     @argh.arg('path', help="Path to the file.")
     def predict(self, path):
         try:
-            y_pred, positions, envs = self.model.predict(path)
-            self._return_predictions(y_pred, positions, envs)
+            if self.model is None:
+                self.return_result(self.predict, 1, message="No backend model loaded")
+            else:
+                y_pred, positions, envs = self.model.predict(path)
+                self._return_predictions(y_pred, positions, envs)
         except Exception as e:
-            self.return_result(self.predict, 1, predictions=[], message=str(e))
+            self.return_result(self.predict, 1, message=str(e))
 
     @argh.arg('num_lines', type=int, help="Number of lines sent over stdin.")
     def predict_from_stdin(self, num_lines):
@@ -73,10 +76,13 @@ class ModelCLI(CLI):
     @argh.aliases('evaluation')
     def show_evaluation(self):
         try:
-            self.model.evaluation.plot()
-            self.return_result(self.show_evaluation, 0)
+            if self.model is None:
+                self.return_result(self.show_evaluation, 1, message="No backend model loaded")
+            else:
+                self.model.evaluation.plot()
+                self.return_result(self.show_evaluation, 0)
         except Exception as e:
-            self.return_result(self.show_evaluation, 1, message=f'"{str(e)}"')
+            self.return_result(self.show_evaluation, 1, message=str(e))
 
     @argh.arg('save_dir', help="Path to where the trained model should be saved to.")
     @argh.arg('--model_class', help="Class of the model to train or None for the same class of the current model.")

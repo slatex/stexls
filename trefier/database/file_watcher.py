@@ -30,10 +30,9 @@ class FileWatcher:
         changed = set()
         for file in glob(file, recursive=True) if pattern else [file]:
             file = path.abspath(file)
-            if self._extensions:
-                if not any(file.endswith(ext) for ext in self._extensions):
-                    # skip files that don't match any extensions
-                    continue
+            if self._extensions and not any(file.endswith(ext) for ext in self._extensions):
+                # skip files that don't match any extensions
+                continue
             if add_only and file in self._files:
                 # skip already watched file 
                 continue
@@ -43,9 +42,9 @@ class FileWatcher:
                 self._files[file] = 0 if mark_modified else path.getmtime(file)
         return changed
     
-    def remove(self, glob_pattern):
+    def remove(self, file_or_pattern):
         """ Removes all files by glob pattern and returns the list of removed files """
-        removed = set(filter(lambda x: x in self._files, map(path.abspath, glob(glob_pattern, recursive=True))))
+        removed = set(filter(lambda x: x in self._files, map(path.abspath, glob(file_or_pattern, recursive=True))))
         for file in removed:
             del self._files[file]
         return removed

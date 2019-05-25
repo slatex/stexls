@@ -22,7 +22,7 @@ class DatabaseCLI(CLI):
         self.logger = None
     
     def return_result(self, command, status, encoder=None, **kwargs):
-        self.logger.info(f"Returning {command} with status {status}")
+        self.logger.info(f"Returning {command.__name__} with status {status}")
         return super().return_result(command, status, encoder=encoder or DatabaseJSONEncoder(), **kwargs)
 
     @arg('dirs', nargs=argparse.REMAINDER, type=lambda x: glob(x, recursive=True), help="List of directories to add to watched list.")
@@ -200,12 +200,17 @@ class DatabaseCLI(CLI):
         except Exception as e:
             self.logger.exception("Exception during optimize()")
             self.return_result(self.optimize, 1, message=str(e))
+        
+    def load_database(self):
+        # dummy
+        pass
 
     def run(self, *extra_commands):
         self.changed = False
         self.logger = logger.bind(name="model_cli")
-        self.logger.add(expanduser('~/.trefier/model_cli.log'), enqueue=True)
+        self.logger.add(expanduser('~/.trefier/database_cli.log'), enqueue=True)
         self.logger.info("Beginning session")
+        self.return_result(self.load_database, 0)
         super().run([
             self.add_directories,
             self.update,

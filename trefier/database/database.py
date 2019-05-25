@@ -186,10 +186,6 @@ class ModuleFile(Location):
     def __hash__(self):
         return hash(repr(self))
 
-    @staticmethod
-    def from_import(repository, module, base='.'):
-        return ModuleFile(join(join(join(base, repository), 'source'), module) + '.tex')
-
 def _token_to_range(document, token):
     return Range(
         Position(*document.offset_to_position(token.begin)),
@@ -225,11 +221,8 @@ class ModuleSignature(ModuleFile):
         target_module_identifier = join(from_repository, target_module_name)
         return target_module_identifier
     
-    def __getitem__(self, module:str):
-        return self.imports.get(module)
-    
-    def __repr__(self):
-        return f"(Module name={self.identifier})"
+    # def __getitem__(self, module:str):
+    #     return self.imports.get(module)
 
 class LanguageBinding(ModuleFile):
     dummy = SimpleNamespace(defis=(), trefis=(), errors=(), lang=None, bound_module=None, file=None)
@@ -340,7 +333,7 @@ class DatabaseDocument(TexDocument):
         if self.module:
             return self.module.name
         elif self.binding:
-            return self.binding.name
+            return self.binding.bound_module
         
     @property
     def module_identifier(self):
@@ -361,14 +354,14 @@ class SubSymbol:
 
     @property
     def name(self):
-        """ property of defis: \defi[name=<name>]{...} """
+        """ property of defis: \\defi[name=<name>]{...} """
         if self.symbol.oargs and self.symbol.oargs[0].startswith('name='):
             return self.symbol.oargs[0][len('name='):]
         return None
     
     @property
     def target_module(self):
-        """ trefi property: \trefi[target_module?...]{...} """
+        """ trefi property: \\trefi[target_module?...]{...} """
         if self.symbol.oargs:
             args = self.symbol.oargs[0].split('?')
             if args[0]:
@@ -403,6 +396,50 @@ class SubSymbol:
 
     def __repr__(self):
         return repr(self.symbol) + ' ' + repr(self.tokens)
+
+import json
+
+class DatabaseJSONEncoder(json.JSONEncoder):
+    def default(self, obj):  # pylint: disable=E0202
+        if isinstance(obj, Position):
+            return {"line":obj.line, "column": obj.column}
+        if isinstance(obj, Range):
+            return {"begin":obj.begin, "end": obj.end}
+        if isinstance(obj, Location):
+            return {"file": obj.file, "range": obj.range}
+        if isinstance(obj, SubSymbol):
+            return obj.symbol
+        if isinstance(obj, ImportGraph):
+            return {
+                "failed": [
+                    {"location": location, "module": module}
+                    for location, module
+                    in obj.failed_to_import.items()
+                ],
+                "reimports": [
+                    {
+                        "location": obj.graph[source][target],
+                        "source_module": source,
+                        "target_module": target,
+                        "reasons": reasons
+                    }
+                    for (source, target), reasons
+                    in obj.reimports.items()
+                ],
+                "cycles": [
+                    [
+                        {
+                            "location": location,
+                            "target": node
+                        }
+                        for node, location
+                        in zip(cycle_nodes, cycle_locations)
+                    ]
+                    for cycle_nodes, cycle_locations
+                    in obj.circular_dependencies.items()
+                ]
+            }
+        raise Exception("Object is not serializable by DatabaseJSONEncoder")
 
 class ImportGraph:
     """
@@ -503,75 +540,13 @@ class ImportGraph:
     
     def __iter__(self):
         return iter(self.graph)
-    
-    def failed_imports_to_json(self):
-        """ Returns json list that maps error location and module name, that failed to import. """
-        with StringIO() as builder:
-            builder.write('[')
-            builder.write(','.join(
-                f'{{"location":{location.to_json()},"module":"{module}"}}'
-                for location, module
-                in self.failed_to_import.items()))
-            builder.write(']')
-            return builder.getvalue()
 
-    def reimports_to_json(self):
-        """ Parsers reimports as a json object array. """
-        with StringIO() as builder:
-            builder.write('[')
-            for i, ((source, target), reasons) in enumerate(self.reimports.items()):
-                if i != 0:
-                    builder.write(',')
-                builder.write('{')
-                builder.write(f'"location":{self.graph[source][target].to_json()},')
-                builder.write(f'"source_module":"{source}",')
-                builder.write(f'"target_module":"{target}",')
-                reasons_string = ','.join(map(Location.to_json, reasons))
-                builder.write(f'"reasons":[{reasons_string}]')
-                builder.write('}')
-            builder.write(']')
-            return builder.getvalue()
-    
-    def cycles_to_json(self):
-        """ Parses the cycles as a json object array.
-            returns array of arrays of files in a cycle: [
-                [
-                    # cycle 1
-                    {
-                        # file 1 in cycle 1
-                        location: Location, # location of imported target
-                        target: string, # module that was imported
-                    }, ...
-                ], [
-                    # cycle 2
-                    ...
-                ]
-            ]
-        """
-        with StringIO() as builder:
-            builder.write('[')
-            for i, (cycle_nodes, cycle_locations) in enumerate(self.circular_dependencies.items()):
-                if i != 0:
-                    builder.write(',')
-                assert len(cycle_nodes) == len(cycle_locations)
-                cycle = ','.join(
-                    f'{{"location":{location.to_json()},"target":"{node}"}}'
-                    for node, location in zip(cycle_nodes, cycle_locations))
-                builder.write(f'[{cycle}]')
-            builder.write(']')
-            return builder.getvalue()
-    
-    @property
-    def json(self):
-        return f'{{"reimports":{self.reimports_to_json()},"cycles":{self.cycles_to_json()},"failed":{self.failed_imports_to_json()}}}'
-            
     @property
     def image(self):
         """ Renders the graph and returns a numpy image. """
         with tempfile.NamedTemporaryFile('w+b') as ref:
-            image = self.write_image(ref.name)
-            ref.flush()
-            return np.array(Image.open(ref.name))
+            path = self.write_image(ref.name)
+        return np.array(Image.open(path))
     
     def write_image(self, path, reimport_color='red', cycle_color='green', edge_color='black', failed_import_color='red'):
         """ Writes the graph to disk.
@@ -967,39 +942,6 @@ class Database(FileWatcher):
                     # else check if the symbol itself can't be resolved
                     yield trefi.symbol, '-'.join(trefi.tokens)
 
-    def provide_document_links(self, file:str):
-        """ Returns all links to documents in a file as list of {range:Range, target:path_to_file} objects. """
-        doc = self._documents.get(abspath(file))
-        if not doc:
-            return []
-        if doc.module:
-            # return all gimport links
-            return [
-                SimpleNamespace(range=location.range, target=self._map_module_to_file[target])
-                for target, location in doc.module.imports.items()
-                if target in self._map_module_to_file]
-        elif doc.binding:
-            # return link to the module in the signature
-            module = self.module_of(doc.file)
-            if module in self._map_module_to_file:
-                links = [SimpleNamespace(range=doc.binding.range, target=self._map_module_to_file[module])]
-            else:
-                links = []
-            # return link to target files for trefis
-            links.extend(
-                SimpleNamespace(range=trefi.range, target=target.symbol.file)
-                for trefi in doc.binding.trefis
-                for target in self._resolve_trefi(trefi)
-            )
-            # return link for modules targeted by trefi oargs
-            links.extend(
-                SimpleNamespace(range=trefi.symbol.oarg_range, target=self._map_module_to_file[target])
-                for trefi, target in zip(doc.binding.trefis, map(self._resolve_trefi_target_module, doc.binding.trefis))
-                if trefi.target_module and target in self._map_module_to_file
-            )
-            return links
-        return []
-
     @property
     def errors(self):
         """ Accumulates all errors in all files. """
@@ -1024,8 +966,6 @@ class Database(FileWatcher):
     
     def _resolve_trefi(self, trefi:SubSymbol):
         """ Resolves the trefi to reachable defis. """
-        trefi_module = self._resolve_trefi_target_module(trefi)
-        # get the binding files of the module pointed to by the trefi
         for defi in self.defis_reachable(trefi.symbol.file):
             if self._check_trefi_defi_id_equal(trefi, defi):
                 yield defi

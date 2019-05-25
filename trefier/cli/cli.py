@@ -25,13 +25,13 @@ class CLIRestartException(CLIException):
 class CLI:
     """ Contains basic pattern of argh.dispatch_commands in a for line in stdin loop and error handling. """
 
-    def return_result(self, command, status, **kwargs):
+    def return_result(self, command, status, encoder=None, **kwargs):
         """ Returns the result of a command over stdou in json format. """
         kwargs.update({
                 "command": command.__name__,
                 "status": status
         })
-        print(json.dumps(kwargs), flush=True)
+        print(json.dumps(kwargs, default=lambda obj: obj.__dict__) if encoder is None else encoder.encode(kwargs), flush=True)
 
     def run(self, commands):
         """ Runs the cli.

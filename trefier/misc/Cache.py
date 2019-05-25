@@ -39,12 +39,14 @@ class Cache:
         Deletes the cache if it exists, but throws if the cache is not a file.
         Does nothing if no cache at the path exists.
         Throws FailedToWriteCacheError if the path points to a non-file.
+        Removes the saved path from this instance, which will cause the cache not to save again on exit.
         """
         if self.path is None or not os.path.exists(self.path):
             return
         if not os.path.isfile(self.path):
             raise FailedToWriteCacheError("Can't delete cache at \"%s\", because it is not a file." % self.path)
         os.remove(self.path)
+        self.path = None
     
     def write(self, path:str=None):
         """
@@ -64,6 +66,8 @@ class Cache:
             tf.flush()
             os.fsync(tf.fileno())
         shutil.move(tf.name, path)
+        if self.path is None:
+            self.path = path
     
     def load(self, path:str=None):
         """
@@ -87,6 +91,8 @@ class Cache:
         else:
             if self.factory is not None:
                 self.data = self.factory()
+        if self.path is None:
+            self.path = path
         return self.data
     
     def __enter__(self):
@@ -95,4 +101,4 @@ class Cache:
 
     def __exit__(self, *args, **kwargs):
         if self.write_on_exit:
-            self.write()       
+            self.write()

@@ -21,10 +21,7 @@ class Position:
         return not (self == that)
     
     def to_json(self):
-        return json.dumps(self, default=lambda obj: obj.__dict__)
-    
-    def __repr__(self):
-        return f'line={self.line} column={self.column}'
+        return json.dumps(self.__dict__)
     
     def __hash__(self):
         return hash(self.line) ^ hash(self.column)
@@ -55,9 +52,6 @@ class Range:
     
     def __ne__(self, that):
         return not (self == that)
-    
-    def __repr__(self):
-        return f'begin=({self.begin}) end=({self.end})'
     
     def before(self, value, strict=False):
         """ Returns True if this range is located before the given Position or Range. """

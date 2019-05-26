@@ -110,7 +110,7 @@ class DatabaseCLI(CLI):
             self.logger.info(f"autocomplete {abspath(file)} with context=\"{context}\"")
             items = [{"label":label,"kind":kind} for label, kind in set(self.db.autocomplete(file, context))]
             self.logger.info(f"providing {len(items)} auto-complete items")
-            self.return_result(self.auto_complete, 0, items=items, message=f'{len(items)} autocompletions displayed.')
+            self.return_result(self.auto_complete, 0, items=items, message=f'{len(items)} autocompletion(s)')
         except Exception as e:
             self.logger.exception("Failed to create autocompletions")
             self.return_result(self.auto_complete, 1, message=str(e))

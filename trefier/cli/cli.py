@@ -38,18 +38,29 @@ class CLI:
         Arguments:
             :param commands: Commands available.
         """
+        while True:
+            status = self.dispatch(commands)
+            if status == False:
+                break
+    
+    def dispatch(self, commands):
+        """ Runs a single command with this cli, then returns wether the command indicated continuation or not.
+            Arguments:
+                :param commands: Commands available.
+        """
         try:
-            for line in sys.stdin:
-                try:
-                    argh.dispatch_commands(commands + [self.exit, self.echo], shlex.split(line))
-                except SystemExit:
-                    pass
-                except CLIExitException:
-                    return
-                except CLIRestartException:
-                    raise
+            line = next(sys.stdin)
+            try:
+                argh.dispatch_commands([*commands, self.exit, self.restart, self.echo], shlex.split(line))
+            except SystemExit:
+                return True
+            except CLIExitException:
+                return False
+            except CLIRestartException:
+                raise
         except KeyboardInterrupt:
-            return
+            return False
+        return True
     
     def exit(self):
         """ Exits the CLI. """

@@ -59,7 +59,7 @@ class DatabaseCLI(CLI):
     
     def modules(self):
         """ List all added modules. """
-        return list(self.db._module_documents)
+        return [{path: doc.module} for path, doc in self.db._module_documents.items()]
 
     @arg('file', type=str)
     @arg('line', type=int)
@@ -201,16 +201,16 @@ class DatabaseCLI(CLI):
             self.logger.exception("Exception during optimize()")
             self.return_result(self.optimize, 1, message=str(e))
         
-    def load_database(self):
-        # dummy
-        pass
-
-    def run(self, *extra_commands):
+    def setup(self):
         self.changed = False
         self.logger = logger.bind(name="model_cli")
         self.logger.add(expanduser('~/.trefier/database_cli.log'), enqueue=True)
         self.logger.info("Beginning session")
-        self.return_result(self.load_database, 0)
+        self.return_result(self.setup, 0)
+
+    def run(self, *extra_commands):
+        self.logger.info(f"Running with {len(extra_commands)} extra commands")
+        self.setup()
         super().run([
             self.add_directories,
             self.update,

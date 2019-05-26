@@ -127,9 +127,10 @@ class ModelCLI(CLI):
             self.logger.info("Saving model")
             self.model.save(save_dir)
             self.logger.info("Training finished")
-        except:
+            self.return_result(self.train, 0)
+        except Exception as e:
             self.logger.exception("Exception during training")
-            raise
+            self.return_result(self.train, 1, message=str(e))
     
     @argh.arg('s', help="Number of seconds to sleep.", type=float)
     def wait(self, s):
@@ -143,7 +144,6 @@ class ModelCLI(CLI):
             :param path: Path to model
             :param model_class: Optional model class if the model from the given path does not have a standard extension.
         """
-        self.logger.info("run from %s" % abspath(path))
         if path:
             self.load_model(path)
         super().run([

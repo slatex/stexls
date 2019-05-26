@@ -149,7 +149,7 @@ class DatabaseCLI(CLI):
 
     @arg('file')
     @arg('-j', '--jobs', type=int, help="Update database using helper threads.")
-    def optimize(self, file, jobs=None):
+    def lint(self, file, jobs=None):
         """ Finds errors with the file.
         Returns object {
             command: str,
@@ -196,10 +196,10 @@ class DatabaseCLI(CLI):
             self.logger.info(f"{len(missing_imports)} missing imports")
             self.logger.info(f"{len(unresolved_symbols)} unresolved symbols")
             self.logger.info(f"{len(other)} other optimizations")
-            self.return_result(self.optimize, 0, graph=graph, missing_imports=missing_imports, unresolved_symbols=unresolved_symbols, other=other)
+            self.return_result(self.lint, 0, graph=graph, missing_imports=missing_imports, unresolved_symbols=unresolved_symbols, other=other)
         except Exception as e:
-            self.logger.exception("Exception during optimize()")
-            self.return_result(self.optimize, 1, message=str(e))
+            self.logger.exception("Exception during lint()")
+            self.return_result(self.lint, 1, message=str(e))
         
     def setup(self):
         self.changed = False
@@ -214,7 +214,7 @@ class DatabaseCLI(CLI):
         super().run([
             self.add_directories,
             self.update,
-            self.optimize,
+            self.lint,
             self.auto_complete,
             self.find_references,
             self.goto_definition,

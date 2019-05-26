@@ -5,9 +5,9 @@ from loguru import logger
 app_logger = logger.bind(name="app")
 app_logger.add(expanduser("~/.trefier/app.log"), enqueue=True)
 
-@arg('path', help="Path to the model to load.")
-def model(path):
-    app_logger.info("Starting app in model mode from %s" % abspath(path))
+@arg('--path', help="Path to the model to load.")
+def model(path=None):
+    app_logger.info("Starting app in model mode")
     from trefier.cli.model_cli import ModelCLI
     cli = ModelCLI()
     cli.run(path)

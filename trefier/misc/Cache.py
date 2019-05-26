@@ -61,6 +61,8 @@ class Cache:
             return
         if os.path.exists(path) and not os.path.isfile(path):
             raise FailedToWriteCacheError("Cache file %s can't be written to, because it exists but is not a file." % path)
+        if not os.path.isdir(os.path.dirname(os.path.abspath(path))):
+            os.makedirs(os.path.dirname(path))
         with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), prefix='.', delete=False) as tf:
             pickle.dump(self.data, tf)
             tf.flush()
@@ -88,9 +90,8 @@ class Cache:
                 self.data = pickle.load(file)
         elif os.path.exists(path):
             raise FailedToReadCacheError("Cache \"%s\" can't be loaded, because it exists but is not a file." % path)
-        else:
-            if self.factory is not None:
-                self.data = self.factory()
+        elif self.factory is not None:
+            self.data = self.factory()
         if self.path is None:
             self.path = path
         return self.data

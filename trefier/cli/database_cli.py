@@ -66,6 +66,7 @@ class DatabaseCLI(CLI):
     @arg('column', type=int)
     @aliases('references')
     def find_references(self, file, line, column):
+        self.update(4)
         self.logger.info(f"Finding references at {abspath(file)}:{line}:{column}")
         references = self.db.find_references(file, line, column)
         self.logger.info(f"Found {len(references)} references")
@@ -86,6 +87,7 @@ class DatabaseCLI(CLI):
             }
         """
         try:
+            self.update(4)
             self.logger.info(f"goto definition of object at {abspath(file)}:{line}:{column}")
             definitions = list(self.db.goto_definition(file, line, column))
             self.logger.info(f"Found {len(definitions)} definitions")
@@ -107,6 +109,7 @@ class DatabaseCLI(CLI):
             ]
         """
         try:
+            self.update(4)
             self.logger.info(f"autocomplete {abspath(file)} with context=\"{context}\"")
             items = [{"label":label,"kind":kind} for label, kind in set(self.db.autocomplete(file, context))]
             self.logger.info(f"providing {len(items)} auto-complete items")
@@ -209,8 +212,8 @@ class DatabaseCLI(CLI):
         self.return_result(self.setup, 0)
 
     def run(self, *extra_commands):
-        self.logger.info(f"Running with {len(extra_commands)} extra commands")
         self.setup()
+        self.logger.info(f"Running with {len(extra_commands)} extra commands")
         super().run([
             self.add_directories,
             self.update,

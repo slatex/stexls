@@ -851,6 +851,9 @@ class Database(FileWatcher):
     
     def find_references(self, file, line, column):
         """ Yields locations that reference this defi or module. """
+        self._check_file_tracked(file)
+        self._check_file_parsed(file)
+
 
         # case 1: Position is a module -> yield all references to that module
         module = self._module_under_position(file, line, column)
@@ -890,6 +893,9 @@ class Database(FileWatcher):
         Returns:
             tuple of "range of defined symbol" and "range of definition location"
         """
+        self._check_file_tracked(file)
+        self._check_file_parsed(file)
+
         module = self._module_under_position(file, line, column, return_range=True)
         if module:
             range, module = module
@@ -908,6 +914,9 @@ class Database(FileWatcher):
     
     def find_missing_imports(self, file:str):
         """ Yields a list of tuple(error location, modules that might need to be imported in order to find a defi for the trefi at error location). """
+        self._check_file_tracked(file)
+        self._check_file_parsed(file)
+
         graph = self.import_graph(file, False, False)
         if not graph:
             return
@@ -928,6 +937,9 @@ class Database(FileWatcher):
     
     def find_unresolved_symbols(self, file:str):
         """ Returns tuples of locations of unresolved symbols in a file and the symbol identifier that is unresolved. """
+        self._check_file_tracked(file)
+        self._check_file_parsed(file)
+
         graph = self.import_graph(file, False, True)
         if graph:
             for location, gimport in graph.failed_to_import.items():
@@ -963,6 +975,14 @@ class Database(FileWatcher):
                 if defi.tokens == tokens
                 or defi.name == '-'.join(tokens)
             ]
+    
+    def _check_file_tracked(self, file:str):
+        if file not in self._files:
+            raise Exception("File not tracked")
+    
+    def _check_file_parsed(self, file:str):
+        if file not in self._map_file_to_module:
+            raise Exception("File without module or not parsed")
     
     def _resolve_trefi(self, trefi:SubSymbol):
         """ Resolves the trefi to reachable defis. """

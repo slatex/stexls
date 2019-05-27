@@ -63,7 +63,7 @@ class Cache:
             raise FailedToWriteCacheError("Cache file %s can't be written to, because it exists but is not a file." % path)
         if not os.path.isdir(os.path.dirname(os.path.abspath(path))):
             os.makedirs(os.path.dirname(path))
-        with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), prefix='.', delete=False) as tf:
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
             pickle.dump(self.data, tf)
             tf.flush()
             os.fsync(tf.fileno())

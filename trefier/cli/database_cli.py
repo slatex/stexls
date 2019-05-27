@@ -22,8 +22,12 @@ class DatabaseCLI(CLI):
         self.logger = None
     
     def return_result(self, command, status, encoder=None, **kwargs):
-        self.logger.info(f"Returning {command.__name__} with status {status}")
-        return super().return_result(command, status, encoder=encoder or DatabaseJSONEncoder(), **kwargs)
+        try:
+            self.logger.info(f"Returning {command.__name__} with status {status}")
+            return super().return_result(command, status, encoder=encoder or DatabaseJSONEncoder(), **kwargs)
+        except Exception as e:
+            self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
+            super().return_result(command, 1, message=str(e))
 
     @arg('dirs', nargs=argparse.REMAINDER, type=lambda x: glob(x, recursive=True), help="List of directories to add to watched list.")
     @aliases('add')
@@ -45,13 +49,17 @@ class DatabaseCLI(CLI):
     @arg('-d', '--debug', help="Enables debug mode")
     def update(self, jobs=None, debug=False):
         self.logger.info(f"Updating databse jobs={jobs} debug={debug}")
-        if self.db.update(jobs, debug):
-            self.logger.info(f"Some files changed")
-            self.changed = True
-            self.return_result(self.update, 0, message='Files updated')
-        else:
-            self.logger.info(f"No files changed")
-            self.return_result(self.update, 0, message='No files to update')
+        try:
+            if self.db.update(jobs, debug):
+                self.logger.info(f"Some files changed")
+                self.changed = True
+                self.return_result(self.update, 0, message='Files updated')
+            else:
+                self.logger.info(f"No files changed")
+                self.return_result(self.update, 0, message='No files to update')
+        except Exception as e:
+            self.logger.exception("Exception thrown during update")
+            self.return_result(self.update, 1, message=str(e))
     
     def ls(self):
         """ List all watched files. """
@@ -66,11 +74,15 @@ class DatabaseCLI(CLI):
     @arg('column', type=int)
     @aliases('references')
     def find_references(self, file, line, column):
-        self.update(4)
-        self.logger.info(f"Finding references at {abspath(file)}:{line}:{column}")
-        references = self.db.find_references(file, line, column)
-        self.logger.info(f"Found {len(references)} references")
-        self.return_result(self.find_references, 0, targets=references)
+        try:
+            self.update(4)
+            self.logger.info(f"Finding references at {abspath(file)}:{line}:{column}")
+            references = list(self.db.find_references(file, line, column))
+            self.logger.info(f"Found {len(references)} references")
+            self.return_result(self.find_references, 0, targets=references)
+        except Exception as e:
+            self.logger.exception("Exception thrown during find-references")
+            self.return_result(self.find_references, 1, message=str(e))
     
     @arg('file', type=str)
     @arg('line', type=int)
@@ -126,29 +138,33 @@ class DatabaseCLI(CLI):
     @aliases('draw')
     def draw_graph(self, file, output=None, display=False, viewer=None, temp=False):
         """ Draws the import graph for a file and displays it in the specified image viewer or the default image viewer. """
-        self.logger.info(f"Generating import graph for file or module {file}")
-        graph = self.db.import_graph(file, False, True)
-        self.logger.info("Import graph generated: %s" % ("No", "Yes")[graph is None])
-        if graph:
-            image_path = None
-            if output or temp:
-                if temp:
-                    self.logger.info("Writing image to tempfile")
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as file:
-                        image_path = graph.write_image(file.name)
+        try:
+            self.logger.info(f"Generating import graph for file or module {file}")
+            graph = self.db.import_graph(file, False, True)
+            self.logger.info("Import graph generated: %s" % ("No", "Yes")[graph is None])
+            if graph:
+                image_path = None
+                if output or temp:
+                    if temp:
+                        self.logger.info("Writing image to tempfile")
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as file:
+                            image_path = graph.write_image(file.name)
+                    else:
+                        image_path = graph.write_image(output)
+                    self.logger.info(f"Written image to {image_path}")
+                if display:
+                    self.logger.info(f"Displaying image at {image_path} using {viewer or 'the default image viewer'}")
+                    image_path = graph.open_in_image_viewer(image_path, image_viewer=viewer)
+                if image_path:
+                    self.return_result(self.draw_graph, 0, image=image_path)
                 else:
-                    image_path = graph.write_image(output)
-                self.logger.info(f"Written image to {image_path}")
-            if display:
-                self.logger.info(f"Displaying image at {image_path} using {viewer or 'the default image viewer'}")
-                image_path = graph.open_in_image_viewer(image_path, image_viewer=viewer)
-            if image_path:
-                self.return_result(self.draw_graph, 0, image=image_path)
+                    self.logger.error("No image generated")
+                    self.return_result(self.draw_graph, 1, message='No image created.')
             else:
-                self.logger.error("No image generated")
-                self.return_result(self.draw_graph, 1, message='No image created.')
-        else:
-            self.return_result(self.draw_graph, 1, message='Provided file argument does not have a module.')
+                self.return_result(self.draw_graph, 1, message='Provided file argument does not have a module.')
+        except Exception as e:
+            self.logger.exception("Exception thrown during draw_graph")
+            self.return_result(self.draw_graph, 1, message=str(e))
 
     @arg('file')
     @arg('-j', '--jobs', type=int, help="Update database using helper threads.")

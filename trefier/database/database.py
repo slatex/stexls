@@ -981,7 +981,7 @@ class Database(FileWatcher):
             raise Exception("File not tracked")
     
     def _check_file_parsed(self, file:str):
-        if file not in self._map_file_to_module:
+        if file not in self._map_file_to_module and file not in self._map_binding_file_to_module:
             raise Exception("File without module or not parsed")
     
     def _resolve_trefi(self, trefi:SubSymbol):

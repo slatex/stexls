@@ -168,6 +168,9 @@ class Seq2SeqModel(Model):
         if not document.success:
             raise Exception("Failed to parse file")
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)
+        tokens_offsets_envs = [(t, o, e) for t, o, e in zip(tokens[0], offsets[0], envs[0]) if 'OArg' not in e]
+        tokens, offsets, envs = zip(*tokens_offsets_envs)
+        tokens, offsets, envs = [tokens], [offsets], [envs]
         X_glove = np.array(self.glove_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_oov = np.array(self.oov_tokenizer.tokens_to_sequences(tokens), dtype=np.int32)
         X_tfidf = np.array(self.tfidf_model.transform(tokens), dtype=np.float32)

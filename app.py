@@ -18,17 +18,15 @@ def database(path):
     from trefier.cli.database_cli import DatabaseCLI
     from trefier.misc import Cache
     with Cache(path, DatabaseCLI) as cache:
-        @arg('--path', help="Location of the cache")
-        def write_cache(path=None):
-            app_logger.info('Writing cache to disk')
-            cache.write(path)
-            cache.data.return_result(write_cache, 0)
-        def delete_cache():
-            app_logger.info(f'Delete cache"')
-            cache.delete()
-        def cache_path():
-            return cache.path
-        cache.data.run(write_cache, delete_cache, cache_path)
+        def write_cache():
+            try:
+                app_logger.info(f'Writing cache to {abspath(cache.path) if cache.path else "<undefined>"}')
+                cache.write()
+                cache.data.return_result(write_cache, 0)
+            except Exception as e:
+                app_logger.exception("Exception thrown while writing cache to disk")
+                cache.data.return_result(write_cache, 1, message=str(e))
+        cache.data.run(write_cache)
         cache.write_on_exit = cache.data.changed and cache.write_on_exit
 
 dispatch_commands([model, database])

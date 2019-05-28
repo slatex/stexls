@@ -164,7 +164,7 @@ class Seq2SeqModel(Model):
     
     def predict(self, path_or_tex_document):
         if not isinstance(path_or_tex_document, tokenization.TexDocument):
-            document = tokenization.TexDocument(path_or_tex_document)
+            document = tokenization.TexDocument(path_or_tex_document, True, False)
         if not document.success:
             raise Exception("Failed to parse file")
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)

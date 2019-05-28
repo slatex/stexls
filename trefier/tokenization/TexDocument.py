@@ -7,7 +7,7 @@ from .filters import TokenizerFilters
 __all__ = ['TexDocument']
 
 class TexDocument:
-    def __init__(self, document_or_path=None, lower=False):
+    def __init__(self, document_or_path=None, lower=False, ignore_exceptions_thrown=True):
         """Represents a parsed tex document and its tokens with applied environments
         
         Keyword Arguments:
@@ -17,7 +17,7 @@ class TexDocument:
         self.lower = lower
         self._source = None
         if document_or_path is not None:
-            self.parse(document_or_path)
+            self.parse(document_or_path, ignore_exceptions_thrown)
 
     def offset_to_position(self, offset):
         i = 0
@@ -41,7 +41,7 @@ class TexDocument:
     def lexemes(self):
         return [lexeme for lexeme, _, _, _ in self.tokens]
 
-    def parse(self, document_or_path):
+    def parse(self, document_or_path, ignore_exceptions_thrown=True):
         """Loads a document and/or parses a tex file and mapps regions to environments
         
         Arguments:
@@ -71,6 +71,8 @@ class TexDocument:
             self.tokens = [sub for token in TexDocument._fix_inner_environments(self.tokens) for sub in token.subtokens()]
             self.success = True
         except Exception as exception:
+            if not ignore_exceptions_thrown:
+                raise
             self.exception = exception
         finally:
             if hasattr(self, '_offset'):

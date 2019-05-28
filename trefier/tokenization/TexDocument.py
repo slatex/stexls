@@ -7,7 +7,7 @@ from .filters import TokenizerFilters
 __all__ = ['TexDocument']
 
 class TexDocument:
-    def __init__(self, document_or_path=None, lower=False, ignore_exceptions_thrown=True):
+    def __init__(self, document_or_path=None, lower=True, ignore_exceptions_thrown=True):
         """Represents a parsed tex document and its tokens with applied environments
         
         Keyword Arguments:

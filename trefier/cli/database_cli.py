@@ -6,6 +6,7 @@ from os.path import abspath, join, isdir, expanduser
 from pathlib import Path
 import itertools
 import tempfile
+import sys
 
 from loguru import logger
 
@@ -219,6 +220,36 @@ class DatabaseCLI(CLI):
         except Exception as e:
             self.logger.exception("Exception during lint()")
             self.return_result(self.lint, 1, message=str(e))
+    
+    @arg('--keyword_count', type=int, help="Number of tab-separated keywords being expected over stdin or 0 to wait until empty line")
+    def find_defis(self, keyword_count=0):
+        """ Finds defis that could fit a keyword.
+        After calling the function it waits for one tab-separated keyword per line
+        e.g.:
+            L1. positive\\tnumber
+            L2. prime\\tnumber
+            L3. ...
+        Arguments:
+            keyword_count: Optional number of keywords to be sent. 0 for unlimted until empty line.
+
+        """
+        try:
+            self.logger.info(f"find_defis keyword_count={keyword_count}")
+            trefis = []
+            for i, line in enumerate(sys.stdin):
+                line = line.strip()
+                if (0 < keyword_count and keyword_count <= i) or not line:
+                    break
+                self.logger.info(line)
+                trefis.append(tuple(line.split('\t')))
+            self.logger.info(f"Received {len(trefis)} lines")
+            defis = [[defi.symbol for defi in defis] for defis in self.db.find_possible_defis(*trefis)]
+            self.return_result(self.find_defis, 0, defis=defis, message=f"Found {sum(map(len, defis))} possible defis")
+        except Exception as e:
+            self.logger.exception("Exception during find_defis()")
+            self.return_result(self.find_defis, 1, message=str(e))
+        
+            
         
     def setup(self):
         self.changed = False
@@ -233,12 +264,13 @@ class DatabaseCLI(CLI):
         super().run([
             self.add_directories,
             self.update,
+            self.ls,
+            self.modules,
             self.lint,
             self.auto_complete,
             self.find_references,
             self.goto_definition,
-            self.ls,
-            self.modules,
+            self.find_defis,
             self.draw_graph,
             *extra_commands
         ])

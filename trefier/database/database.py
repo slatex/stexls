@@ -619,7 +619,7 @@ class Database(FileWatcher):
         deleted, modified = super().update()
         # skip if nothing changed
         if not (deleted or modified):
-            return False
+            return deleted, modified
 
         # debug output
         if debug:
@@ -657,7 +657,7 @@ class Database(FileWatcher):
         self._link(documents, debug)
 
         # Return true if there changes were made
-        return len(deleted or modified) != 0
+        return deleted, modified
 
     def import_graph(self, file, throw_on_circular_dependency=False, optimize=True):
         """ Returns the import graph of the given file or None. Import optimization calculations can be turned of with optimize. """

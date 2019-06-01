@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import os.path as _path
-from glob import glob as _glob
 import json
 
 class Position:
-    def __init__(self, line, column):
+    def __init__(self, line: int, column: int):
         self.line = line
         self.column = column
     
@@ -39,7 +40,7 @@ class Position:
         return f'{file}:{self.line}:{self.column}'
     
 class Range:
-    def __init__(self, begin, end):
+    def __init__(self, begin: Position, end: Position):
         if not isinstance(begin, Position):
             raise ValueError("begin must be of type Position. Found: %s" % str(type(begin)))
         if not isinstance(end, Position):
@@ -92,7 +93,7 @@ class Range:
         yield self.end
 
 class Location:
-    def __init__(self, file:str, range:Range, offset:tuple = None):
+    def __init__(self, file: str, range: Range, offset: tuple = None):
         """ Creates a range in a file.
         Arguments:
             :param file: The target file.

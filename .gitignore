@@ -5,3 +5,5 @@ data/
 cache/
 *.ipynb
 database.bin
+.vscode/
+.idea/

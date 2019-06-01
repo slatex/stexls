@@ -17,8 +17,10 @@ from ..tokenization import TexDocument
 from .location import Location, Range, Position
 from .file_watcher import FileWatcher
 
+
 class DatabaseException(BaseException):
     pass
+
 
 class DatabaseFileException(DatabaseException):
     """ Exception that receives a file as argument. """
@@ -34,25 +36,31 @@ class DatabaseFileException(DatabaseException):
     def __reduce__(self):
         return type(self), (self.file,)
 
+
 class NotInASourceDirectoryException(DatabaseFileException):
     def __init__(self, file):
         super().__init__("'%s' is not located in a 'source' directory" % file, file)
+
 
 class MissingHeaderException(DatabaseFileException):
     def __init__(self, file):
         super().__init__("'%s' does neither have a modsig nor a mhmodnl header." % file, file)
 
+
 class InvalidHeaderException(DatabaseFileException):
     def __init__(self, file):
         super().__init__("'%s' does have modsig AND mhmodnl defined." % file, file)
+
 
 class TooManyModulesInFileException(DatabaseFileException):
     def __init__(self, file):
         super().__init__("'%s' contains more than one module." % file, file)
 
+
 class TooManyBindingsInFileException(DatabaseFileException):
     def __init__(self, file):
         super().__init__("'%s' has more than one binding defined." % file, file)
+
 
 class CircularDependencyException(DatabaseException):
     def __init__(self, source, target, context):
@@ -68,6 +76,7 @@ class CircularDependencyException(DatabaseException):
     def json(self):
         raise RuntimeError("CircularDependency should not be jsonfied.")
 
+
 class DuplicateImportException(DatabaseException):
     def __init__(self, location, duplicate_module_name, previous_location):
         super().__init__(f"Duplicate definition of '{duplicate_module_name}'. Previously defined here: '{previous_location}'")
@@ -82,6 +91,7 @@ class DuplicateImportException(DatabaseException):
     def json(self):
         return f'{{"type":"DuplicateImportException","location":{self.location.to_json()},"target":"{self.duplicate_module_name}","previous_location":{self.previous_location.to_json()}}}'
 
+
 class InvalidNumberSymbolArgumentsException(DatabaseException):
     def __init__(self, location, received, required):
         super().__init__(f'{location} Expected at least {required} arguments but received {received}.')
@@ -95,7 +105,6 @@ class InvalidNumberSymbolArgumentsException(DatabaseException):
     @property
     def json(self):
         return f'{{"type":"InvalidNumberSymbolArgumentsException","location":{self.location.to_json()},"received":{self.received},"expected":{self.required}}}'
-
 
 
 class GenericSymbol(Location):

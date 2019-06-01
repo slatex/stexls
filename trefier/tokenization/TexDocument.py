@@ -106,7 +106,7 @@ class TexDocument:
                 self._source = self._source
         return self._source
 
-    def find_all(self, name, return_position=False, pattern=False, return_env_name=False):
+    def find_all(self, name, return_position=False, return_env_name=False):
         """Finds all distinct environments with the given name
         
         Arguments:
@@ -114,17 +114,12 @@ class TexDocument:
         
         Keyword Arguments:
             return_position {bool} -- If true, also returns the position of the environment (default: {False})
-            pattern {bool} -- If set, treats name as a regex (default: {False})
             return_env_name {bool} -- Returns also the environment name
         
         Returns:
             list -- List of tokens for each of the specified environment's occurences
         """
-        names = set()
-        if pattern:
-            names = set(filter(lambda env: re.fullmatch(name, env), self.environments))
-        else:
-            names = set([name])
+        names = set(filter(lambda env: re.fullmatch(name, env), self.environments))
         if return_position:
             return [result + (name,) if return_env_name else result for name in names for result in zip(self.environments.get(name, []), self._env_begins.get(name, []))]
         else:

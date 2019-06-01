@@ -5,12 +5,14 @@ from loguru import logger
 app_logger = logger.bind(name="app")
 app_logger.add(expanduser("~/.trefier/app.log"), enqueue=True)
 
+
 @arg('--path', help="Path to the model to load.")
 def model(path=None):
     app_logger.info("Starting app in model mode")
     from trefier.cli.model_cli import ModelCLI
     cli = ModelCLI()
     cli.run(path)
+
 
 @arg('path', help="Path to the cache location.")
 def database(path):
@@ -29,4 +31,11 @@ def database(path):
         cache.data.run(write_cache)
         cache.write_on_exit = cache.data.changed and cache.write_on_exit
 
-dispatch_commands([model, database])
+from trefier.database import db
+
+d = db.Database()
+d.add_directory('data/smglom/sets/source')
+d.update()
+d.print_outline()
+
+#dispatch_commands([model, database])

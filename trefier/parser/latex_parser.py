@@ -195,8 +195,11 @@ class LatexParser(SmglomLatexParserListener):
         """
         for i, len in enumerate(self._line_lengths):
             if offset < len:
-                return i, offset
+                return i + 1, offset + 1
             offset -= len
+
+    def position_to_offset(self, line, column):
+        return sum(self._line_lengths[:line - 1]) + column - 1
 
     def __init__(self, file_or_document):
         self.file = None
@@ -211,7 +214,7 @@ class LatexParser(SmglomLatexParserListener):
                     self.source = ref.read()
             else:
                 self.source = file_or_document
-            self._line_lengths = [len(line) for line in self.source.split('\n')]
+            self._line_lengths = [len(line)+1 for line in self.source.split('\n')]
             lexer = SmglomLatexLexer(antlr4.InputStream(self.source))
             stream = antlr4.CommonTokenStream(lexer)
             parser = SmglomLatexParser(stream)

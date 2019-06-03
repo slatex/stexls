@@ -1,0 +1,227 @@
+from __future__ import annotations
+
+import os
+import re
+
+from .grammar.out.SmglomLatexLexer import SmglomLatexLexer
+from .grammar.out.SmglomLatexParserListener import SmglomLatexParserListener
+from .grammar.out.SmglomLatexParser import SmglomLatexParser
+import antlr4
+
+__all__ = ['LatexParser']
+
+
+class Node:
+    def __init__(self, begin: int, end: int, parser: LatexParser):
+        self.begin = begin
+        self.end = end + 1
+        assert isinstance(end, int)
+        assert isinstance(begin, int)
+        self.children = []
+        self.parent = None
+        self.parser = parser
+        assert isinstance(parser, LatexParser)
+
+    @property
+    def text(self):
+        return self.parser.source[self.begin:self.end]
+
+    @property
+    def full_range(self):
+        return self.parser.offset_to_position(self.begin), self.parser.offset_to_position(self.end)
+
+    def add(self, node):
+        self.children.append(node)
+        node.parent = self
+
+    @property
+    def tokens(self):
+        for child in self.children:
+            for token in child.tokens:
+                yield token
+
+    @property
+    def envs(self):
+        env = [self.env_name] if self.env_name else []
+        if not self.parent:
+            return env
+        return self.parent.envs + env
+
+    @property
+    def env_name(self):
+        return None
+
+    def find_all(self, env_pattern):
+        for child in self.children:
+            for match in child.find_all(env_pattern):
+                yield match
+
+
+class Token(Node):
+    def __init__(self, lexeme: str, begin: int, end: int, parser: LatexParser):
+        super().__init__(begin, end, parser)
+        self.lexeme = lexeme
+        assert isinstance(lexeme, str)
+
+    @property
+    def tokens(self):
+        return [self]
+
+    def __repr__(self):
+        return self.lexeme
+
+
+class Math(Token):
+    @property
+    def env_name(self):
+        return '$'
+
+
+class Environment(Node):
+    def __init__(self, begin: int, end: int, parser: LatexParser):
+        super().__init__(begin, end, parser)
+        self.name = None
+        self.rargs = []
+        self.oargs = []
+
+    def add_oarg(self, oarg: Node):
+        self.oargs.append(oarg)
+        oarg.parent = self
+
+    def add_rarg(self, rarg: Node):
+        self.rargs.append(rarg)
+        rarg.parent = self
+
+    def add_name(self, name_token: Token):
+        assert isinstance(name_token, Token)
+        self.name = name_token
+        name_token.parent = self
+
+    @property
+    def env_name(self):
+        return self.name.text
+
+    def find_all(self, env_pattern):
+        if re.fullmatch(env_pattern, self.name.lexeme):
+            yield self
+        else:
+            for match in super().find_all(env_pattern):
+                yield match
+
+
+class InnerEnvironment(Environment):
+    @property
+    def tokens(self):
+        for arg in self.rargs:
+            for token in arg.tokens:
+                yield token
+        for token in super().tokens:
+            yield token
+
+
+class LatexParser(SmglomLatexParserListener):
+    def enterMain(self, ctx: SmglomLatexParser.MainContext):
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+
+    def exitMain(self, ctx: SmglomLatexParser.MainContext):
+        assert len(self._stack) == 1
+
+    def enterInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
+        env = InnerEnvironment(ctx.start.start, ctx.stop.stop, self)
+        symbol = ctx.INLINE_ENV_NAME().getSymbol()
+        env.add_name(Token(str(ctx.INLINE_ENV_NAME())[1:], symbol.start + 1, symbol.stop, self))
+        self._stack.append(env)
+
+    def exitInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
+        env = self._stack.pop()
+        self._stack[-1].add(env)
+
+    def enterEnv(self, ctx: SmglomLatexParser.EnvContext):
+        self._stack.append(Environment(ctx.start.start, ctx.stop.stop, self))
+
+    def exitEnv(self, ctx: SmglomLatexParser.EnvContext):
+        env = self._stack.pop()
+        self._stack[-1].add(env)
+
+    def enterEnvBegin(self, ctx: SmglomLatexParser.EnvBeginContext):
+        pass
+
+    def exitEnvBegin(self, ctx: SmglomLatexParser.EnvBeginContext):
+        assert isinstance(self._stack[-1], Environment)
+        symbol = ctx.TOKEN().getSymbol()
+        self._stack[-1].add_name(Token(str(ctx.TOKEN()), symbol.start, symbol.stop, self))
+
+    def enterEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
+        pass
+
+    def exitEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
+        assert isinstance(self._stack[-1], Environment)
+        if not self._stack[-1].name.text == str(ctx.TOKEN()):
+            raise Exception(f"Environment unbalanced: Expected {self._stack[-1].name.text} found {str(ctx.TOKEN())}")
+
+    def enterMath(self, ctx: SmglomLatexParser.MathContext):
+        pass
+
+    def exitMath(self, ctx: SmglomLatexParser.MathContext):
+        symbol = ctx.MATH_ENV().getSymbol()
+        self._stack[-1].add(Math(str(ctx.MATH_ENV()), symbol.start, symbol.stop, self))
+
+    def enterToken(self, ctx: SmglomLatexParser.TokenContext):
+        pass
+
+    def exitToken(self, ctx: SmglomLatexParser.TokenContext):
+        symbol = ctx.TOKEN().getSymbol()
+        self._stack[-1].add(Token(str(ctx.TOKEN()), symbol.start, symbol.stop, self))
+
+    def enterOarg(self, ctx: SmglomLatexParser.OargContext):
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+
+    def exitOarg(self, ctx: SmglomLatexParser.OargContext):
+        oarg = self._stack.pop()
+        assert isinstance(self._stack[-1], Environment)
+        self._stack[-1].add_oarg(oarg)
+
+    def enterRarg(self, ctx: SmglomLatexParser.RargContext):
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+
+    def exitRarg(self, ctx: SmglomLatexParser.RargContext):
+        rarg = self._stack.pop()
+        assert isinstance(self._stack[-1], Environment)
+        self._stack[-1].add_rarg(rarg)
+
+    def offset_to_position(self, offset):
+        """ Returns the position (line, column) of the offset
+            where line, column start at the 0th line and character.
+        """
+        for i, len in enumerate(self._line_lengths):
+            if offset < len:
+                return i, offset
+            offset -= len
+
+    def __init__(self, file_or_document):
+        self.file = None
+        self.success = False
+        self._stack = []
+        self.source = None
+        self.exception = None
+        try:
+            if os.path.isfile(file_or_document):
+                self.file = file_or_document
+                with open(self.file, encoding='utf-8') as ref:
+                    self.source = ref.read()
+            else:
+                self.source = file_or_document
+            self._line_lengths = [len(line) for line in self.source.split('\n')]
+            lexer = SmglomLatexLexer(antlr4.InputStream(self.source))
+            stream = antlr4.CommonTokenStream(lexer)
+            parser = SmglomLatexParser(stream)
+            parser._errHandler = antlr4.BailErrorStrategy()
+            tree = parser.main()
+            walker = antlr4.ParseTreeWalker()
+            walker.walk(self, tree)
+            self.root = self._stack[0]
+            self.success = True
+        except Exception as e:
+            self.exception = str(e)
+        finally:
+            del self._stack

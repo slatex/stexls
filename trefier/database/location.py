@@ -190,12 +190,15 @@ class Location:
     @property
     def text(self) -> str:
         """ Returns the string in the range by opening the file. """
-        if self._text is not None:
+        try:
+            if self._text is not None:
+                return self._text
+            begin, end = self.offset
+            with open(self.file) as ref:
+                self._text = ref.read()[begin:end]
             return self._text
-        begin, end = self.offset
-        with open(self.file) as ref:
-            self._text = ref.read()[begin:end]
-        return self._text
+        except FileNotFoundError:
+            return None
     
     def to_json(self):
         return f'{{"file":"{self.file}","range":{self.range.to_json()}}}'

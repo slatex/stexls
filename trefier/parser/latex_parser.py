@@ -35,9 +35,19 @@ class Node:
         return self.parser.source[self.begin:self.end]
 
     @property
+    def begin_position(self) -> Tuple[int, int]:
+        """ :returns The (line, column) position of the begin. """
+        return self.parser.offset_to_position(self.begin)
+
+    @property
+    def end_position(self) -> Tuple[int, int]:
+        """ :returns The (line, column) position of the end. """
+        return self.parser.offset_to_position(self.end)
+
+    @property
     def full_range(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-        """ :returns a tuple of two (line, column) begin and end positions. """
-        return self.parser.offset_to_position(self.begin), self.parser.offset_to_position(self.end)
+        """ :returns A tuple of two (line, column) begin and end positions. """
+        return self.begin_position, self.end_position
 
     def add(self, node):
         """ Adds a child to this node. """

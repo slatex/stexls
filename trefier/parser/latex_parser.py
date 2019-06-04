@@ -58,8 +58,7 @@ class Node:
     def tokens(self) -> Iterator[Token]:
         """ :returns Iterator of all tokens inside this node and children. """
         for child in self.children:
-            for token in child.tokens:
-                yield token
+            yield from child.tokens
 
     @property
     def envs(self) -> List[Environment]:
@@ -74,11 +73,10 @@ class Node:
         """ :returns The environment name of this node. None if this node is not an environment. """
         return None
 
-    def find_all(self, env_pattern: Pattern) -> Iterator[Node]:
+    def finditer(self, env_pattern: Pattern) -> Iterator[Node]:
         """ :returns Iterator with all environment nodes whose env_name matches the given regex pattern. """
         for child in self.children:
-            for match in child.find_all(env_pattern):
-                yield match
+            yield from child.finditer(env_pattern)
 
 
 class Token(Node):
@@ -132,22 +130,19 @@ class Environment(Node):
     def env_name(self) -> str:
         return self.name.text
 
-    def find_all(self, env_pattern):
+    def finditer(self, env_pattern):
         if re.fullmatch(env_pattern, self.name.lexeme):
             yield self
         else:
-            for match in super().find_all(env_pattern):
-                yield match
+            yield from super().finditer(env_pattern)
 
 
 class InlineEnvironment(Environment):
     @property
     def tokens(self):
         for arg in self.rargs:
-            for token in arg.tokens:
-                yield token
-        for token in super().tokens:
-            yield token
+            yield from arg.tokens
+        yield from super().tokens
 
 
 class LatexParser(SmglomLatexParserListener):

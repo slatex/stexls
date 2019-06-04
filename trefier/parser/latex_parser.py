@@ -264,6 +264,9 @@ class LatexParser(SmglomLatexParserListener):
             self.root = self._stack[0]
             self.success = True
         except Exception as e:
-            self.exception = str(e)
+            if ignore_exceptions:
+                self.exception = str(e)
+            else:
+                raise
         finally:
             del self._stack

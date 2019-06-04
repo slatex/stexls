@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Tuple, List, Iterator, Union, Pattern
 
 import os
 import re
@@ -8,11 +9,17 @@ from .grammar.out.SmglomLatexParserListener import SmglomLatexParserListener
 from .grammar.out.SmglomLatexParser import SmglomLatexParser
 import antlr4
 
-__all__ = ['LatexParser']
+__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'Math', 'Node']
 
 
 class Node:
     def __init__(self, begin: int, end: int, parser: LatexParser):
+        """
+        Creates a node.
+        :param begin: Begin offset, where the next character is the first character.
+        :param end: End exclusive offset. The pointed to character is not included.
+        :param parser: Parser that created this node.
+        """
         self.begin = begin
         self.end = end + 1
         assert isinstance(end, int)
@@ -23,25 +30,30 @@ class Node:
         assert isinstance(parser, LatexParser)
 
     @property
-    def text(self):
+    def text(self) -> str:
+        """ :returns Text between begin and end offsets. """
         return self.parser.source[self.begin:self.end]
 
     @property
-    def full_range(self):
+    def full_range(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """ :returns a tuple of two (line, column) begin and end positions. """
         return self.parser.offset_to_position(self.begin), self.parser.offset_to_position(self.end)
 
     def add(self, node):
+        """ Adds a child to this node. """
         self.children.append(node)
         node.parent = self
 
     @property
-    def tokens(self):
+    def tokens(self) -> Iterator[Token]:
+        """ :returns Iterator of all tokens inside this node and children. """
         for child in self.children:
             for token in child.tokens:
                 yield token
 
     @property
-    def envs(self):
+    def envs(self) -> List[Environment]:
+        """ :returns List of the environments this node has as parents including itself. """
         env = [self.env_name] if self.env_name else []
         if not self.parent:
             return env
@@ -49,9 +61,11 @@ class Node:
 
     @property
     def env_name(self):
+        """ :returns The environment name of this node. None if this node is not an environment. """
         return None
 
-    def find_all(self, env_pattern):
+    def find_all(self, env_pattern: Pattern) -> Iterator[Node]:
+        """ :returns Iterator with all environment nodes whose env_name matches the given regex pattern. """
         for child in self.children:
             for match in child.find_all(env_pattern):
                 yield match
@@ -66,6 +80,10 @@ class Token(Node):
     @property
     def tokens(self):
         return [self]
+
+    def add(self, child):
+        """ Tokens can't have children. """
+        raise RuntimeError("Tokens can not add children.")
 
     def __repr__(self):
         return self.lexeme
@@ -85,20 +103,23 @@ class Environment(Node):
         self.oargs = []
 
     def add_oarg(self, oarg: Node):
+        """ Adds a node as a oarg. """
         self.oargs.append(oarg)
         oarg.parent = self
 
     def add_rarg(self, rarg: Node):
+        """ Adds a node as a rarg. """
         self.rargs.append(rarg)
         rarg.parent = self
 
     def add_name(self, name_token: Token):
+        """ Adds a token as name provider. """
         assert isinstance(name_token, Token)
         self.name = name_token
         name_token.parent = self
 
     @property
-    def env_name(self):
+    def env_name(self) -> str:
         return self.name.text
 
     def find_all(self, env_pattern):
@@ -109,7 +130,7 @@ class Environment(Node):
                 yield match
 
 
-class InnerEnvironment(Environment):
+class InlineEnvironment(Environment):
     @property
     def tokens(self):
         for arg in self.rargs:
@@ -127,7 +148,7 @@ class LatexParser(SmglomLatexParserListener):
         assert len(self._stack) == 1
 
     def enterInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
-        env = InnerEnvironment(ctx.start.start, ctx.stop.stop, self)
+        env = InlineEnvironment(ctx.start.start, ctx.stop.stop, self)
         symbol = ctx.INLINE_ENV_NAME().getSymbol()
         env.add_name(Token(str(ctx.INLINE_ENV_NAME())[1:], symbol.start + 1, symbol.stop, self))
         self._stack.append(env)
@@ -189,7 +210,7 @@ class LatexParser(SmglomLatexParserListener):
         assert isinstance(self._stack[-1], Environment)
         self._stack[-1].add_rarg(rarg)
 
-    def offset_to_position(self, offset):
+    def offset_to_position(self, offset: int) -> Tuple[int, int]:
         """ Returns the position (line, column) of the offset
             where line, column start at the 0th line and character.
         """
@@ -198,10 +219,18 @@ class LatexParser(SmglomLatexParserListener):
                 return i + 1, offset + 1
             offset -= len
 
-    def position_to_offset(self, line, column):
+    def position_to_offset(self, line: int, column: int) -> int:
+        """ Transforms a given 1-indexed line and column into the corresponding offset for the registered file. """
         return sum(self._line_lengths[:line - 1]) + column - 1
 
-    def __init__(self, file_or_document):
+    def __init__(self, file_or_document: str, ignore_exceptions: bool = True):
+        """
+        Creates a parser and parses the file.
+
+        :param file_or_document: A string either which is either a path to a latex file or is a latex string.
+        :param ignore_exceptions: If set to True then exceptions are ignored and saved in self.exception if one occured.
+                                    Furthermore is the self.success flag set to false if an exception occured.
+        """
         self.file = None
         self.success = False
         self._stack = []

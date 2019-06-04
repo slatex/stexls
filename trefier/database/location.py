@@ -207,8 +207,8 @@ class Location:
         return self.range.begin.append_to_file(self.file)
     
     def __repr__(self):
-        return f'Location(range={self.range}, file={self.file})'
-    
+        return self.to_link()
+
     @property
     def relative(self) -> Location:
         """ :returns Copy of the same location, but the file path is relative. """

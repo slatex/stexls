@@ -3,6 +3,8 @@ from typing import Union, Tuple
 
 import os.path as _path
 import json
+import copy
+
 
 class Position:
     def __init__(self, line: int, column: int):
@@ -101,6 +103,9 @@ class Range:
     
     def __ne__(self, other: Range) -> bool:
         return not (self == other)
+
+    def union(self, other: Range) -> Range:
+        return Range(copy.copy(min([self.begin, other.begin])), copy.copy(max([self.end, other.end])))
     
     def before(self, other: Union[Range, Position], strict: bool = False) -> bool:
         """
@@ -171,6 +176,10 @@ class Location:
         self.range = range
         self._offset = offset
         self._text = None
+
+    def union(self, other: Union[Location, Range]) -> Location:
+        other_range = other if isinstance(other, Range) else other.range
+        return Location(self.file, self.range.union(other_range))
     
     @property
     def offset(self) -> Tuple[int, int]:

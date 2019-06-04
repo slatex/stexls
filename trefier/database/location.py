@@ -1,25 +1,48 @@
 from __future__ import annotations
+from typing import Union, Tuple
 
 import os.path as _path
 import json
 
 class Position:
     def __init__(self, line: int, column: int):
+        """
+        A position in a file.
+        :param line: 1-indexed line
+        :param column: 1-indexed column
+        """
         self.line = line
         self.column = column
+
+    def __repr__(self):
+        return f'Position(line={self.line}, column={self.column})'
     
     def __iter__(self):
+        """ Iterates through line and column members. """
         yield self.line
         yield self.column
     
-    def __le__(self, that):
-        return self.line < that.line or (self.line == that.line and self.column < that.column)
+    def __le__(self, other: Position) -> bool:
+        """
+        Tests if a position occurs before another position.
+        :param other Other position
+        :returns True if on a previous line or if on the same line, then the column needs to occur before
+        """
+        return self.before(other)
+
+    def __gt__(self, other: Position) -> bool:
+        """
+        Tests if a position occurs after another position.
+        :param other Other position
+        :returns True if on a previous line or if on the same line, then the column needs to occur before
+        """
+        return self.after(other)
     
-    def __eq__(self, that):
-        return self.line == that.line and self.column == that.column
+    def __eq__(self, other: Position) -> bool:
+        return self.line == other.line and self.column == other.column
     
-    def __ne__(self, that):
-        return not (self == that)
+    def __ne__(self, other: Position) -> bool:
+        return not (self == other)
     
     def to_json(self):
         return json.dumps(self.__dict__)
@@ -27,53 +50,99 @@ class Position:
     def __hash__(self):
         return hash(self.line) ^ hash(self.column)
     
-    def before(self, value, strict=False):
-        """ Returns true if this position is before the given value. """
-        return self.line < value.line or (self.line == value.line and (self.column < value.column or (not strict and self.column == value.column)))
+    def before(self, other: Position, strict=False) -> bool:
+        """
+        :param other Other position
+        :param strict If True, only returns True if column < other.column if they are on the same line
+        :returns True if this is occurs before the other position.
+        """
+        return self.line < other.line or (self.line == other.line and (self.column < other.column or (not strict and self.column == other.column)))
     
-    def after(self, value, strict=False):
-        """ Returns true if this position is after the given value. """
-        return value.line < self.line or (self.line == value.line and (value.column < self.column or (not strict and value.column == self.column)))
+    def after(self, other: Position, strict=False) -> bool:
+        """
+        :param other Other position
+        :param strict If True, only returns True if column > other.column if they are on the same line
+        :returns True if this occurs after the other.
+        """
+        return other.line < self.line or (self.line == other.line and (other.column < self.column or (not strict and other.column == self.column)))
     
-    def append_to_file(self, file):
-        """ Appends the location to a file. """
+    def append_to_file(self, file) -> str:
+        """
+        Appends the location to a file in order to create a link to the position.
+        :returns Link to the location in file:line:column format
+        """
         return f'{file}:{self.line}:{self.column}'
-    
+
+
 class Range:
     def __init__(self, begin: Position, end: Position):
+        """
+        A range between two positions
+        :param begin: Begin of the range
+        :param end: End of the range
+        """
         if not isinstance(begin, Position):
-            raise ValueError("begin must be of type Position. Found: %s" % str(type(begin)))
+            raise ValueError(f"begin must be of type Position. Found: {str(type(begin))}")
         if not isinstance(end, Position):
-            raise ValueError("end must be of type Position. Found: %s" % str(type(end)))
+            raise ValueError(f"end must be of type Position. Found: {str(type(end))}")
         self.begin = begin
         self.end = end
+
+    def __le__(self, other: Union[Range, Position]) -> bool:
+        return self.before(other)
+
+    def __gt__(self, other: Union[Range, Position]) -> bool:
+        return self.after(other)
     
-    def __eq__(self, that):
-        return self.begin == that.begin and self.end == that.end
+    def __eq__(self, other: Range) -> bool:
+        if not isinstance(other, Range):
+            return False
+        return self.begin == other.begin and self.end == other.end
     
-    def __ne__(self, that):
-        return not (self == that)
+    def __ne__(self, other: Range) -> bool:
+        return not (self == other)
     
-    def before(self, value, strict=False):
-        """ Returns True if this range is located before the given Position or Range. """
-        if isinstance(value, Position):
-            return self.end.before(value, strict=strict)
-        # range
-        return self.end.before(value.begin, strict=strict)
+    def before(self, other: Union[Range, Position], strict: bool = False) -> bool:
+        """
+        Returns whether a range or a position occurs before this range begins.
+        :param other: A range or position
+        :param strict: If True, checks positions inclusively
+        :return: True if other occurs before self
+        """
+        if isinstance(other, Position):
+            return self.end.before(other, strict=strict)
+        elif isinstance(other, Range):
+            return self.end.before(other.begin, strict=strict)
+        else:
+            raise ValueError("other must be of type Range or Position")
     
-    def after(self, value, strict=False):
-        """ Returns True if this range is located after the given Position or Range. """
-        if isinstance(value, Position):
-            return self.begin.after(value, strict=strict)
-        # range
-        return self.begin.after(value.end, strict=strict)
+    def after(self, other: Union[Range, Position], strict: bool = False) -> bool:
+        """
+        Returns whether a range or a position occurs after this range begins.
+        :param other: A range or position
+        :param strict: If True, checks positions inclusively
+        :return: True if other occurs after self
+        """
+        if isinstance(other, Position):
+            return self.begin.after(other, strict=strict)
+        elif isinstance(other, Range):
+            return self.begin.after(other.end, strict=strict)
+        else:
+            raise ValueError("other must be of type Range or Position")
     
-    def contains(self, value, strict=False):
-        """ Returns True if the value of type Position or Range is contained in this range. """
-        if isinstance(value, Position):
-            return self.begin.before(value, strict=strict) and self.end.after(value, strict=strict)
-        # range
-        return self.begin.before(value.begin, strict=strict) and self.end.after(value.end, strict=strict)
+    def contains(self, other: Union[Range, Position], strict: bool = False) -> bool:
+        """
+        Returns whether a range or a position is completely contained withing this range
+        :param other: A range or position
+        :param strict: If True, checks positions inclusively. Other may also touch the edges of this range.
+        :return: True if other occurs before self
+        """
+        if isinstance(other, Position):
+            return self.begin.before(other, strict=strict) and self.end.after(other, strict=strict)
+        elif isinstance(other, Range):
+            return self.begin.before(other.begin, strict=strict) and self.end.after(other.end, strict=strict)
+        else:
+            raise ValueError("other must be of type Range or Position")
     
     def to_json(self):
         return json.dumps(self, default=lambda obj: obj.__dict__)
@@ -81,24 +150,22 @@ class Range:
     def __hash__(self):
         return hash(self.begin) ^ hash(self.end)
     
-    def append_to_file(self, file, use_end=False):
-        """ Appends the begin or end position of the range to a file. """
-        if use_end:
-            return self.end.append_to_file(file)
-        else:
-            return self.begin.append_to_file(file)
-    
     def __iter__(self):
         yield self.begin
         yield self.end
 
+    def __repr__(self):
+        return f'Range(begin={self.begin}, end={self.end})'
+
+
 class Location:
-    def __init__(self, file: str, range: Range, offset: tuple = None):
+    def __init__(self, file: str, range: Range, offset: Tuple[int, int] = None):
         """ Creates a range in a file.
         Arguments:
             :param file: The target file.
             :param range: The range in the file.
-            :param offset: Optional precomputed character offset representation for the range: tuple(begin, end). If None then the offset will be computed by loading the file.
+            :param offset: Optional precomputed character offset representation for the range: tuple(begin, end).
+                            If None then the offset will be computed by loading the file.
         """
         self.file = _path.abspath(file)
         self.range = range
@@ -106,20 +173,22 @@ class Location:
         self._text = None
     
     @property
-    def offset(self):
+    def offset(self) -> Tuple[int, int]:
         """ Returns the range as a character offset tuple (begin:int, end:int) """
         if self._offset is not None:
             return self._offset
         with open(self.file) as ref:
             lines = ref.read().split('\n')
             self._offset = (
-                sum(map(len, lines[:self.range.begin.line - 1])) + self.range.begin.line - 1 + self.range.begin.column - 1,
-                sum(map(len, lines[:self.range.end.line - 1])) + self.range.end.line - 1 + self.range.end.column - 1
+                sum(map(len,
+                        lines[:self.range.begin.line - 1])) + self.range.begin.line - 1 + self.range.begin.column - 1,
+                sum(map(len,
+                        lines[:self.range.end.line - 1])) + self.range.end.line - 1 + self.range.end.column - 1
             )
         return self._offset
     
     @property
-    def text(self):
+    def text(self) -> str:
         """ Returns the string in the range by opening the file. """
         if self._text is not None:
             return self._text
@@ -131,27 +200,25 @@ class Location:
     def to_json(self):
         return f'{{"file":"{self.file}","range":{self.range.to_json()}}}'
     
-    def to_string(self):
-        return self.to_link()
-    
-    def to_link(self):
+    def to_link(self) -> str:
         return self.range.begin.append_to_file(self.file)
     
     def __repr__(self):
-        return self.to_string()
+        return f'Location(range={self.range}, file={self.file})'
     
     @property
-    def relative(self):
-        l = Location(self.file, self.range, self._offset)
-        l._text = self._text
-        l.file = _path.relpath(self.file)
-        return l
+    def relative(self) -> Location:
+        """ :returns Copy of the same location, but the file path is relative. """
+        location = Location(self.file, self.range, self._offset)
+        location._text = self._text
+        location.file = _path.relpath(self.file)
+        return location
     
-    def __eq__(self, that):
-        return _path.abspath(self.file) == _path.abspath(that.file) and self.range == that.range
+    def __eq__(self, other):
+        return _path.abspath(self.file) == _path.abspath(other.file) and self.range == other.range
     
-    def __ne__(self, that):
-        return not (self == that)
+    def __ne__(self, other):
+        return not (self == other)
     
     def __hash__(self):
         return hash(_path.abspath(self.file)) ^ hash(self.range)

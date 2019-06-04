@@ -182,8 +182,8 @@ class LatexParser(SmglomLatexParserListener):
 
     def exitEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
         assert isinstance(self._stack[-1], Environment)
-        if not self._stack[-1].name.text == str(ctx.TOKEN()):
-            raise Exception(f"Environment unbalanced: Expected {self._stack[-1].name.text} found {str(ctx.TOKEN())}")
+        if not self._stack[-1].name.text.strip() == str(ctx.TOKEN()).strip():
+            raise Exception(f"Environment unbalanced: Expected {self._stack[-1].name.text.strip()} found {str(ctx.TOKEN()).strip()}")
 
     def enterMath(self, ctx: SmglomLatexParser.MathContext):
         pass

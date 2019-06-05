@@ -4,8 +4,8 @@ WS: [ \t\r\n]+ -> skip;
 
 COMMENT: '%' .*? '\r'?'\n' -> skip;
 
-OPEN_BRACKET: '[';
-CLOSED_BRACKET: ']';
+OPEN_SQUARE: '[';
+CLOSED_SQUARE: ']';
 OPEN_BRACE: '{';
 CLOSED_BRACE: '}';
 

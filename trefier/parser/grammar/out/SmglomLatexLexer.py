@@ -497,8 +497,8 @@ class SmglomLatexLexer(Lexer):
 
     WS = 1
     COMMENT = 2
-    OPEN_BRACKET = 3
-    CLOSED_BRACKET = 4
+    OPEN_SQUARE = 3
+    CLOSED_SQUARE = 4
     OPEN_BRACE = 5
     CLOSED_BRACE = 6
     MATH_ENV = 7
@@ -515,11 +515,11 @@ class SmglomLatexLexer(Lexer):
             "'['", "']'", "'{'", "'}'", "'\\begin'", "'\\end'" ]
 
     symbolicNames = [ "<INVALID>",
-            "WS", "COMMENT", "OPEN_BRACKET", "CLOSED_BRACKET", "OPEN_BRACE", 
+            "WS", "COMMENT", "OPEN_SQUARE", "CLOSED_SQUARE", "OPEN_BRACE", 
             "CLOSED_BRACE", "MATH_ENV", "BEGIN", "END", "INLINE_ENV_NAME", 
             "TOKEN" ]
 
-    ruleNames = [ "WS", "COMMENT", "OPEN_BRACKET", "CLOSED_BRACKET", "OPEN_BRACE", 
+    ruleNames = [ "WS", "COMMENT", "OPEN_SQUARE", "CLOSED_SQUARE", "OPEN_BRACE", 
                   "CLOSED_BRACE", "MATH_ENV", "BEGIN", "END", "INLINE_ENV_NAME", 
                   "TOKEN" ]
 

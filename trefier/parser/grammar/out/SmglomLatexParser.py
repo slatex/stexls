@@ -50,7 +50,7 @@ class SmglomLatexParser ( Parser ):
     literalNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "'['", "']'", 
                      "'{'", "'}'", "<INVALID>", "'\\begin'", "'\\end'" ]
 
-    symbolicNames = [ "<INVALID>", "WS", "COMMENT", "OPEN_BRACKET", "CLOSED_BRACKET", 
+    symbolicNames = [ "<INVALID>", "WS", "COMMENT", "OPEN_SQUARE", "CLOSED_SQUARE", 
                       "OPEN_BRACE", "CLOSED_BRACE", "MATH_ENV", "BEGIN", 
                       "END", "INLINE_ENV_NAME", "TOKEN" ]
 
@@ -72,8 +72,8 @@ class SmglomLatexParser ( Parser ):
     EOF = Token.EOF
     WS=1
     COMMENT=2
-    OPEN_BRACKET=3
-    CLOSED_BRACKET=4
+    OPEN_SQUARE=3
+    CLOSED_SQUARE=4
     OPEN_BRACE=5
     CLOSED_BRACE=6
     MATH_ENV=7
@@ -190,17 +190,17 @@ class SmglomLatexParser ( Parser ):
             else:
                 return self.getToken(SmglomLatexParser.CLOSED_BRACE, i)
 
-        def OPEN_BRACKET(self, i:int=None):
+        def OPEN_SQUARE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.OPEN_BRACKET)
+                return self.getTokens(SmglomLatexParser.OPEN_SQUARE)
             else:
-                return self.getToken(SmglomLatexParser.OPEN_BRACKET, i)
+                return self.getToken(SmglomLatexParser.OPEN_SQUARE, i)
 
-        def CLOSED_BRACKET(self, i:int=None):
+        def CLOSED_SQUARE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.CLOSED_BRACKET)
+                return self.getTokens(SmglomLatexParser.CLOSED_SQUARE)
             else:
-                return self.getToken(SmglomLatexParser.CLOSED_BRACKET, i)
+                return self.getToken(SmglomLatexParser.CLOSED_SQUARE, i)
 
         def getRuleIndex(self):
             return SmglomLatexParser.RULE_body
@@ -226,7 +226,7 @@ class SmglomLatexParser ( Parser ):
             self.state = 39
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << SmglomLatexParser.OPEN_BRACKET) | (1 << SmglomLatexParser.OPEN_BRACE) | (1 << SmglomLatexParser.MATH_ENV) | (1 << SmglomLatexParser.BEGIN) | (1 << SmglomLatexParser.INLINE_ENV_NAME) | (1 << SmglomLatexParser.TOKEN))) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << SmglomLatexParser.OPEN_SQUARE) | (1 << SmglomLatexParser.OPEN_BRACE) | (1 << SmglomLatexParser.MATH_ENV) | (1 << SmglomLatexParser.BEGIN) | (1 << SmglomLatexParser.INLINE_ENV_NAME) | (1 << SmglomLatexParser.TOKEN))) != 0):
                 self.state = 37
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
@@ -254,13 +254,13 @@ class SmglomLatexParser ( Parser ):
                     self.state = 31
                     self.match(SmglomLatexParser.CLOSED_BRACE)
                     pass
-                elif token in [SmglomLatexParser.OPEN_BRACKET]:
+                elif token in [SmglomLatexParser.OPEN_SQUARE]:
                     self.state = 33
-                    self.match(SmglomLatexParser.OPEN_BRACKET)
+                    self.match(SmglomLatexParser.OPEN_SQUARE)
                     self.state = 34
                     self.body()
                     self.state = 35
-                    self.match(SmglomLatexParser.CLOSED_BRACKET)
+                    self.match(SmglomLatexParser.CLOSED_SQUARE)
                     pass
                 else:
                     raise NoViableAltException(self)
@@ -591,15 +591,15 @@ class SmglomLatexParser ( Parser ):
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def OPEN_BRACKET(self):
-            return self.getToken(SmglomLatexParser.OPEN_BRACKET, 0)
+        def OPEN_SQUARE(self):
+            return self.getToken(SmglomLatexParser.OPEN_SQUARE, 0)
 
         def body(self):
             return self.getTypedRuleContext(SmglomLatexParser.BodyContext,0)
 
 
-        def CLOSED_BRACKET(self):
-            return self.getToken(SmglomLatexParser.CLOSED_BRACKET, 0)
+        def CLOSED_SQUARE(self):
+            return self.getToken(SmglomLatexParser.CLOSED_SQUARE, 0)
 
         def getRuleIndex(self):
             return SmglomLatexParser.RULE_oarg
@@ -622,11 +622,11 @@ class SmglomLatexParser ( Parser ):
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 67
-            self.match(SmglomLatexParser.OPEN_BRACKET)
+            self.match(SmglomLatexParser.OPEN_SQUARE)
             self.state = 68
             self.body()
             self.state = 69
-            self.match(SmglomLatexParser.CLOSED_BRACKET)
+            self.match(SmglomLatexParser.CLOSED_SQUARE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -739,7 +739,7 @@ class SmglomLatexParser ( Parser ):
                         self.state = 75
                         self.rarg()
                         pass
-                    elif token in [SmglomLatexParser.OPEN_BRACKET]:
+                    elif token in [SmglomLatexParser.OPEN_SQUARE]:
                         self.state = 76
                         self.oarg()
                         pass

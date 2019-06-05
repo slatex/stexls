@@ -30,9 +30,10 @@ class Node:
         self.parser = parser
         assert isinstance(parser, LatexParser)
 
-    def remove_brackets(self, return_copy: bool = False) -> Node:
+    def remove_brackets(self, return_copy: bool = True) -> Node:
         """ Removes the first and the last character from the tracked range by moving the begin and end offsets.
         Throws if []{}()<> are not found.
+        :param return_copy Whether a copy of this node should be created before changing the offsets
         :returns self
         """
         if (self.parser.source[self.begin] not in ('(', '[', '{', '<') or

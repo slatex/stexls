@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Tuple, List, Iterator, Union, Pattern
 import itertools
-
+import copy
 import os
 import re
 
@@ -30,7 +30,7 @@ class Node:
         self.parser = parser
         assert isinstance(parser, LatexParser)
 
-    def remove_brackets(self):
+    def remove_brackets(self, return_copy: bool = False) -> Node:
         """ Removes the first and the last character from the tracked range by moving the begin and end offsets.
         Throws if []{}()<> are not found.
         :returns self
@@ -39,9 +39,12 @@ class Node:
                 self.parser.source[self.end-1] not in (')', ']', '}', '>')):
             raise RuntimeError('Expected node text to begin and end with brackets (\"()[]{}<>\"),'
                                f'but found "{self.parser.source[self.begin]}" and "{self.parser.source[self.end-1]}"')
-        self.begin += 1
-        self.end -= 1
-        return self
+        bracketless = self
+        if return_copy:
+            bracketless = copy.copy(bracketless)
+        bracketless.begin += 1
+        bracketless.end -= 1
+        return bracketless
 
     def split_range(self,
                     pattern: Pattern,

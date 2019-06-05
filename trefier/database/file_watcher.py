@@ -49,10 +49,6 @@ class FileWatcher:
             del self._files[file]
         return removed
     
-    def filter(self, f):
-        """ Filters the list of watched files given a function f(file), that returns True if the file should be filtered """
-        self._files = set(filter(f, self._files))
-    
     def __iter__(self):
         """ Iterator for watched files """
         return iter(self._files)

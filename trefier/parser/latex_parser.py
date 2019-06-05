@@ -42,7 +42,8 @@ class Node:
     def split_range(self,
                     pattern: Pattern,
                     keep_delimeter: bool = False,
-                    as_position: bool = False) -> Union[Iterator[Tuple[int, int]],
+                    as_position: bool = False,
+                    return_lexemes: bool = False) -> Union[Iterator[Tuple[int, int]],
                                                         Iterator[Tuple[Tuple[int, int], Tuple[int, int]]]]:
         """ Splits the text of this node using a pattern and returns the (begin, end) offsets of each split. """
         parts = re.split(pattern, self.text)
@@ -51,18 +52,19 @@ class Node:
         for part, match in itertools.zip_longest(parts, delimeters):
             if as_position:
                 yield (self.parser.offset_to_position(begin),
-                        self.parser.offset_to_position(begin + len(part)))
+                        self.parser.offset_to_position(begin + len(part))) + ((part,) if return_lexemes else ())
             else:
-                yield (begin, begin + len(part))
+                yield (begin, begin + len(part)) + ((part,) if return_lexemes else ())
             if match is not None:
                 begin += len(part)
                 match_string = match.group(0)
                 if keep_delimeter:
                     if as_position:
-                        yield (self.parser.offset_to_position(begin),
+                        yield ((self.parser.offset_to_position(begin),
                                self.parser.offset_to_position(begin + len(match_string)))
+                               + ((match_string,) if return_lexemes else ()))
                     else:
-                        yield (begin, begin + len(match_string))
+                        yield (begin, begin + len(match_string)) + ((match_string,) if return_lexemes else ())
                 begin += len(match_string)
 
     @property

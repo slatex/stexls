@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Tuple, List, Iterator, Union, Pattern
+import itertools
 
 import os
 import re
@@ -37,6 +38,32 @@ class Node:
                                f'but found "{self.parser.source[self.begin]}" and "{self.parser.source[self.end-1]}"')
         self.begin += 1
         self.end -= 1
+
+    def split_range(self,
+                    pattern: Pattern,
+                    keep_delimeter: bool = False,
+                    as_position: bool = False) -> Union[Iterator[Tuple[int, int]],
+                                                        Iterator[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+        """ Splits the text of this node using a pattern and returns the (begin, end) offsets of each split. """
+        parts = re.split(pattern, self.text)
+        delimeters = re.finditer(pattern, self.text)
+        begin = self.begin
+        for part, match in itertools.zip_longest(parts, delimeters):
+            if as_position:
+                yield (self.parser.offset_to_position(begin),
+                        self.parser.offset_to_position(begin + len(part)))
+            else:
+                yield (begin, begin + len(part))
+            if match is not None:
+                begin += len(part)
+                match_string = match.group(0)
+                if keep_delimeter:
+                    if as_position:
+                        yield (self.parser.offset_to_position(begin),
+                               self.parser.offset_to_position(begin + len(match_string)))
+                    else:
+                        yield (begin, begin + len(match_string))
+                begin += len(match_string)
 
     @property
     def text(self) -> str:

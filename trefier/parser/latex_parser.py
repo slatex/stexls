@@ -80,10 +80,19 @@ class Node:
 
 
 class Token(Node):
+    """ A token is anything that is not needed to build the latex environment structure. """
     def __init__(self, lexeme: str, begin: int, end: int, parser: LatexParser):
         super().__init__(begin, end, parser)
         self.lexeme = lexeme
         assert isinstance(lexeme, str)
+
+    @property
+    def effective_range(self):
+        """ Returns the range of the token without whitespaces to the left and the right. """
+        ws_count_left = len(self.lexeme) - len(self.lexeme.lstrip())
+        ws_count_right = len(self.lexeme) - len(self.lexeme.rstrip())
+        return (self.parser.offset_to_position(self.begin + ws_count_left),
+                self.parser.offset_to_position(self.end - ws_count_right))
 
     @property
     def tokens(self):
@@ -128,7 +137,7 @@ class Environment(Node):
 
     @property
     def env_name(self) -> str:
-        return self.name.text
+        return self.name.text.strip()
 
     def finditer(self, env_pattern):
         if re.fullmatch(env_pattern, self.name.lexeme):
@@ -227,6 +236,14 @@ class LatexParser(SmglomLatexParserListener):
     def position_to_offset(self, line: int, column: int) -> int:
         """ Transforms a given 1-indexed line and column into the corresponding offset for the registered file. """
         return sum(self._line_lengths[:line - 1]) + column - 1
+
+    def get_text_by_offset(self, begin: int, end: int) -> str:
+        """ Gets the text between the two begin and end offsets. (exclusive end) """
+        return self.source[begin:end]
+
+    def get_text(self, begin: Tuple[int, int], end: Tuple[int, int]) -> str:
+        """ Gets the text between the two range begin and end markes. (exclusive end) """
+        return self.source[self.position_to_offset(*begin):self.position_to_offset(*end)]
 
     def __init__(self, file_or_document: str, ignore_exceptions: bool = True):
         """

@@ -43,10 +43,10 @@ class Node:
                     pattern: Pattern,
                     keep_delimeter: bool = False,
                     as_position: bool = False,
-                    return_lexemes: bool = False) -> Iterator[Union[Tuple[int, int],
-                                                                    Tuple[int, int, str],
-                                                                    Tuple[Tuple[int, int], Tuple[int, int]],
-                                                                    Tuple[Tuple[int, int], Tuple[int, int], str]]]:
+                    return_lexemes: bool = False) -> Union[Iterator[Tuple[int, int]],
+                                                           Iterator[Tuple[int, int, str]],
+                                                           Iterator[Tuple[Tuple[int, int], Tuple[int, int]]],
+                                                           Iterator[Tuple[Tuple[int, int], Tuple[int, int], str]]]:
         """ Splits the text of this node using a pattern and returns the (begin, end) offsets of each split. """
         parts = re.split(pattern, self.text)
         delimeters = re.finditer(pattern, self.text)

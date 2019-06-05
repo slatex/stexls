@@ -43,16 +43,19 @@ class Node:
                     pattern: Pattern,
                     keep_delimeter: bool = False,
                     as_position: bool = False,
-                    return_lexemes: bool = False) -> Union[Iterator[Tuple[int, int]],
-                                                        Iterator[Tuple[Tuple[int, int], Tuple[int, int]]]]:
+                    return_lexemes: bool = False) -> Iterator[Union[Tuple[int, int],
+                                                                    Tuple[int, int, str],
+                                                                    Tuple[Tuple[int, int], Tuple[int, int]],
+                                                                    Tuple[Tuple[int, int], Tuple[int, int], str]]]:
         """ Splits the text of this node using a pattern and returns the (begin, end) offsets of each split. """
         parts = re.split(pattern, self.text)
         delimeters = re.finditer(pattern, self.text)
         begin = self.begin
         for part, match in itertools.zip_longest(parts, delimeters):
             if as_position:
-                yield (self.parser.offset_to_position(begin),
-                        self.parser.offset_to_position(begin + len(part))) + ((part,) if return_lexemes else ())
+                yield ((self.parser.offset_to_position(begin),
+                        self.parser.offset_to_position(begin + len(part)))
+                       + ((part,) if return_lexemes else ()))
             else:
                 yield (begin, begin + len(part)) + ((part,) if return_lexemes else ())
             if match is not None:

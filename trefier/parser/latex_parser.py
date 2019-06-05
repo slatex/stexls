@@ -22,7 +22,7 @@ class Node:
         :param parser: Parser that created this node.
         """
         self.begin = begin
-        self.end = end + 1
+        self.end = end
         assert isinstance(end, int)
         assert isinstance(begin, int)
         self.children = []
@@ -31,13 +31,17 @@ class Node:
         assert isinstance(parser, LatexParser)
 
     def remove_brackets(self):
-        """ Removes the first and the last character from the tracked range. Throws if []{}()<> are not found. """
+        """ Removes the first and the last character from the tracked range by moving the begin and end offsets.
+        Throws if []{}()<> are not found.
+        :returns self
+        """
         if (self.parser.source[self.begin] not in ('(', '[', '{', '<') or
                 self.parser.source[self.end-1] not in (')', ']', '}', '>')):
             raise RuntimeError('Expected node text to begin and end with brackets (\"()[]{}<>\"),'
                                f'but found "{self.parser.source[self.begin]}" and "{self.parser.source[self.end-1]}"')
         self.begin += 1
         self.end -= 1
+        return self
 
     def split_range(self,
                     pattern: Pattern,
@@ -208,15 +212,15 @@ class InlineEnvironment(Environment):
 
 class LatexParser(SmglomLatexParserListener):
     def enterMain(self, ctx: SmglomLatexParser.MainContext):
-        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
     def exitMain(self, ctx: SmglomLatexParser.MainContext):
         assert len(self._stack) == 1
 
     def enterInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
-        env = InlineEnvironment(ctx.start.start, ctx.stop.stop, self)
+        env = InlineEnvironment(ctx.start.start, ctx.stop.stop + 1, self)
         symbol = ctx.INLINE_ENV_NAME().getSymbol()
-        env.add_name(Token(str(ctx.INLINE_ENV_NAME())[1:], symbol.start + 1, symbol.stop, self))
+        env.add_name(Token(str(ctx.INLINE_ENV_NAME())[1:], symbol.start + 1, symbol.stop + 1, self))
         self._stack.append(env)
 
     def exitInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
@@ -224,7 +228,7 @@ class LatexParser(SmglomLatexParserListener):
         self._stack[-1].add(env)
 
     def enterEnv(self, ctx: SmglomLatexParser.EnvContext):
-        self._stack.append(Environment(ctx.start.start, ctx.stop.stop, self))
+        self._stack.append(Environment(ctx.start.start, ctx.stop.stop + 1, self))
 
     def exitEnv(self, ctx: SmglomLatexParser.EnvContext):
         env = self._stack.pop()
@@ -236,7 +240,7 @@ class LatexParser(SmglomLatexParserListener):
     def exitEnvBegin(self, ctx: SmglomLatexParser.EnvBeginContext):
         assert isinstance(self._stack[-1], Environment)
         symbol = ctx.TOKEN().getSymbol()
-        self._stack[-1].add_name(Token(str(ctx.TOKEN()), symbol.start, symbol.stop, self))
+        self._stack[-1].add_name(Token(str(ctx.TOKEN()), symbol.start, symbol.stop + 1, self))
 
     def enterEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
         pass
@@ -251,17 +255,17 @@ class LatexParser(SmglomLatexParserListener):
 
     def exitMath(self, ctx: SmglomLatexParser.MathContext):
         symbol = ctx.MATH_ENV().getSymbol()
-        self._stack[-1].add(Math(str(ctx.MATH_ENV()), symbol.start, symbol.stop, self))
+        self._stack[-1].add(Math(str(ctx.MATH_ENV()), symbol.start, symbol.stop + 1, self))
 
     def enterToken(self, ctx: SmglomLatexParser.TokenContext):
         pass
 
     def exitToken(self, ctx: SmglomLatexParser.TokenContext):
         symbol = ctx.TOKEN().getSymbol()
-        self._stack[-1].add(Token(str(ctx.TOKEN()), symbol.start, symbol.stop, self))
+        self._stack[-1].add(Token(str(ctx.TOKEN()), symbol.start, symbol.stop + 1, self))
 
     def enterOarg(self, ctx: SmglomLatexParser.OargContext):
-        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
     def exitOarg(self, ctx: SmglomLatexParser.OargContext):
         oarg = self._stack.pop()
@@ -269,7 +273,7 @@ class LatexParser(SmglomLatexParserListener):
         self._stack[-1].add_oarg(oarg)
 
     def enterRarg(self, ctx: SmglomLatexParser.RargContext):
-        self._stack.append(Node(ctx.start.start, ctx.stop.stop, self))
+        self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
     def exitRarg(self, ctx: SmglomLatexParser.RargContext):
         rarg = self._stack.pop()

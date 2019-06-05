@@ -29,6 +29,15 @@ class Node:
         self.parser = parser
         assert isinstance(parser, LatexParser)
 
+    def remove_brackets(self):
+        """ Removes the first and the last character from the tracked range. Throws if []{}()<> are not found. """
+        if (self.parser.source[self.begin] not in ('(', '[', '{', '<') or
+                self.parser.source[self.end-1] not in (')', ']', '}', '>')):
+            raise RuntimeError('Expected node text to begin and end with brackets (\"()[]{}<>\"),'
+                               f'but found "{self.parser.source[self.begin]}" and "{self.parser.source[self.end-1]}"')
+        self.begin += 1
+        self.end -= 1
+
     @property
     def text(self) -> str:
         """ :returns Text between begin and end offsets. """
@@ -46,8 +55,17 @@ class Node:
 
     @property
     def full_range(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-        """ :returns A tuple of two (line, column) begin and end positions. """
+        """ Returns A tuple of two (line, column) begin and end positions. """
         return self.begin_position, self.end_position
+
+    @property
+    def effective_range(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """ Returns the range of the text without whitespaces to the left and the right. """
+        text = self.text
+        ws_count_left = len(text) - len(text.lstrip())
+        ws_count_right = len(text) - len(text.rstrip())
+        return (self.parser.offset_to_position(self.begin + ws_count_left),
+                self.parser.offset_to_position(self.end - ws_count_right))
 
     def add(self, node):
         """ Adds a child to this node. """
@@ -83,16 +101,18 @@ class Token(Node):
     """ A token is anything that is not needed to build the latex environment structure. """
     def __init__(self, lexeme: str, begin: int, end: int, parser: LatexParser):
         super().__init__(begin, end, parser)
-        self.lexeme = lexeme
         assert isinstance(lexeme, str)
-
-    @property
-    def effective_range(self):
-        """ Returns the range of the token without whitespaces to the left and the right. """
+        self.lexeme = lexeme
         ws_count_left = len(self.lexeme) - len(self.lexeme.lstrip())
         ws_count_right = len(self.lexeme) - len(self.lexeme.rstrip())
-        return (self.parser.offset_to_position(self.begin + ws_count_left),
-                self.parser.offset_to_position(self.end - ws_count_right))
+        self._effective_range = (
+            self.parser.offset_to_position(self.begin + ws_count_left),
+            self.parser.offset_to_position(self.end - ws_count_right))
+
+    @property
+    def effective_range(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """ Returns the range of the token without whitespaces to the left and the right. """
+        return self._effective_range
 
     @property
     def tokens(self):

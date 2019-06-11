@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import pickle
 import tempfile
@@ -5,24 +6,27 @@ import shutil
 
 __all__ = ['Cache', 'CacheException', 'FailedToWriteCacheError', 'FailedToReadCacheError']
 
+
 class CacheException(RuntimeError):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args):
+        super().__init__(*args)
+
 
 class FailedToWriteCacheError(CacheException):
     """ Error thrown when the specified cache file can't be written. """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args):
+        super().__init__(*args)
+
 
 class FailedToReadCacheError(CacheException):
     """ Error thrown when the specified cache file can't be read from. """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args):
+        super().__init__(*args)
+
 
 class Cache:
     """ In 'with' statements: Saves and loads cached data initialized by a factory in the constructor. """
-    
-    def __init__(self, path, factory=None, write_on_exit=True):
+    def __init__(self, path: str, factory = None, write_on_exit=True):
         """ Initializes the cache.
         
         Arguments:
@@ -34,27 +38,13 @@ class Cache:
         self.data = None
         self.write_on_exit = write_on_exit
     
-    def delete(self):
-        """
-        Deletes the cache if it exists, but throws if the cache is not a file.
-        Does nothing if no cache at the path exists.
-        Throws FailedToWriteCacheError if the path points to a non-file.
-        Removes the saved path from this instance, which will cause the cache not to save again on exit.
-        """
-        if self.path is None or not os.path.exists(self.path):
-            return
-        if not os.path.isfile(self.path):
-            raise FailedToWriteCacheError("Can't delete cache at \"%s\", because it is not a file." % self.path)
-        os.remove(self.path)
-        self.path = None
-    
-    def write(self, path:str=None):
+    def write(self, path: str = None):
         """
         Writes the data to the cache file.
         Throws a FailedToWriteCacheError if the path points to a non-file.
 
         Arguments:
-            :param path: Explicit path to cache file.
+            :param path: Optional new path to
         """
         path = path or self.path
         if path is None:

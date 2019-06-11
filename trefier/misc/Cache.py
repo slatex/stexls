@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Callable, Any
 import os
 import pickle
 import tempfile
@@ -26,7 +27,7 @@ class FailedToReadCacheError(CacheException):
 
 class Cache:
     """ In 'with' statements: Saves and loads cached data initialized by a factory in the constructor. """
-    def __init__(self, path: str, factory = None, write_on_exit=True):
+    def __init__(self, path: str, factory: Callable[[], Any] = None, write_on_exit: bool = True):
         """ Initializes the cache.
         
         Arguments:

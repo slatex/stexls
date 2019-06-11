@@ -61,7 +61,7 @@ class Cache:
         if self.path is None:
             self.path = path
     
-    def load(self, path:str=None):
+    def load(self, path: str = None):
         """
         Attempts to load the data from the path, else creates new data using the provided factory method.
         Raises FailedToReachCacheError if the target file exists but is not a file.

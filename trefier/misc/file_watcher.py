@@ -1,14 +1,22 @@
+from __future__ import annotations
+from typing import Dict, List, Optional
 import os.path as path
 from glob import glob
-from collections import defaultdict
 
 __all__ = ['FileWatcher']
 
+
 class FileWatcher:
     """ Implements a simple file watcher, that keeps track of deleted and modified status of added files """
-    def __init__(self, extensions=['.tex']):
-        self._files = defaultdict(list)
+    def __init__(self, extensions: Optional[List[str]] = None):
+        self._files: Dict[str, float] = dict()
         self._extensions = extensions
+
+    def __getstate__(self):
+        return self._files, self._extensions
+
+    def __setstate__(self, state):
+        self._files, self._extensions = state
     
     def update(self):
         """ Removes deleted files from index then returns two lists for deleted and modified files """

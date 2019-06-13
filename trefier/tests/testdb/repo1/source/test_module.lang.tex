@@ -1,0 +1,47 @@
+\begin{mhmodnl}[creator=marian]{test_module}{lang}
+    Tokens before defi: \defi{defi1},
+    Tokens before defii: \defii{defii2a}{defii2b}
+    Tokens before named defi: \defi[name=name1]{defi3}
+    Tokens before named defii: \defii[name=name2]{defii4a}{defii4b}
+    Tokens before defii: \defiii{defiii5a}{defiii5b}{defiii5c}
+    Tokens before adefi: \adefi{adefi6a}{adefi6b}
+    Tokens before adefii: \adefii{adefii7a}{adefii7b}{adefii7c}
+    Tokens before named adefi: \adefi[name=name3]{adefi8a}{adefi8b}
+    Tokens before named adefii: \adefii[name=name4]{adefii9a}{adefii9b}{adefii9c}
+    Tokens before named adefii with noise: \adefii[name=name5, gcd=N, align=M]{adefii10a}{adefii10b}{adefii10c}
+
+    Trefi section separated by math:
+    Math1: $math1$
+    Math2: $$math2$$
+    Math3: \[math3\]
+    Math4: \(math4\)
+    MathEnvs ignore everything and are like verbatim:
+    Align:
+    \begin{align}
+        ||||^^^%$%%%%%
+        % @! % $ & | & @_(%Y! NB
+        aG
+    \end{align}
+    Equation:
+    \begin{equation*}
+        10957!)@5SAFH)@F F}{ @R \end{}\begin{}
+    \end{equation*}
+    Verbatim:
+    \begin{verbatim}
+        VERBATIMR@!_%*}{@@!}{}@{%*(()r
+    \end{verbatim}
+
+    Trefis:
+    Trefi \trefi{trefi1}
+    Trefii \trefii{trefii2a}{trefii2b}
+    Trefii* \trefii*{trefii3a}{trefii3b}
+    aTrefi \atrefi{trefi4a}{trefi4b}
+    aTrefii \atrefii{trefii5a}{trefii5b}{trefii5c}
+    aTrefii* \atrefii*{trefii6a}{trefii6b}{trefii6c}
+    Qualified trefi \trefi[module1?symbol1]{trefi7}
+    Qualified trefii* \trefii*[module2?symbol2]{trefii8a}{trefii8b}
+    Qualified atrefii* \atrefii*[module3?symbol3]{atrefii9a}{atrefii9b}{atrefii9c}
+    Semi-Qualified trefi \trefi[?symbol4]{trefi10}
+    Semi-Qualified trefii \trefii[?symbol5]{trefii11a}{trefii11b}
+    Semi-Qualified atrefiii* \atrefiii[?symbol6]{atrefiii12a}{atrefiii12b}{atrefiii12c}{atrefiii12d}
+\end{mhmodnl}

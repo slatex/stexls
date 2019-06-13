@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Any
+from typing import Callable, Any, List
 import threading
 import sys
 import traceback
@@ -18,21 +18,43 @@ class Future:
         self._did_raise_exception = False
         self._traceback: traceback.TracebackType = None
         self._exception_handled = threading.Event()
+        self._callback_threads: List[threading.Thread] = []
+        self._lock = threading.Lock()
+        self._closed = False
         self._task_thread = threading.Thread(target=self._task_container, args=(task,))
         self._task_thread.start()
+
+    def close(self):
+        """ Closes the future and causes it to not accept any more callbacks """
+        with self._lock:
+            self._closed = True
+
+    def join(self):
+        """ Waits until all callbacks have been resolved """
+        with self._lock:
+            while self._callback_threads:
+                thread = self._callback_threads.pop()
+                thread.join()
     
-    def done(self, callback: Callable[[Any], None], catch: Optional[Callable[[traceback.TracebackType], None]] = None):
+    def done(self,
+             callback: Callable[[Any], None],
+             catch: Optional[Callable[[Any], None]] = None):
         """ Registers a callback for the return value and a callback for raised exceptions
         :param callback: A callback that expects a single argument,
             that is set to the return value of the task if it returns
         :param catch: A callback wich accepts a traceback as argument and is called in case the task raises an exception
         """
-        assert callback is not None
-        callback_thread = threading.Thread(
-            target=self._callback_container,
-            args=(callback, catch))
-        callback_thread.start()
-    
+        if not callback:
+            raise ValueError("callback may not be None")
+        with self._lock:
+            if self._closed:
+                raise Exception("This future object is closed and does not accept any more callbacks")
+            callback_thread = threading.Thread(
+                target=self._callback_container,
+                args=(callback, catch))
+            self._callback_threads.append(callback_thread)
+            callback_thread.start()
+
     def _task_container(self, task):
         """ Contains the provided task and notifies all registered callbacks. """
         try:
@@ -71,6 +93,7 @@ class Future:
                 print("Exception thrown inside future catch()", file=sys.stderr)
             else:
                 print("Exception thrown inside future callback()", file=sys.stderr)
+
 
 def make_async(f):
     """ Decorator that wraps the function to always return a future object. """

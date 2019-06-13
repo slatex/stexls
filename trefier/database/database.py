@@ -1,21 +1,18 @@
 import multiprocessing
-from glob import glob
 from os.path import abspath, isdir, isfile, join, relpath, dirname
 import itertools
-from collections import defaultdict
 import re
 import tempfile
 import pydot
 import numpy as np
 from PIL import Image
-from io import StringIO
 import sys
 import subprocess
 from types import SimpleNamespace
 
 from ..tokenization import TexDocument
-from .location import Location, Range, Position
-from .file_watcher import FileWatcher
+from trefier.misc.location import Location, Range, Position
+from trefier.misc.file_watcher import FileWatcher
 
 
 class DatabaseException(BaseException):

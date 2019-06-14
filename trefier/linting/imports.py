@@ -41,6 +41,8 @@ class ImportGraph:
         self.cycles: Dict[str, Dict[Location, List[str]]] = dict()
 
     def add(self, document: Document):
+        assert document is not None
+        assert document.module is not None
         document_module = str(document.module_identifier)
         if document_module in self.modules:
             raise LinterInternalException.create(

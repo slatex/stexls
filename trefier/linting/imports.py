@@ -133,36 +133,35 @@ class ImportGraph:
             'unresolved': [other for other, u in self.unresolved.items() if module in u]
         }
 
-    class Style:
-        def __init__(self, edge_color='black', reimport_edge='red', cycle_edge='green', not_found_bg='red'):
-            self.edge_color = edge_color
-            self.reimport_edge = reimport_edge
-            self.cycle_edge = cycle_edge
-            self.not_found_bg = not_found_bg
-
     def write_image(self,
               root: ModuleIdentifier,
-              path: str = None,
-              style: ImportGraph.Style = None) -> Tuple[str, np.ndarray]:
-        style = style or ImportGraph.Style()
+              path: str = None) -> Tuple[str, np.ndarray]:
         import pydot
         dot = pydot.Dot(graph_type='digraph')
         queue = {str(root)}
-        not_found = set()
         visited = set()
         while queue:
             current = queue.pop()
             visited.add(current)
             imports = self.graph.get(current)
-            if not imports:
-                not_found.add(imports)
-                pydot.Node(current, style='dotted', color='red')
+            if imports is None:
+                dot.add_node(pydot.Node(current, color='red'))
             else:
                 dot.add_node(pydot.Node(current))
                 for imported_module in imports:
-                    dot.add_edge(pydot.Edge(current, imported_module, color=style.edge_color))
                     if imported_module not in visited:
                         queue.add(imported_module)
+
+                    color = 'black'
+                    style = 'solid'
+                    if imported_module in self.unresolved:
+                        color = 'red'
+                        style = 'dotted'
+                    elif imported_module in self.transitive[current]:
+                        color = 'red'
+
+                    dot.add_edge(pydot.Edge(current, imported_module, color=color, style=style))
+
         dot.write_png(path)
         return path
 

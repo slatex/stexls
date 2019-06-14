@@ -6,10 +6,35 @@ from time import sleep, time
 class Test_Future(unittest.TestCase):
     def test_join(self):
         begin = time()
-        f = future.Future(lambda: sleep(3))
-        f.done(lambda r: None)
+        f = future.Future(lambda: sleep(1))
+        f.done(lambda r: sleep(1))
+        f.done(lambda r: sleep(1))
+        f.done(lambda r: sleep(1))
         f.join()
-        self.assertAlmostEqual(time() - begin, 3, 2)
+        self.assertAlmostEqual(time() - begin, 2, 2)
+
+    def test_then(self):
+        begin = time()
+
+        future.Future(lambda: sleep(1))\
+            .then(lambda _: sleep(1))\
+            .then(lambda _: sleep(1))\
+            .join()
+
+        self.assertAlmostEqual(time() - begin, 3, 1)
+
+    def test_then_return(self):
+        result = []
+        begin = time()
+        future.Future(lambda: 2)\
+            .done(result.append)\
+            .then(lambda r: r + 3)\
+            .done(result.append)\
+            .then(lambda r: r * 4)\
+            .then(result.append)\
+            .join()
+        self.assertAlmostEqual(time() - begin, 0, 1)
+        self.assertListEqual(result, [2, 2+3, (2+3)*4])
 
     def test_close(self):
         f = future.Future(lambda: sleep(1.0))
@@ -25,12 +50,13 @@ class Test_Future(unittest.TestCase):
 
     def test_catch(self):
         def _task():
-            raise Exception("_task")
-        f = future.Future(_task)
+            raise Exception("task")
         r = []
-        f.done(lambda _: None, lambda t: r.append(t))
-        f.join()
+        future.Future(_task)\
+            .done((lambda _: None), (lambda exception, tb: r.append(exception)))\
+            .join()
         self.assertEqual(len(r), 1)
+        self.assertEqual(str(r[0]), 'task')
 
     def test_parallel(self):
         def _task(task_i):

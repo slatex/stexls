@@ -1,8 +1,9 @@
 import unittest
 from time import sleep, time
 
-from ..linting.document import Document
-from ..linting.linter import Linter
+from trefier.linting.document import Document
+from trefier.linting.linter import Linter
+from trefier.linting.imports import ImportGraph
 from trefier.misc.future import Future
 
 
@@ -62,6 +63,51 @@ class TestImportGraph(unittest.TestCase):
         self.assertEqual(linter.update(use_multiprocessing=False), 3)
         self.assertTrue(not linter.exceptions)
         return linter
+
+    def test_unresolved(self):
+        documents = [
+            Document('testdb/simple/source/module1.tex'),
+            Document('testdb/simple/source/module2.tex'),
+        ]
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success)
+            self.assertTrue(not d.exceptions)
+            graph.add(d)
+        self.assertIn('testdb/simple/module3', graph.unresolved)
+        self.assertIn('testdb/simple/module1', graph.unresolved['testdb/simple/module3'])
+        graph.add(Document('testdb/simple/source/module3.tex'))
+        self.assertNotIn('testdb/simple/module3', graph.unresolved)
+        self.assertDictEqual(graph.unresolved, {})
+
+    def test_remove_all(self):
+        documents = [
+            Document('testdb/simple/source/module1.tex'),
+            Document('testdb/simple/source/module2.tex'),
+        ]
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success)
+            self.assertTrue(not d.exceptions)
+            graph.add(d)
+        self.assertNotEqual(graph.modules, {})
+        self.assertNotEqual(graph.graph, {})
+        self.assertNotEqual(graph.duplicates, {})
+        self.assertNotEqual(graph.references, {})
+        self.assertNotEqual(graph.unresolved, {})
+        self.assertNotEqual(graph.transitive, {})
+        self.assertNotEqual(graph.redundant, {})
+        self.assertNotEqual(graph.cycles, {})
+        for d in documents:
+            graph.remove(d.module_identifier)
+        self.assertDictEqual(graph.modules, {})
+        self.assertDictEqual(graph.graph, {})
+        self.assertDictEqual(graph.duplicates, {})
+        self.assertDictEqual(graph.references, {})
+        self.assertDictEqual(graph.unresolved, {})
+        self.assertDictEqual(graph.transitive, {})
+        self.assertDictEqual(graph.redundant, {})
+        self.assertDictEqual(graph.cycles, {})
 
     def test_open_in_image_viewer(self):
         linter = self._setup()

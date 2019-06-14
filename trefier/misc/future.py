@@ -79,10 +79,7 @@ class Future:
                     raise Exception(traceback_ptr[0])
                 return result_ptr[0]
 
-            thenable = Future(_wait_task)
-            thenable.done(callback, catch)
-
-            return thenable
+            return Future(_wait_task).done(callback, catch)
 
     def _task_container(self, task):
         """ Contains the provided task and notifies all registered callbacks. """

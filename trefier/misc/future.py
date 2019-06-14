@@ -19,7 +19,7 @@ class Future:
         self._traceback: traceback.TracebackType = None
         self._exception_handled = threading.Event()
         self._callback_threads: List[threading.Thread] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._closed = False
         self._task_thread = threading.Thread(target=self._task_container, args=(task,))
         self._task_thread.start()
@@ -58,31 +58,31 @@ class Future:
         return self
 
     def then(self, callback, catch):
-        event = threading.Event()
-        result_ptr = [None]
-        traceback_ptr = [None]
+        with self._lock:
+            event = threading.Event()
+            result_ptr = [None]
+            traceback_ptr = [None]
 
-        def _resolve_task(result):
-            result_ptr[0] = result
-            event.set()
+            def _resolve_task(result):
+                result_ptr[0] = result
+                event.set()
 
-        def _catch_task(tb):
-            traceback_ptr[0] = tb
-            event.set()
+            def _catch_task(tb):
+                traceback_ptr[0] = tb
+                event.set()
 
-        self.done(_resolve_task, _catch_task)
+            self.done(_resolve_task, _catch_task)
 
-        def _wait_task():
-            event.wait()
-            if traceback_ptr[0] is not None:
-                raise Exception(traceback_ptr[0])
-            return result_ptr[0]
+            def _wait_task():
+                event.wait()
+                if traceback_ptr[0] is not None:
+                    raise Exception(traceback_ptr[0])
+                return result_ptr[0]
 
-        thenable = Future(_wait_task)
+            thenable = Future(_wait_task)
+            thenable.done(callback, catch)
 
-        thenable.done(callback, catch)
-
-        return thenable
+            return thenable
 
     def _task_container(self, task):
         """ Contains the provided task and notifies all registered callbacks. """

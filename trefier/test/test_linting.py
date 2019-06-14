@@ -60,7 +60,7 @@ class TestImportGraph(unittest.TestCase):
     def _setup(self):
         linter = Linter()
         linter.add_directory('trefier/test/testdb/simple/source')
-        self.assertEqual(linter.update(use_multiprocessing=False), 3)
+        self.assertEqual(3, linter.update(use_multiprocessing=False))
         self.assertTrue(not linter.exceptions)
         return linter
 
@@ -90,24 +90,24 @@ class TestImportGraph(unittest.TestCase):
             self.assertTrue(d.success)
             self.assertTrue(not d.exceptions)
             graph.add(d)
-        self.assertNotEqual(graph.modules, {})
-        self.assertNotEqual(graph.graph, {})
-        self.assertNotEqual(graph.duplicates, {})
-        self.assertNotEqual(graph.references, {})
-        self.assertNotEqual(graph.unresolved, {})
-        self.assertNotEqual(graph.transitive, {})
-        self.assertNotEqual(graph.redundant, {})
-        self.assertNotEqual(graph.cycles, {})
+        self.assertNotEqual({}, graph.modules)
+        self.assertNotEqual({}, graph.graph)
+        self.assertNotEqual({}, graph.duplicates)
+        self.assertNotEqual({}, graph.references)
+        self.assertNotEqual({}, graph.unresolved)
+        self.assertNotEqual({}, graph.transitive)
+        self.assertNotEqual({}, graph.redundant)
+        self.assertNotEqual({}, graph.cycles)
         for d in documents:
             graph.remove(d.module_identifier)
-        self.assertDictEqual(graph.modules, {})
-        self.assertDictEqual(graph.graph, {})
-        self.assertDictEqual(graph.duplicates, {})
-        self.assertDictEqual(graph.references, {})
-        self.assertDictEqual(graph.unresolved, {})
-        self.assertDictEqual(graph.transitive, {})
-        self.assertDictEqual(graph.redundant, {})
-        self.assertDictEqual(graph.cycles, {})
+        self.assertDictEqual({}, graph.modules)
+        self.assertDictEqual({}, graph.graph)
+        self.assertDictEqual({}, graph.duplicates)
+        self.assertDictEqual({}, graph.references)
+        self.assertDictEqual({}, graph.unresolved)
+        self.assertDictEqual({}, graph.transitive)
+        self.assertDictEqual({}, graph.redundant)
+        self.assertDictEqual({}, graph.cycles)
 
     def test_open_in_image_viewer(self):
         linter = self._setup()
@@ -120,38 +120,39 @@ class TestLinter(unittest.TestCase):
         linter.add_directory('trefier/test/testdb/repo3/source')
         linter.update(use_multiprocessing=False)
         self.assertTrue(not linter.exceptions)
-        self.assertEqual(len(linter.ls), 5)
-        self.assertEqual(len(linter.modules), 2)
-        self.assertEqual(len(linter.symbols), 3)
-        self.assertEqual(len(linter.bindings), 3)
-        self.assertEqual(len(linter.trefis), 3)
-        self.assertEqual(len(linter.defis), 3)
+        self.assertEqual(5, len(linter.ls))
+        self.assertEqual(2, len(linter.modules))
+        self.assertEqual(3, len(linter.symbols))
+        self.assertEqual(3, len(linter.bindings))
+        self.assertEqual(3, len(linter.trefis))
+        self.assertEqual(3, len(linter.defis))
 
     def test_unlink_all(self):
         linter = Linter()
-        linter.add_directory('trefier/test/testdb/repo3/source')
-        self.assertEqual(linter.update(use_multiprocessing=False), 5)
+        from os import path
+        linter.add_directory('testdb/repo3/source')
+        self.assertEqual(5, linter.update(use_multiprocessing=False))
         self.assertTrue(not linter.exceptions)
-        self.assertEqual(len(linter.ls), 5)
-        self.assertEqual(len(linter.modules), 2)
-        self.assertEqual(len(linter.symbols), 3)
-        self.assertEqual(len(linter.bindings), 3)
-        self.assertEqual(len(linter.trefis), 3)
-        self.assertEqual(len(linter.defis), 3)
+        self.assertEqual(5, len(linter.ls))
+        self.assertEqual(2, len(linter.modules))
+        self.assertEqual(3, len(linter.symbols))
+        self.assertEqual(3, len(linter.bindings))
+        self.assertEqual(3, len(linter.trefis))
+        self.assertEqual(3, len(linter.defis))
         for file in linter.ls:
             linter._unlink(file)
         self.assertTrue(not linter.exceptions)
-        self.assertEqual(len(linter.ls), 0)
-        self.assertEqual(len(linter.modules), 0)
-        self.assertEqual(len(linter.symbols), 0)
-        self.assertEqual(len(linter.bindings), 0)
-        self.assertEqual(len(linter.trefis), 0)
-        self.assertEqual(len(linter.defis), 0)
-        self.assertDictEqual(linter._map_file_to_document, {})
-        self.assertDictEqual(linter._map_module_identifier_to_bindings, {})
-        self.assertDictEqual(linter._map_module_identifier_to_module, {})
-        self.assertDictEqual(linter.failed_to_parse, {})
-        self.assertDictEqual(linter.exceptions, {})
+        self.assertListEqual([], linter.ls)
+        self.assertListEqual([], linter.modules)
+        self.assertListEqual([], linter.symbols)
+        self.assertListEqual([], linter.bindings)
+        self.assertDictEqual({}, linter.trefis)
+        self.assertDictEqual({}, linter.defis)
+        self.assertDictEqual({}, linter._map_file_to_document)
+        self.assertDictEqual({}, linter._map_module_identifier_to_bindings)
+        self.assertDictEqual({}, linter._map_module_identifier_to_module)
+        self.assertDictEqual({}, linter.failed_to_parse)
+        self.assertDictEqual({}, linter.exceptions)
 
     def test_link_unlink(self):
         file = 'trefier/test/testdb/all_symbol_types/source/module.tex'
@@ -191,7 +192,7 @@ class TestLinter(unittest.TestCase):
         linter.lock_reader(1)
         delta_a = time() - time_a
 
-        self.assertAlmostEqual(delta_a, 2, 2)
+        self.assertAlmostEqual(2, delta_a, 2)
 
         f1 = Future(lambda: linter.lock_reader(1)).done(ignore)
         f2 = Future(lambda: linter.lock_reader(1)).done(ignore)
@@ -202,7 +203,7 @@ class TestLinter(unittest.TestCase):
         f2.join()
 
         # reading is parallel
-        self.assertAlmostEqual(time() - time_b, 1, 2)
+        self.assertAlmostEqual(1, time() - time_b, 2)
 
     def test_threadsafe_write(self):
         linter = TestLinter.TestThreadsafeLinter()
@@ -212,7 +213,7 @@ class TestLinter(unittest.TestCase):
         linter.lock_writer(1)
         delta_a = time() - time_a
 
-        self.assertAlmostEqual(delta_a, 2, 2)
+        self.assertAlmostEqual(2, delta_a, 2)
 
         f1 = Future(lambda: linter.lock_writer(1)).done(ignore)
         f2 = Future(lambda: linter.lock_writer(1)).done(ignore)
@@ -222,7 +223,7 @@ class TestLinter(unittest.TestCase):
         f2.join()
 
         # writing is not parallel
-        self.assertAlmostEqual(time() - time_b, 2, 2)
+        self.assertAlmostEqual(2, time() - time_b, 2)
 
 
 def ignore(*args, **kwargs):

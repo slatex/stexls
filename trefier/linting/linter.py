@@ -150,24 +150,6 @@ class Linter(FileWatcher):
 
             return len(documents)
 
-    def lock_reader(self, delay, msg=None):
-        from time import sleep
-        if msg: print('reader', 'enter', msg)
-        with self._rwlock.reader():
-            if msg: print('reader', 'inside', msg)
-            sleep(delay)
-            if msg: print('reader', 'after', msg)
-        if msg: print('reader', 'exit', msg)
-
-    def lock_writer(self, delay, msg=None):
-        from time import sleep
-        if msg: print('writer', 'enter', msg)
-        with self._rwlock.writer():
-            if msg: print('writer', 'inside', msg)
-            sleep(delay)
-            if msg: print('writer', 'after', msg)
-        if msg: print('writer', 'exit', msg)
-
     def _is_linked(self, file: str) -> bool:
         return self._map_file_to_document.get(file) is not None
 

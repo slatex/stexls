@@ -55,6 +55,33 @@ class Future:
             self._callback_threads.append(callback_thread)
             callback_thread.start()
 
+    def then(self, callback, catch):
+        event = threading.Event()
+        result_ptr = [None]
+        traceback_ptr = [None]
+
+        def _resolve_task(result):
+            result_ptr[0] = result
+            event.set()
+
+        def _catch_task(tb):
+            traceback_ptr[0] = tb
+            event.set()
+
+        self.done(_resolve_task, _catch_task)
+
+        def _wait_task():
+            event.wait()
+            if traceback_ptr[0] is not None:
+                raise Exception(traceback_ptr[0])
+            return result_ptr[0]
+
+        thenable = Future(_wait_task)
+
+        thenable.done(callback, catch)
+
+        return thenable
+
     def _task_container(self, task):
         """ Contains the provided task and notifies all registered callbacks. """
         try:

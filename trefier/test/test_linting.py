@@ -16,7 +16,7 @@ class LinterDocumentTestCase(unittest.TestCase):
     def test_module_definition(self):
         document = self._make_module_document()
         self.assertIsNotNone(document.module, "Module expected")
-        self.assertEqual(str(document.module_identifier), "testdb/repo1/test_module")
+        self.assertEqual(str(document.module_identifier), "testdb/all_symbol_types/module")
 
     def test_module_symbol_count(self):
         symbols = list(self._make_module_document().symis)
@@ -37,7 +37,7 @@ class LinterDocumentTestCase(unittest.TestCase):
     def test_binding_definition(self):
         document = self._make_binding_document()
         self.assertIsNotNone(document.binding, "Binding expected")
-        self.assertEqual(str(document.module_identifier), "testdb/repo1/test_module")
+        self.assertEqual(str(document.module_identifier), "testdb/all_symbol_types/test_module")
         self.assertEqual(str(document.binding.lang), "lang")
 
     def test_binding_trefi_count(self):
@@ -52,40 +52,45 @@ class LinterDocumentTestCase(unittest.TestCase):
 
     @staticmethod
     def _make_module_document():
-        return Document('trefier/tests/testdb/repo1/source/test_module.tex', False)
+        return Document('trefier/test/testdb/all_symbol_types/source/module.tex', False)
 
     @staticmethod
     def _make_binding_document():
-        return Document('trefier/tests/testdb/repo1/source/test_module.lang.tex', False)
+        return Document('trefier/test/testdb/all_symbol_types/source/module.lang.tex', False)
 
 
 class TestImportGraph(unittest.TestCase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.linter = Linter()
-        self.linter.add_directory('trefier/tests/testdb/**/source')
-        assert self.linter.update(use_multiprocessing=False)
-
     def test_open_in_image_viewer(self):
-        linter = self._initialize_linter()
-        linter.import_graph.open_in_image_viewer('smglom/primes/balancedprime')
-
-    def _initialize_linter(self):
-        from copy import deepcopy
-        return deepcopy(self.linter)
+        linter = Linter()
+        linter.add_directory('trefier/test/testdb/repo2/source')
+        linter.update(use_multiprocessing=False)
+        linter.import_graph.open_in_image_viewer('testdb/repo2/module1')
 
 
 class TestLinter(unittest.TestCase):
-    def test_repo2_add(self):
+    def test_first_update(self):
         linter = Linter()
-        linter.add_directory('trefier/tests/testdb/repo2/source')
+        linter.add_directory('trefier/test/testdb/repo3/source')
         linter.update(use_multiprocessing=False)
-        self.assertEqual(len(linter.ls), 3)
-        self.assertEqual(len(linter.modules), 3)
-        self.assertEqual(len([e for el in linter.symbols.values() for e in el]), 4)
-        self.assertEqual(len(linter.bindings), 0)
-        self.assertEqual(len([e for el in linter.trefis.values() for e in el]), 0)
-        self.assertEqual(len([e for el in linter.defis.values() for e in el]), 0)
+        self.assertTrue(not linter.exceptions)
+        self.assertEqual(len(linter.ls), 5)
+        self.assertEqual(len(linter.modules), 2)
+        self.assertEqual(len([e for el in linter.symbols.values() for e in el]), 3)
+        self.assertEqual(len(linter.bindings), 3)
+        self.assertEqual(len(linter.trefis), 3)
+        self.assertEqual(len(linter.defis), 3)
+
+    def test_remove_all(self):
+        linter = Linter()
+        linter.add_directory('trefier/test/testdb/repo3/source')
+        linter.update(use_multiprocessing=False)
+        self.assertTrue(not linter.exceptions)
+        self.assertEqual(len(linter.ls), 5)
+        self.assertEqual(len(linter.modules), 2)
+        self.assertEqual(len([e for el in linter.symbols.values() for e in el]), 3)
+        self.assertEqual(len(linter.bindings), 3)
+        self.assertEqual(len(linter.trefis), 3)
+        self.assertEqual(len(linter.defis), 3)
 
     def test_threadsafe_read(self):
         linter = Linter()

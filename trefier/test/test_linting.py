@@ -129,7 +129,6 @@ class TestLinter(unittest.TestCase):
 
     def test_unlink_all(self):
         linter = Linter()
-        from os import path
         linter.add_directory('testdb/repo3/source')
         self.assertEqual(5, linter.update(use_multiprocessing=False))
         self.assertTrue(not linter.exceptions)

@@ -319,6 +319,8 @@ class LatexParser(SmglomLatexParserListener):
         self.source = None
         self.exception = None
         try:
+            if file_or_document is None:
+                raise ValueError('file_or_document must not be None')
             if os.path.isfile(file_or_document):
                 self.file = file_or_document
                 with open(self.file, encoding='utf-8') as ref:

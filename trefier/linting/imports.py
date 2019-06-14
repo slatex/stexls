@@ -53,7 +53,6 @@ class ImportGraph:
         self.modules[document_module] = document.file
         self.graph[document_module] = dict()
         self.duplicates[document_module] = dict()
-        self.references.setdefault(document_module, {})
         self.transitive[document_module] = set()
         self.redundant[document_module] = dict()
         self.cycles[document_module] = dict()
@@ -61,6 +60,7 @@ class ImportGraph:
         # mark module as resolved to parents
         if document_module in self.unresolved:
             for resolved, location in self.unresolved[document_module].items():
+                self.references.setdefault(document_module, {})
                 self.references[document_module][resolved] = location
             del self.unresolved[document_module]
 

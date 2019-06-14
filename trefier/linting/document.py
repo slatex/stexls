@@ -27,7 +27,8 @@ class Document:
         self.success = False
         parser = LatexParser(file)
         self.success = parser.success
-        self.exceptions.append(parser.exception)
+        if parser.exception:
+            self.exceptions.append(parser.exception)
         if self.success:
             def catcher(symbol_type_constructor):
                 def wrapper(node):

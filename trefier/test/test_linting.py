@@ -49,21 +49,14 @@ class LinterDocumentTestCase(unittest.TestCase):
 
     @staticmethod
     def _make_module_document():
-        return Document('trefier/test/testdb/all_symbol_types/source/module.tex')
+        return Document('testdb/all_symbol_types/source/module.tex')
 
     @staticmethod
     def _make_binding_document():
-        return Document('trefier/test/testdb/all_symbol_types/source/module.lang.tex')
+        return Document('testdb/all_symbol_types/source/module.lang.tex')
 
 
 class TestImportGraph(unittest.TestCase):
-    def _setup(self):
-        linter = Linter()
-        linter.add_directory('trefier/test/testdb/simple/source')
-        self.assertEqual(3, linter.update(use_multiprocessing=False))
-        self.assertTrue(not linter.exceptions)
-        return linter
-
     def test_unresolved(self):
         documents = [
             Document('testdb/simple/source/module1.tex'),
@@ -109,15 +102,11 @@ class TestImportGraph(unittest.TestCase):
         self.assertDictEqual({}, graph.redundant)
         self.assertDictEqual({}, graph.cycles)
 
-    def test_open_in_image_viewer(self):
-        linter = self._setup()
-        linter.import_graph.open_in_image_viewer('testdb/simple/module1')
-
 
 class TestLinter(unittest.TestCase):
     def test_first_update(self):
         linter = Linter()
-        linter.add_directory('trefier/test/testdb/repo3/source')
+        linter.add_directory('testdb/repo3/source')
         linter.update(use_multiprocessing=False)
         self.assertTrue(not linter.exceptions)
         self.assertEqual(5, len(linter.ls))
@@ -154,7 +143,7 @@ class TestLinter(unittest.TestCase):
         self.assertDictEqual({}, linter.exceptions)
 
     def test_link_unlink(self):
-        file = 'trefier/test/testdb/all_symbol_types/source/module.tex'
+        file = 'testdb/all_symbol_types/source/module.tex'
         document = Document(file)
         self.assertTrue(document.success)
         linter = Linter()
@@ -168,7 +157,7 @@ class TestLinter(unittest.TestCase):
 
     def test_symbol_positions(self):
         linter = Linter()
-        linter.add_directory('trefier/test/testdb/two_peaks/source')
+        linter.add_directory('testdb/two_peaks/source')
         self.assertEqual(linter.update(use_multiprocessing=False), 16)
         self.assertTrue(not linter.exceptions)
 

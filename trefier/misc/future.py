@@ -43,6 +43,7 @@ class Future:
         :param callback: A callback that expects a single argument,
             that is set to the return value of the task if it returns
         :param catch: A callback wich accepts a traceback as argument and is called in case the task raises an exception
+        :returns self
         """
         if not callback:
             raise ValueError("callback may not be None")
@@ -54,6 +55,7 @@ class Future:
                 args=(callback, catch))
             self._callback_threads.append(callback_thread)
             callback_thread.start()
+        return self
 
     def then(self, callback, catch):
         event = threading.Event()

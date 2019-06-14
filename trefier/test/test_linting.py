@@ -83,14 +83,23 @@ class TestLinter(unittest.TestCase):
     def test_remove_all(self):
         linter = Linter()
         linter.add_directory('trefier/test/testdb/repo3/source')
-        linter.update(use_multiprocessing=False)
+        self.assertEqual(linter.update(use_multiprocessing=False), 5)
         self.assertTrue(not linter.exceptions)
         self.assertEqual(len(linter.ls), 5)
         self.assertEqual(len(linter.modules), 2)
-        self.assertEqual(len([e for el in linter.symbols.values() for e in el]), 3)
+        self.assertEqual(len(linter.symbols), 3)
         self.assertEqual(len(linter.bindings), 3)
         self.assertEqual(len(linter.trefis), 3)
         self.assertEqual(len(linter.defis), 3)
+        for file in linter.ls:
+            linter._unlink(file)
+        self.assertTrue(not linter.exceptions)
+        self.assertEqual(len(linter.ls), 0)
+        self.assertEqual(len(linter.modules), 0)
+        self.assertEqual(len(linter.symbols), 0)
+        self.assertEqual(len(linter.bindings), 0)
+        self.assertEqual(len(linter.trefis), 0)
+        self.assertEqual(len(linter.defis), 0)
 
     def test_threadsafe_read(self):
         linter = Linter()

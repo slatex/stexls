@@ -116,7 +116,7 @@ class Linter(FileWatcher):
             # update watched file index
             deleted, modified = super().update()
             if not (modified or deleted):
-                return None
+                return 0
 
             for file in itertools.chain(deleted, modified):
                 try:

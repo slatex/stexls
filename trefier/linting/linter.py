@@ -50,7 +50,12 @@ class Linter(FileWatcher):
 
     @property
     def symbols(self):
-        return {module: document.symis for module, document in self._map_module_identifier_to_module.items()}
+        return list(
+            f'{module}/{sym.symbol_name}'
+            for module, document
+            in self._map_module_identifier_to_module.items()
+            for sym in document.symis
+        )
 
     @property
     def defis(self):

@@ -39,7 +39,7 @@ class Linter(FileWatcher):
 
     @property
     def bindings(self):
-        return list(f'{module}.{lang}' for module, lang in self._map_module_identifier_to_bindings)
+        return list(f'{module}.{lang}' for module, lang in self._map_module_identifier_to_bindings.items())
 
     @property
     def ls(self):

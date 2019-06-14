@@ -57,7 +57,7 @@ class Future:
             callback_thread.start()
             return self
 
-    def then(self, callback, catch):
+    def then(self, callback, catch=None):
         with self._lock:
             event = threading.Event()
             result_ptr = [None]

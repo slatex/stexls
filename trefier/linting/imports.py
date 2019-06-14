@@ -98,7 +98,7 @@ class ImportGraph:
                     del self.unresolved[imported_module]
 
         # add this to unresolved references of a parent
-        for parent_module, location in self.references[module].items():
+        for parent_module, location in self.references.get(module, {}).items():
             # only if parent was not also deleted
             if parent_module in self.graph:
                 self.unresolved.setdefault(module, {})

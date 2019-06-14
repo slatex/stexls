@@ -24,11 +24,11 @@ class Linter(FileWatcher):
         self._map_module_identifier_to_module: Dict[str, Document] = {}
         self._watched_directories: List[str] = []
         self.failed_to_parse: Dict[str, List[Exception]] = {}
-        self.import_graph = ImportGraph()
         self.exceptions = {}
         self.tagger_path = None
         self.tagger = None
         self._rwlock = RWLock()
+        self.import_graph = ImportGraph()
 
     def load_tagger_model(self, path: str):
         self.tagger_path = os.path.abspath(path)
@@ -170,6 +170,8 @@ class Linter(FileWatcher):
         if document.binding:
             print('-BINDING', document.binding.lang, module_id)
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
+            if not self._map_module_identifier_to_bindings[module_id]:
+                del self._map_module_identifier_to_bindings[module_id]
 
         if document.module:
             print('-MODULE', module_id)

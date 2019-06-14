@@ -55,7 +55,7 @@ class Future:
                 args=(callback, catch))
             self._callback_threads.append(callback_thread)
             callback_thread.start()
-        return self
+            return self
 
     def then(self, callback, catch):
         with self._lock:

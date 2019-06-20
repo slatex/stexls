@@ -8,7 +8,7 @@ import multiprocessing
 from trefier.misc.location import *
 from trefier.misc.file_watcher import FileWatcher
 from trefier.misc.rwlock import RWLock
-from trefier.models import models as tagger_models
+from trefier.models import seq2seq
 
 from trefier.linting.exceptions import *
 from trefier.linting.document import *
@@ -29,13 +29,13 @@ class Linter(FileWatcher):
         self.failed_to_parse: Dict[str, List[Exception]] = {}
         self.exceptions: Dict[str, List[Exception]] = {}
         self.tagger_path: Optional[str] = None
-        self.tagger: Optional[tagger_models.Model] = None
+        self.tagger: Optional[seq2seq.Model] = None
         self.tags: Dict[str, object] = dict()
         self.import_graph = ImportGraph()
 
     def load_tagger_model(self, path: str):
-        if tagger_models.Seq2SeqModel.verify_loadable(path):
-            self.tagger = tagger_models.Seq2SeqModel.load(path)
+        if seq2seq.Seq2SeqModel.verify_loadable(path):
+            self.tagger = seq2seq.Seq2SeqModel.load(path)
             self.tagger_path = os.path.abspath(path)
             for module, bindings in self._map_module_identifier_to_bindings.items():
                 for lang, binding in bindings.items():

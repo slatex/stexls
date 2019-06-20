@@ -1,6 +1,8 @@
 import unittest
 from time import sleep, time
+from glob import glob
 
+from trefier.linting.identifiers import *
 from trefier.linting.document import Document
 from trefier.linting.linter import Linter
 from trefier.linting.imports import ImportGraph
@@ -83,6 +85,7 @@ class TestImportGraph(unittest.TestCase):
             self.assertTrue(d.success)
             self.assertTrue(not d.exceptions)
             graph.add(d)
+        graph.update()
         self.assertNotEqual({}, graph.modules)
         self.assertNotEqual({}, graph.graph)
         self.assertNotEqual({}, graph.duplicates)
@@ -93,6 +96,7 @@ class TestImportGraph(unittest.TestCase):
         self.assertNotEqual({}, graph.cycles)
         for d in documents:
             graph.remove(d.module_identifier)
+        graph.update()
         self.assertDictEqual({}, graph.modules)
         self.assertDictEqual({}, graph.graph)
         self.assertDictEqual({}, graph.duplicates)
@@ -101,6 +105,96 @@ class TestImportGraph(unittest.TestCase):
         self.assertDictEqual({}, graph.transitive)
         self.assertDictEqual({}, graph.redundant)
         self.assertDictEqual({}, graph.cycles)
+
+    def test_transitive(self):
+        documents = list(map(Document, glob('testdb/two_peaks/source/*.tex')))
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success)
+            self.assertTrue(not d.exceptions)
+            if d.module:
+                graph.add(d)
+        graph.update()
+        self.assertSetEqual(
+            {
+                'testdb/two_peaks/bottom1',
+                'testdb/two_peaks/bottom2',
+                'testdb/two_peaks/bottom3'},
+            set(graph.transitive['testdb/two_peaks/peak1']))
+
+    def test_references(self):
+        documents = list(map(Document, glob('testdb/two_peaks/source/*.tex')))
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success)
+            self.assertTrue(not d.exceptions)
+            if d.module:
+                graph.add(d)
+        graph.update()
+        self.assertSetEqual({
+            'testdb/two_peaks/middle1',
+            'testdb/two_peaks/middle2',
+            'testdb/two_peaks/middle3',
+        }, set(graph.references['testdb/two_peaks/bottom1']))
+
+    def test_cycles(self):
+        documents = list(map(Document, glob('testdb/cycle/source/*.tex')))
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success, msg=d.file)
+            self.assertListEqual([], d.exceptions, msg=d.file)
+            if d.module:
+                graph.add(d)
+        graph.update()
+        self.assertDictEqual({}, graph.unresolved)
+        self.assertSetEqual({
+            'testdb/cycle/module3',
+            'testdb/cycle/module4',
+            'testdb/cycle/module5',
+            'testdb/cycle/self_cycle',
+        }, set(module for module, items in graph.cycles.items() if items))
+
+    def test_redundant_transitive(self):
+        documents = list(map(Document, glob('testdb/redundant/source/*.tex')))
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success, msg=d.file)
+            self.assertListEqual([], d.exceptions, msg=d.file)
+            if d.module:
+                graph.add(d)
+        graph.update()
+        self.assertSetEqual(
+            {'testdb/redundant/module4',
+             'testdb/redundant/module5',
+             'testdb/redundant/module6',
+             'testdb/redundant/module7'},
+            set(graph.transitive['testdb/redundant/module1'])
+        )
+        self.assertDictEqual({}, graph.unresolved)
+        self.assertSetEqual(
+            {'testdb/redundant/module4'},
+            set([
+                module
+                for module, items
+                in graph.redundant.items()
+                if items])
+        )
+
+        for d in documents:
+            if 'module5' in d.file and d.module:
+                graph.remove(d.module_identifier)
+        graph.update()
+        self.assertNotIn('testdb/redundant/module6', graph.unresolved)
+        self.assertIn('testdb/redundant/module5', graph.unresolved)
+        self.assertNotIn('testdb/redundant/module5', graph.references)
+        self.assertIn('testdb/redundant/module6', graph.references)
+        self.assertNotIn('testdb/redundant/module5', graph.graph)
+        self.assertNotIn('testdb/redundant/module5', graph.cycles)
+        self.assertNotIn('testdb/redundant/module5', graph.transitive)
+        self.assertSetEqual(
+            {'testdb/redundant/module4', 'testdb/redundant/module5', 'testdb/redundant/module7'},
+            set(graph.transitive['testdb/redundant/module1'])
+        )
 
 
 class TestLinter(unittest.TestCase):

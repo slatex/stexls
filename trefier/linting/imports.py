@@ -71,47 +71,6 @@ class ImportGraph:
             self._reduce_transitive(current, [])
         
         assert not self._changed, "all changed modules should have been handled"
-    
-    def _reduce_transitive(self, current, stack):
-        # return empty transitive set if unresolved
-        if current in self.unresolved:
-            return {}
-
-        stack.append(current)
-
-        # update transitive, redundant and cycle information if not up to date
-        if current not in self.transitive:
-            self.transitive[current] = {}
-            self.redundant[current] = {}
-            self.cycles[current] = {}
-
-            # gather transitive import information
-            for child, location in self.graph[current].items():
-                if child in stack:
-                    # transitive array always empty if accessing something on the stack
-                    # mark cycle
-                    self.cycles[current].setdefault(child, [])
-                    self.cycles[current][child].append(location)
-                for transitive_child in self._reduce_transitive(child, stack):
-                    if transitive_child == current:
-                        # transitive import is self -> cycle
-                        self.cycles[current].setdefault(child, [])
-                        self.cycles[current][child].append(location)
-                    elif transitive_child in self.graph[current]:
-                        # transitive import is in direct imports -> redundant import
-                        self.redundant[current].setdefault(transitive_child, [])
-                        self.redundant[current][transitive_child].append(location)
-                    else:
-                        # else register as transitive
-                        self.transitive[current].setdefault(transitive_child, [])
-                        self.transitive[current][transitive_child].append(location)
-
-        popped = stack.pop()
-        assert current == popped, "Stack resolution failed"
-
-        # return transitive with respect to the caller
-        # => current transitive imports + direct imports
-        return list(self.transitive[current]) + list(self.graph[current])
 
     def add(self, document: Document):
         assert document is not None
@@ -194,23 +153,8 @@ class ImportGraph:
         del self.redundant[module]
         del self.cycles[module]
 
-    def get_info(self, module: ModuleIdentifier):
-        module = str(module)
-        return {
-            'file': self.modules.get(module),
-            'imports': self.graph.get(module),
-            'duplicates': self.duplicates.get(module),
-            'unresolved': self.unresolved.get(module),
-            'references': self.references.get(module),
-        }
-    
-    def get_reverse_info(self, module: ModuleIdentifier):
-        module = str(module)
-        return {
-            'file': self.modules.get(module),
-            'imports': [other for other, imports in self.graph.items() if module in imports],
-            'unresolved': [other for other, u in self.unresolved.items() if module in u]
-        }
+    def reachable_modules_of(self, module: Union[ModuleIdentifier, str]) -> Set[str]:
+        return {str(module)} | set(self.transitive[str(module)]) | set(self.graph[str(module)])
 
     def write_image(self,
               root: Union[ModuleIdentifier, str],
@@ -264,3 +208,47 @@ class ImportGraph:
                 path = file.name
         subprocess.run([image_viewer, path])
         return path
+
+    def _reduce_transitive(
+            self,
+            current: Union[ModuleIdentifier, str],
+            stack: List[Union[ModuleIdentifier, str]]) -> Set[str]:
+        # return empty transitive set if unresolved
+        if current in self.unresolved:
+            return set()
+
+        stack.append(current)
+
+        # update transitive, redundant and cycle information if not up to date
+        if current not in self.transitive:
+            self.transitive[current] = {}
+            self.redundant[current] = {}
+            self.cycles[current] = {}
+
+            # gather transitive import information
+            for child, location in self.graph[current].items():
+                if child in stack:
+                    # transitive array always empty if accessing something on the stack
+                    # mark cycle
+                    self.cycles[current].setdefault(child, [])
+                    self.cycles[current][child].append(location)
+                for transitive_child in self._reduce_transitive(child, stack):
+                    if transitive_child == current:
+                        # transitive import is self -> cycle
+                        self.cycles[current].setdefault(child, [])
+                        self.cycles[current][child].append(location)
+                    elif transitive_child in self.graph[current]:
+                        # transitive import is in direct imports -> redundant import
+                        self.redundant[current].setdefault(transitive_child, [])
+                        self.redundant[current][transitive_child].append(location)
+                    else:
+                        # else register as transitive
+                        self.transitive[current].setdefault(transitive_child, [])
+                        self.transitive[current][transitive_child].append(location)
+
+        popped = stack.pop()
+        assert current == popped, "Stack resolution failed"
+
+        # return transitive with respect to the caller
+        # => current transitive imports + direct imports
+        return set(self.transitive[current]) | set(self.graph[current])

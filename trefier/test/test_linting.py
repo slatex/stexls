@@ -122,6 +122,31 @@ class TestImportGraph(unittest.TestCase):
                 'testdb/two_peaks/bottom3'},
             set(graph.transitive['testdb/two_peaks/peak1']))
 
+    def test_reachable(self):
+        documents = list(map(Document, glob('testdb/two_peaks/source/*.tex')))
+        graph = ImportGraph()
+        for d in documents:
+            self.assertTrue(d.success)
+            self.assertTrue(not d.exceptions)
+            if d.module:
+                graph.add(d)
+        graph.update()
+        self.assertSetEqual({
+            'testdb/two_peaks/peak1',
+            'testdb/two_peaks/middle1',
+            'testdb/two_peaks/middle2',
+            'testdb/two_peaks/bottom1',
+            'testdb/two_peaks/bottom2',
+            'testdb/two_peaks/bottom3',
+        }, graph.reachable_modules_of('testdb/two_peaks/peak1'))
+        self.assertSetEqual({
+            'testdb/two_peaks/middle2',
+            'testdb/two_peaks/bottom1',
+            'testdb/two_peaks/bottom2',
+            'testdb/two_peaks/bottom3',
+        }, graph.reachable_modules_of('testdb/two_peaks/middle2'))
+        self.assertSetEqual({'testdb/two_peaks/bottom1'}, graph.reachable_modules_of('testdb/two_peaks/bottom1'))
+
     def test_references(self):
         documents = list(map(Document, glob('testdb/two_peaks/source/*.tex')))
         graph = ImportGraph()
@@ -173,11 +198,7 @@ class TestImportGraph(unittest.TestCase):
         self.assertDictEqual({}, graph.unresolved)
         self.assertSetEqual(
             {'testdb/redundant/module4'},
-            set([
-                module
-                for module, items
-                in graph.redundant.items()
-                if items])
+            set([module for module, items in graph.redundant.items() if items])
         )
 
         for d in documents:

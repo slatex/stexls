@@ -12,7 +12,7 @@ import pickle
 
 from trefier import datasets, keywords, tokenization, downloads
 from trefier.misc import Evaluation
-from trefier.misc import Cache
+from trefier.misc.Cache import Cache
 from trefier.models.base import Model
 
 __all__ = ['Seq2SeqModel']

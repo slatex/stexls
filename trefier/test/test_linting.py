@@ -223,6 +223,7 @@ class TestLinter(unittest.TestCase):
         self.assertEqual(3, len(linter.defis))
         for file in linter.ls:
             linter._unlink(file)
+        linter.import_graph.update()
         self.assertTrue(not linter.exceptions)
         self.assertListEqual([], linter.ls)
         self.assertListEqual([], linter.modules)

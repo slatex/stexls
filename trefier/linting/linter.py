@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict
+from typing import List, Dict, Optional
 from glob import glob
 import os
 import itertools
@@ -8,6 +8,7 @@ import multiprocessing
 from trefier.misc.location import *
 from trefier.misc.file_watcher import FileWatcher
 from trefier.misc.rwlock import RWLock
+from trefier.models import models as tagger_models
 
 from trefier.linting.exceptions import *
 from trefier.linting.document import *
@@ -23,15 +24,24 @@ class Linter(FileWatcher):
         self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = {}
         self._map_module_identifier_to_module: Dict[str, Document] = {}
         self._watched_directories: List[str] = []
-        self.failed_to_parse: Dict[str, List[Exception]] = {}
-        self.exceptions = {}
-        self.tagger_path = None
-        self.tagger = None
         self._rwlock = RWLock()
+
+        self.failed_to_parse: Dict[str, List[Exception]] = {}
+        self.exceptions: Dict[str, List[Exception]] = {}
+        self.tagger_path: Optional[str] = None
+        self.tagger: Optional[tagger_models.Model] = None
+        self.tags: Dict[str, object] = dict()
         self.import_graph = ImportGraph()
 
     def load_tagger_model(self, path: str):
-        self.tagger_path = os.path.abspath(path)
+        if tagger_models.Seq2SeqModel.verify_loadable(path):
+            self.tagger = tagger_models.Seq2SeqModel.load(path)
+            self.tagger_path = os.path.abspath(path)
+            for module, bindings in self._map_module_identifier_to_bindings.items():
+                for lang, binding in bindings.items():
+                    self.tags[binding.file] = self.tagger.predict(binding.file)
+        else:
+            raise LinterInternalException.create(path, 'Unable to load tagger model')
 
     @property
     def modules(self):
@@ -123,7 +133,6 @@ class Linter(FileWatcher):
                     if self._is_linked(file):
                         self._unlink(file)
                 except Exception as e:
-                    raise
                     self.exceptions.setdefault(file, [])
                     self.exceptions[file].append(e)
 
@@ -144,9 +153,10 @@ class Linter(FileWatcher):
                 try:
                     self._link(document)
                 except Exception as e:
-                    raise
                     self.exceptions.setdefault(document.file, [])
                     self.exceptions[document.file].append(e)
+            
+            self.import_graph.update()
 
             return len(documents)
 
@@ -162,6 +172,9 @@ class Linter(FileWatcher):
 
         if file in self.failed_to_parse:
             del self.failed_to_parse[file]
+
+        if file in self.tags:
+            del self.tags[file]
 
         document = self._map_file_to_document.get(file)
 
@@ -196,6 +209,8 @@ class Linter(FileWatcher):
                     new=document.binding,
                     previous=self._map_module_identifier_to_bindings[module][document.binding.lang].binding)
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
+            if self.tagger:
+                self.tags[document.file] = self.tagger.predict(document.file)
 
         if document.module:
             print("+MODULE", module, os.path.basename(document.file))

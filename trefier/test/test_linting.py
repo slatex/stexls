@@ -243,10 +243,13 @@ class TestLinter(unittest.TestCase):
         linter = Linter()
         self.assertFalse(linter._is_linked(file))
         linter._link(document)
+        linter.import_graph.update()
         self.assertTrue(linter._is_linked(file))
         linter._unlink(file)
+        linter.import_graph.update()
         self.assertFalse(linter._is_linked(file))
         linter._link(document)
+        linter.import_graph.update()
         self.assertTrue(linter._is_linked(file))
 
     def test_symbol_positions(self):
@@ -276,8 +279,8 @@ class TestLinter(unittest.TestCase):
 
         self.assertAlmostEqual(2, delta_a, 2)
 
-        f1 = Future(lambda: linter.lock_reader(1)).done(ignore)
-        f2 = Future(lambda: linter.lock_reader(1)).done(ignore)
+        f1 = Future(lambda: linter.lock_reader(1), check_result_handled=False)
+        f2 = Future(lambda: linter.lock_reader(1), check_result_handled=False)
 
         time_b = time()
 
@@ -297,8 +300,8 @@ class TestLinter(unittest.TestCase):
 
         self.assertAlmostEqual(2, delta_a, 2)
 
-        f1 = Future(lambda: linter.lock_writer(1)).done(ignore)
-        f2 = Future(lambda: linter.lock_writer(1)).done(ignore)
+        f1 = Future(lambda: linter.lock_writer(1), check_result_handled=False)
+        f2 = Future(lambda: linter.lock_writer(1), check_result_handled=False)
 
         time_b = time()
         f1.join()
@@ -306,7 +309,3 @@ class TestLinter(unittest.TestCase):
 
         # writing is not parallel
         self.assertAlmostEqual(2, time() - time_b, 2)
-
-
-def ignore(*args, **kwargs):
-    pass

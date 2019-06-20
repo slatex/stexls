@@ -39,13 +39,34 @@ class Linter(FileWatcher):
             self.tagger_path = os.path.abspath(path)
             for module, bindings in self._map_module_identifier_to_bindings.items():
                 for lang, binding in bindings.items():
-                    self.tags[binding.file] = self.tagger.predict(binding.file)
+                    if lang == 'en' and binding.file not in self.tags:
+                        self.tags[binding.file] = self.tagger.predict(binding.file)
         else:
             raise LinterInternalException.create(path, 'Unable to load tagger model')
 
     @property
     def modules(self):
-        return list(self._map_module_identifier_to_module)
+        return [str(module.module) for _, module in self._map_module_identifier_to_module.items()]
+
+    @property
+    def defis(self):
+        return [
+            f'{str(defi)} "{defi.text}"'
+            for module, bindings
+            in self._map_module_identifier_to_bindings.items()
+            for lang, document in bindings.items()
+            for defi in document.defis
+        ]
+
+    @property
+    def trefis(self):
+        return [
+            f'{str(trefi)} "{trefi.text}"'
+            for module, bindings
+            in self._map_module_identifier_to_bindings.items()
+            for lang, document in bindings.items()
+            for trefi in document.trefis
+        ]
 
     @property
     def bindings(self):
@@ -66,24 +87,6 @@ class Linter(FileWatcher):
             in self._map_module_identifier_to_module.items()
             for sym in document.symis
         )
-
-    @property
-    def defis(self):
-        return {
-            f'{module}.{lang}': document.defis
-            for module, bindings
-            in self._map_module_identifier_to_bindings.items()
-            for lang, document in bindings.items()
-        }
-
-    @property
-    def trefis(self):
-        return {
-            f'{module}.{lang}': document.trefis
-            for module, bindings
-            in self._map_module_identifier_to_bindings.items()
-            for lang, document in bindings.items()
-        }
 
     def module_at_position(self, file, line, column):
         with self._rwlock.reader():
@@ -209,7 +212,7 @@ class Linter(FileWatcher):
                     new=document.binding,
                     previous=self._map_module_identifier_to_bindings[module][document.binding.lang].binding)
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
-            if self.tagger:
+            if self.tagger and document.binding.lang == 'en':
                 self.tags[document.file] = self.tagger.predict(document.file)
 
         if document.module:
@@ -232,7 +235,8 @@ class Linter(FileWatcher):
             self._watched_directories,
             self.failed_to_parse,
             self.import_graph,
-            self.exceptions
+            self.exceptions,
+            self.tags,
         )
 
     def __setstate__(self, state):
@@ -250,7 +254,8 @@ class Linter(FileWatcher):
          self._watched_directories,
          self.failed_to_parse,
          self.import_graph,
-         self.exceptions) = state
+         self.exceptions,
+         self.tags) = state
         super().__setstate__(superstate)
 
         # load extra state

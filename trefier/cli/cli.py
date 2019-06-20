@@ -1,26 +1,25 @@
-import os
 import sys
 import shlex
 import argh
-from itertools import chain
-import argparse
-from pathlib import Path
-import itertools
 import json
 
 __all__ = ['CLI', 'CLIException', 'CLIExitException','CLIRestartException']
+
 
 class CLIException(Exception):
     """ Exception thrown by the cli. """
     pass
 
+
 class CLIExitException(CLIException):
     """ Exception thrown when the user wishes to exit the program. """
     pass
 
+
 class CLIRestartException(CLIException):
     """ Exception thrown in order to restart the infinite loop. """
     pass
+
 
 class CLI:
     """ Contains basic pattern of argh.dispatch_commands in a for line in stdin loop and error handling. """
@@ -40,7 +39,7 @@ class CLI:
         """
         while True:
             status = self.dispatch(commands)
-            if status == False:
+            if not status:
                 break
     
     def dispatch(self, commands):

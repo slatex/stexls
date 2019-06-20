@@ -4,6 +4,7 @@ import numpy as np
 import subprocess
 import sys
 import tempfile
+import itertools
 from PIL import Image
 
 from .exceptions import *
@@ -30,15 +31,85 @@ class ImportGraph:
         # dict from unresolved imported modules to the module and location where it was imported from
         self.unresolved: Dict[str, Dict[str, Location]] = dict()
 
-        # dict from modules to a list of transitively imported modules
-        self.transitive: Dict[str, Set[str]] = dict()
+        # dict from module to modules that are transitively imported by the module at location
+        self.transitive: Dict[str, Dict[str, List[Location]]] = dict()
 
-        # Dict[Module, Dict[Imported Module, (Direct Import Location, Transitive Import Location)]]
-        # The Transitive import location should have precedence and the direct import location should be removed
-        self.redundant: Dict[str, Dict[str, Tuple[Location, Location]]] = dict()
+        # dict from module to modules that are directly imported but also indirectly imported at location
+        self.redundant: Dict[str, Dict[str, List[Location]]] = dict()
 
-        # dict of modules to imports with the list of other modules that are part of the cycle?
-        self.cycles: Dict[str, Dict[Location, List[str]]] = dict()
+        # dict from module to import that causes a cycle at location
+        self.cycles: Dict[str, Dict[str, List[Location]]] = dict()
+
+        # log of modules that changed: cleared on update
+        self._changed = set()
+
+    def update(self):
+        # mark all parents of all nodes that have been changed as changed as well
+        frontier = self._changed
+        need_update = set()
+        while frontier:
+            current = frontier.pop()
+            need_update.add(current)
+            for parent in self.references[current]:
+                if parent not in need_update:
+                    frontier.add(parent)
+
+        # remove unresolved from update
+        need_update -= set(self.unresolved)
+
+        # delete old information
+        for current in need_update:
+            if current in self.transitive:
+                del self.transitive[current]
+                del self.redundant[current]
+                del self.cycles[current]
+
+        # reduce new information
+        for current in need_update:
+            self._reduce_transitive(current, [])
+        
+        assert not self._changed, "all changed modules should have been handled"
+    
+    def _reduce_transitive(self, current, stack):
+        # return empty transitive set if unresolved
+        if current in self.unresolved:
+            return {}
+
+        stack.append(current)
+
+        # update transitive, redundant and cycle information if not up to date
+        if current not in self.transitive:
+            self.transitive[current] = {}
+            self.redundant[current] = {}
+            self.cycles[current] = {}
+
+            # gather transitive import information
+            for child, location in self.graph[current].items():
+                if child in stack:
+                    # transitive array always empty if accessing something on the stack
+                    # mark cycle
+                    self.cycles[current].setdefault(child, [])
+                    self.cycles[current][child].append(location)
+                for transitive_child in self._reduce_transitive(child, stack):
+                    if transitive_child == current:
+                        # transitive import is self -> cycle
+                        self.cycles[current].setdefault(child, [])
+                        self.cycles[current][child].append(location)
+                    elif transitive_child in self.graph[current]:
+                        # transitive import is in direct imports -> redundant import
+                        self.redundant[current].setdefault(transitive_child, [])
+                        self.redundant[current][transitive_child].append(location)
+                    else:
+                        # else register as transitive
+                        self.transitive[current].setdefault(transitive_child, [])
+                        self.transitive[current][transitive_child].append(location)
+
+        popped = stack.pop()
+        assert current == popped, "Stack resolution failed"
+
+        # return transitive with respect to the caller
+        # => current transitive imports + direct imports
+        return list(self.transitive[current]) + list(self.graph[current])
 
     def add(self, document: Document):
         assert document is not None
@@ -49,19 +120,22 @@ class ImportGraph:
                 document.module,
                 f'Attempted to add duplicate definition of module "{document_module}" to import graph:'
                 f' Previous definition in "{self.modules[document_module]}"')
-
+        
+        self._changed.add(document_module)
         self.modules[document_module] = document.file
         self.graph[document_module] = dict()
         self.duplicates[document_module] = dict()
-        self.transitive[document_module] = set()
-        self.redundant[document_module] = dict()
-        self.cycles[document_module] = dict()
+        self.references[document_module] = dict()
+
+        assert document_module not in self.transitive
+        assert document_module not in self.redundant
+        assert document_module not in self.cycles
 
         # mark module as resolved to parents
         if document_module in self.unresolved:
             for resolved, location in self.unresolved[document_module].items():
-                self.references.setdefault(document_module, {})
                 self.references[document_module][resolved] = location
+            # remove from unresolved list
             del self.unresolved[document_module]
 
         for gimport in document.gimports:
@@ -70,16 +144,18 @@ class ImportGraph:
                 self.duplicates[document_module].setdefault(imported_module, [])
                 self.duplicates[document_module][imported_module].append(gimport)
             else:
-                # register in graph
-                self.graph[document_module][imported_module] = gimport
-                if imported_module not in self.graph:
-                    # register as unresolved if imported module is not in graph
-                    self.unresolved.setdefault(imported_module, {})
-                    self.unresolved[imported_module][document_module] = gimport
-                else:
-                    # else add back reference
-                    self.references.setdefault(imported_module, {})
+                if imported_module in self.graph:
+                    # add back reference
+                    assert imported_module in self.references
+                    assert document_module not in self.references[imported_module]
                     self.references[imported_module][document_module] = gimport
+                else:
+                    # mark unresolved if imported module is not in graph
+                    self.unresolved.setdefault(imported_module, {})
+                    assert document_module not in self.unresolved[imported_module]
+                    self.unresolved[imported_module][document_module] = gimport
+                # register self in graph
+                self.graph[document_module][imported_module] = gimport
 
     def remove(self, module: ModuleIdentifier):
         module = str(module)
@@ -91,8 +167,6 @@ class ImportGraph:
             if imported_module in self.references:
                 # remove back references from children
                 del self.references[imported_module][module]
-                if not self.references[imported_module]:
-                    del self.references[imported_module]
             elif imported_module in self.unresolved:
                 # remove the unresolved instanced created by this module
                 del self.unresolved[imported_module][module]
@@ -103,16 +177,20 @@ class ImportGraph:
         for parent_module, location in self.references.get(module, {}).items():
             # only if parent was not also deleted
             if parent_module in self.graph:
+                self._changed.add(parent_module)
                 self.unresolved.setdefault(module, {})
                 self.unresolved[module][parent_module] = location
 
         # delete other information
+        if self in self._changed:
+            self._changed.remove(self)
+        del self.references[module]
         del self.modules[module]
         del self.graph[module]
         del self.duplicates[module]
-        del self.cycles[module]
         del self.transitive[module]
         del self.redundant[module]
+        del self.cycles[module]
 
     def get_info(self, module: ModuleIdentifier):
         module = str(module)
@@ -120,8 +198,6 @@ class ImportGraph:
             'file': self.modules.get(module),
             'imports': self.graph.get(module),
             'duplicates': self.duplicates.get(module),
-            'transitive': self.transitive.get(module),
-            'redundant': self.redundant.get(module),
             'unresolved': self.unresolved.get(module),
             'references': self.references.get(module),
         }
@@ -131,12 +207,11 @@ class ImportGraph:
         return {
             'file': self.modules.get(module),
             'imports': [other for other, imports in self.graph.items() if module in imports],
-            'transitive': [other for other, modules in self.transitive.items() if module in modules],
             'unresolved': [other for other, u in self.unresolved.items() if module in u]
         }
 
     def write_image(self,
-              root: ModuleIdentifier,
+              root: Union[ModuleIdentifier, str],
               path: str = None) -> Tuple[str, np.ndarray]:
         import pydot
         dot = pydot.Dot(graph_type='digraph')
@@ -159,8 +234,10 @@ class ImportGraph:
                     if imported_module in self.unresolved:
                         color = 'red'
                         style = 'dotted'
-                    elif imported_module in self.transitive[current]:
+                    elif imported_module in self.redundant[current]:
                         color = 'red'
+                    elif imported_module in self.cycles[current]:
+                        color = 'green'
 
                     dot.add_edge(pydot.Edge(current, imported_module, color=color, style=style))
 
@@ -168,7 +245,7 @@ class ImportGraph:
         return path
 
     def open_in_image_viewer(self,
-                             root: ModuleIdentifier,
+                             root: Union[ModuleIdentifier, str],
                              path: Optional[str] = None,
                              image_viewer: Optional[str] = None) -> str:
         """ Renders the graph to a tempfile, then opens it in the default image viewer of the computer.

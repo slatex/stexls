@@ -50,6 +50,8 @@ class ImportGraph:
         while frontier:
             current = frontier.pop()
             need_update.add(current)
+            if current in self.unresolved:
+                continue
             for parent in self.references[current]:
                 if parent not in need_update:
                     frontier.add(parent)
@@ -182,8 +184,8 @@ class ImportGraph:
                 self.unresolved[module][parent_module] = location
 
         # delete other information
-        if self in self._changed:
-            self._changed.remove(self)
+        if module in self._changed:
+            self._changed.remove(module)
         del self.references[module]
         del self.modules[module]
         del self.graph[module]

@@ -3,6 +3,10 @@ from typing import Callable, Any, List, Optional
 import threading
 import sys
 import traceback
+from functools import wraps
+
+__all__ = ['Future', 'make_async']
+
 
 class Future:
     def __init__(self, task: Callable[[], Any], response_timeout: float = 1.0, check_result_handled: bool = True):
@@ -133,6 +137,7 @@ class Future:
 
 def make_async(f):
     """ Decorator that wraps the function to always return a future object. """
+    @wraps(f)
     def wrapper(*args, **kwargs):
         return Future(lambda: f(*args, **kwargs))
     return wrapper

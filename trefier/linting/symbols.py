@@ -43,6 +43,7 @@ class ModuleDefinitonSymbol(Symbol):
 
     def __init__(self, module_name: str, file: str, full_range: Range):
         super().__init__(file, full_range)
+        self.module_name = module_name
         if module_name != self.module.module_name:
             raise LinterException(f'Module name inferred from the file name ({self.module.module_name})'
                                   f' does not match with the name ({module_name}) written in the environment ')
@@ -71,6 +72,7 @@ class ModuleBindingDefinitionSymbol(Symbol):
     def __init__(self, bound_module_name: str, lang: str, file: str, full_range: Range):
         super().__init__(file, full_range)
         self.lang = lang
+        self.bound_module_name = bound_module_name
         if bound_module_name != self.module.module_name:
             raise LinterException(f'Module name inferred from filename ({self.module.module_name})'
                                   f'does not match with the environment ({bound_module_name})')
@@ -332,7 +334,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
         location = _node_to_location(trefi)
 
         target_module_identifier: ModuleIdentifier = ModuleIdentifier.from_file(trefi.parser.file)
-        target_module_location: Location = None
+        target_module_location: Optional[Location] = None
 
         # get the module and optionally the symbol from an oarg if present
         if len(trefi.oargs) == 1:
@@ -344,15 +346,11 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                 r'\?', as_position=True, return_lexemes=True))
 
             # must have at most 2 parts "a?b"
-            if len(parts) > 2:
-                raise Exception(f'{location} Expected a trefi argument of the format'
-                                ' "[module]", "[module?name]" or "[?name]",'
-                                f' but found "[{oarg.text}]"')
-
             # the last part must be defined. "?b" is allowed but "?" or "a?" is not.
-            if not parts[-1][-1]:
-                raise Exception(f'{_node_to_location(oarg)}'
-                                f' Empty module or symbol name in trefi: "[{oarg.text}]"')
+            if len(parts) > 2 or not parts or not parts[-1] or not parts[-1][-1]:
+                raise LinterException(
+                    f'{location} Expected a trefi argument of the format'
+                    f' "[<module>]", "[<module>?<name>]" or "[?<name>]", but found "[{oarg.text}]"')
 
             # assign new module from oarg or inherit in case of "trefi[?name]"
             if len(parts) >= 1 and parts[0][-1]:

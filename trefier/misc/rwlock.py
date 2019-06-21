@@ -115,7 +115,7 @@ def async_reader(get_lock: Callable[[Any], RWLock]):
 		@wraps(f)
 		def wrapped(self, *args, **kwargs):
 			with get_lock(self).reader():
-				return f(*args, **kwargs)
+				return f(self, *args, **kwargs)
 		return wrapped
 	return wrapper
 
@@ -126,6 +126,6 @@ def async_writer(get_lock: Callable[[Any], RWLock]):
 		@wraps(f)
 		def wrapped(self, *args, **kwargs):
 			with get_lock(self).writer():
-				return f(*args, **kwargs)
+				return f(self, *args, **kwargs)
 		return wrapped
 	return wrapper

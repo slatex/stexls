@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional, Callable, List
 import sys
 import shlex
 import argh
@@ -24,15 +26,18 @@ class CLIRestartException(CLIException):
 class CLI:
     """ Contains basic pattern of argh.dispatch_commands in a for line in stdin loop and error handling. """
 
-    def return_result(self, command, status, encoder=None, **kwargs):
-        """ Returns the result of a command over stdou in json format. """
+    def return_result(self, command: Callable, status: int, encoder: Optional[json.JSONEncoder] = None, **kwargs):
+        """ Returns the result of a command over stdout in json format. """
         kwargs.update({
                 "command": command.__name__,
                 "status": status
         })
-        print(json.dumps(kwargs, default=lambda obj: obj.__dict__) if encoder is None else encoder.encode(kwargs), flush=True)
+        if encoder is None:
+            print(json.dumps(kwargs, default=lambda obj: obj.__dict__), flush=True)
+        else:
+            print(encoder.encode(kwargs), flush=True)
 
-    def run(self, commands):
+    def run(self, commands: List[Callable]):
         """ Runs the cli.
         Arguments:
             :param commands: Commands available.
@@ -42,7 +47,7 @@ class CLI:
             if not status:
                 break
     
-    def dispatch(self, commands):
+    def dispatch(self, commands: List[Callable]):
         """ Runs a single command with this cli, then returns wether the command indicated continuation or not.
             Arguments:
                 :param commands: Commands available.

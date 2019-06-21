@@ -64,6 +64,8 @@ class CLI:
                 raise
         except KeyboardInterrupt:
             return False
+        except StopIteration:
+            return False
         return True
     
     def exit(self):

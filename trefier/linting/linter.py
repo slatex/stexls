@@ -18,21 +18,6 @@ __all__ = ['Linter']
 
 
 class Linter(FileWatcher):
-    def __init__(self):
-        super().__init__(['.tex'])
-        self._map_file_to_document: Dict[str, Document] = {}
-        self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = {}
-        self._map_module_identifier_to_module: Dict[str, Document] = {}
-        self._watched_directories: List[str] = []
-        self._rwlock = RWLock()
-
-        self.failed_to_parse: Dict[str, List[Exception]] = {}
-        self.exceptions: Dict[str, List[Exception]] = {}
-        self.tagger_path: Optional[str] = None
-        self.tagger: Optional[seq2seq.Model] = None
-        self.tags: Dict[str, object] = dict()
-        self.import_graph = ImportGraph()
-
     def load_tagger_model(self, path: str):
         if seq2seq.Seq2SeqModel.verify_loadable(path):
             self.tagger = seq2seq.Seq2SeqModel.load(path)
@@ -99,11 +84,11 @@ class Linter(FileWatcher):
             for trefi in doc.trefis:
                 if trefi.target_module_location is not None:
                     if trefi.target_module_location.range.contains(position):
-                        yield str(trefi.target_module_location)
+                        yield trefi.symbol_name
 
             for gimport in doc.gimports:
                 if gimport.imported_module_location.range.contains(position):
-                    yield str(gimport.imported_module_location)
+                    yield str(gimport.imported_module)
 
     def add_directory(self, directory):
         with self._rwlock.writer():
@@ -225,17 +210,32 @@ class Linter(FileWatcher):
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
 
+    def __init__(self):
+        super().__init__(['.tex'])
+        self._map_file_to_document: Dict[str, Document] = {}
+        self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = {}
+        self._map_module_identifier_to_module: Dict[str, Document] = {}
+        self._watched_directories: List[str] = []
+        self._rwlock = RWLock()
+
+        self.failed_to_parse: Dict[str, List[Exception]] = {}
+        self.exceptions: Dict[str, List[Exception]] = {}
+        self.import_graph = ImportGraph()
+
+        self.tagger_path: Optional[str] = None
+        self.tagger: Optional[seq2seq.Model] = None
+        self.tags: Dict[str, object] = dict()
+
     def __getstate__(self):
         return (
             super().__getstate__(),
-            self.tagger_path,
             self._map_file_to_document,
             self._map_module_identifier_to_bindings,
             self._map_module_identifier_to_module,
             self._watched_directories,
             self.failed_to_parse,
-            self.import_graph,
             self.exceptions,
+            self.import_graph,
             self.tags,
         )
 
@@ -247,17 +247,12 @@ class Linter(FileWatcher):
 
         # load state
         (superstate,
-         tagger_path,
          self._map_file_to_document,
          self._map_module_identifier_to_bindings,
          self._map_module_identifier_to_module,
          self._watched_directories,
          self.failed_to_parse,
-         self.import_graph,
          self.exceptions,
+         self.import_graph,
          self.tags) = state
         super().__setstate__(superstate)
-
-        # load extra state
-        if tagger_path:
-            self.load_tagger_model(tagger_path)

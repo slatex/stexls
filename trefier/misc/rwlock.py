@@ -1,6 +1,12 @@
+from __future__ import annotations
+from typing import Callable, Any
+from functools import wraps
 import threading
 
 __author__ = "Mateusz Kobos"
+
+
+__all__ = ['RWLock', 'async_reader', 'async_writer', 'ReaderLock', 'WriterLock']
 
 
 class RWLock:
@@ -101,3 +107,25 @@ class WriterLock:
 
 	def __exit__(self, *args, **kwargs):
 		self._rwlock.writer_release()
+
+
+def async_reader(get_lock: Callable[[Any], RWLock]):
+	""" Decorator that uses a lock getter to lock the function call with a reader lock """
+	def wrapper(f):
+		@wraps(f)
+		def wrapped(self, *args, **kwargs):
+			with get_lock(self).reader():
+				return f(*args, **kwargs)
+		return wrapped
+	return wrapper
+
+
+def async_writer(get_lock: Callable[[Any], RWLock]):
+	""" Decorator that uses a lock getter to lock the function call with a writer lock """
+	def wrapper(f):
+		@wraps(f)
+		def wrapped(self, *args, **kwargs):
+			with get_lock(self).writer():
+				return f(*args, **kwargs)
+		return wrapped
+	return wrapper

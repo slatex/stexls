@@ -3,13 +3,13 @@ import argparse
 from glob import glob
 from os.path import isdir, expanduser
 import itertools
-import json
-
 from loguru import logger
+import argh
 
 from trefier.misc.location import *
+from trefier.misc.Cache import Cache
 from trefier.linting.linter import Linter
-from .cli import CLI
+from trefier.app.cli import CLI
 
 __all__ = ['LinterCLI']
 
@@ -136,3 +136,12 @@ class LinterJSONEncoder(json.JSONEncoder):
         if isinstance(obj, Location):
             return {"file": obj.file, "range": obj.range}
         raise Exception("Object is not serializable")
+
+
+if __name__ == '__main__':
+    @argh.arg('cache', help="Name of the file used as cache")
+    def _main(cache: str):
+        with Cache(cache, LinterCLI) as cache:
+            cache.data.run()
+            cache.write_on_exit = cache.write_on_exit and cache.data.changed
+    argh.dispatch_command(_main)

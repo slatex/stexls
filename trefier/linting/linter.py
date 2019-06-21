@@ -201,6 +201,8 @@ class Linter(FileWatcher):
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
             if not self._map_module_identifier_to_bindings[module_id]:
                 del self._map_module_identifier_to_bindings[module_id]
+            if document.file in self.tags:
+                del self.tags[document.file]
 
         if document.module:
             print('-MODULE', module_id)

@@ -15,28 +15,6 @@ __all__ = ['LinterCLI']
 
 
 class LinterCLI(CLI):
-    def __init__(self):
-        super().__init__()
-        self.linter = Linter()
-        self.logger = None
-        self.changed = False
-        self._setup_called = False
-
-    def tags(self):
-        return self.linter.tags
-
-    def ls(self):
-        return self.linter.ls
-
-    def modules(self):
-        return self.linter.modules
-
-    def trefis(self):
-        return self.linter.trefis
-
-    def defis(self):
-        return self.linter.defis
-
     @arg('directories',
          nargs=argparse.REMAINDER,
          type=lambda x: glob(x, recursive=True),
@@ -100,14 +78,24 @@ class LinterCLI(CLI):
         super().run([
             self.add_directories,
             self.update,
-            self.ls,
-            self.modules,
-            self.trefis,
-            self.defis,
-            self.tags,
             self.load_tagger,
             *extra_commands
         ])
+
+    def return_result(self, command, status, encoder=None, **kwargs):
+        try:
+            self.logger.info(f"Returning {command.__name__} with status {status}")
+            return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
+        except Exception as e:
+            self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
+            super().return_result(command, 1, message=str(e))
+
+    def __init__(self):
+        super().__init__()
+        self.logger = None
+        self.changed = False
+        self._setup_called = False
+        self.linter = Linter()
 
     def __setstate__(self, state):
         self.logger = None
@@ -117,14 +105,6 @@ class LinterCLI(CLI):
 
     def __getstate__(self):
         return self.linter
-
-    def return_result(self, command, status, encoder=None, **kwargs):
-        try:
-            self.logger.info(f"Returning {command.__name__} with status {status}")
-            return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
-        except Exception as e:
-            self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
-            super().return_result(command, 1, message=str(e))
 
 
 class LinterJSONEncoder(json.JSONEncoder):
@@ -139,9 +119,12 @@ class LinterJSONEncoder(json.JSONEncoder):
 
 
 if __name__ == '__main__':
-    @argh.arg('cache', help="Name of the file used as cache")
-    def _main(cache: str):
+    @argh.arg('--cache', help="Name of the file used as cache")
+    def _main(cache: str = None):
         with Cache(cache, LinterCLI) as cache:
-            cache.data.run()
-            cache.write_on_exit = cache.write_on_exit and cache.data.changed
+            cache.data.setup()
+            try:
+                cache.data.run()
+            finally:
+                cache.write_on_exit = cache.write_on_exit and cache.data.changed
     argh.dispatch_command(_main)

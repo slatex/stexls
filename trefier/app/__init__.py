@@ -1,2 +1,2 @@
 
-__all__ = ['app', 'linter']
+__all__ = ['linter']

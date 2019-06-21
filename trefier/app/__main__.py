@@ -4,9 +4,6 @@ from argh import arg, dispatch_commands
 from os.path import expanduser, abspath
 from loguru import logger
 
-app_logger = logger.bind(name="app")
-app_logger.add(expanduser("~/.trefier/app.log"), enqueue=True)
-
 
 @arg('cache', help="Path to the cache location.")
 @arg('--tagger', help="Path to the cache location.")
@@ -26,11 +23,13 @@ def linter(cache: str, tagger: Optional[str] = None):
         cache.data.setup()
         if tagger:
             cache.data.load_tagger(tagger)
-        cache.data.run(write_cache)
-        cache.write_on_exit = cache.data.changed and cache.write_on_exit
+        try:
+            cache.data.run(write_cache)
+        finally:
+            cache.write_on_exit = cache.data.changed and cache.write_on_exit
 
 
 if __name__ == '__main__':
+    app_logger = logger.bind(name="app")
+    app_logger.add(expanduser("~/.trefier/app.log"), enqueue=True)
     dispatch_commands([linter])
-else:
-    raise Exception('Module app.py must be executed')

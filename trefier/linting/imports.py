@@ -4,8 +4,6 @@ import numpy as np
 import subprocess
 import sys
 import tempfile
-import itertools
-from PIL import Image
 
 from .exceptions import *
 from .identifiers import *
@@ -41,9 +39,9 @@ class ImportGraph:
         self.cycles: Dict[str, Dict[str, List[Location]]] = dict()
 
         # log of modules that changed: cleared on update
-        self._changed = set()
+        self._changed: Set[str] = set()
 
-    def update(self):
+    def update(self) -> List[str]:
         # mark all parents of all nodes that have been changed as changed as well
         frontier = self._changed
         need_update = set()
@@ -71,6 +69,7 @@ class ImportGraph:
             self._reduce_transitive(current, [])
         
         assert not self._changed, "all changed modules should have been handled"
+        return need_update
 
     def add(self, document: Document):
         assert document is not None

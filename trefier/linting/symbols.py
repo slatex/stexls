@@ -188,6 +188,13 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
             raise LinterException(f'{self} Invalid environment name "{env_name}"')
         self.is_alt = 'a' in match.group(1)
 
+    def name_contains(self, position: Position) -> bool:
+        """ Tests whether position is on top of any symbol name identifier """
+        for location in self.symbol_name_locations:
+            if location.range.contains(position):
+                return True
+        return False
+
     @staticmethod
     def get_info(env: Environment) -> Tuple[str, List[Location], List[List[str]]]:
         """ Extracts vital information from symi, trefi and defi environments
@@ -342,8 +349,8 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
             oarg = trefi.oargs[0].remove_brackets()
 
             # split on ?
-            parts: List[Tuple[Tuple[int, int], Tuple[int, int], str]] = list(oarg.split_range(
-                r'\?', as_position=True, return_lexemes=True))
+            parts: List[Tuple[Tuple[int, int], Tuple[int, int], str]] = list(
+                oarg.split_range(r'\?', as_position=True, return_lexemes=True))
 
             # must have at most 2 parts "a?b"
             # the last part must be defined. "?b" is allowed but "?" or "a?" is not.

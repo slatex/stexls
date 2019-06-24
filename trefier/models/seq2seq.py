@@ -187,7 +187,7 @@ class Seq2SeqModel(Model):
 
         positions = [tuple(map(document.offset_to_position, offset)) for offset in offsets[0]]
 
-        return y_pred[0], positions, envs[0]
+        return y_pred[0], positions, tokens[0], envs[0]
     
     def save(self, path):
         """ Saves the current state """

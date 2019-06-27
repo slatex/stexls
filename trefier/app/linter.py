@@ -4,7 +4,9 @@ from glob import glob
 from os.path import isdir, expanduser
 import itertools
 from loguru import logger
+from functools import wraps
 import argh
+import threading
 
 from trefier.misc.location import *
 from trefier.misc.Cache import Cache
@@ -33,13 +35,11 @@ class LinterCLI(CLI):
                 else:
                     self.logger.info(f"Rejecting {directory}")
                     rejected += 1
-            self.return_result(
-                self.add_directories, 0,
-                message=f'Added {added} directories and rejected {rejected} non-directories.')
+            self.return_result(self.add_directories, 0, message=f'Added {added}, rejected {rejected}')
         except Exception as e:
             self.logger.exception("Exception during add_directory")
             self.return_result(self.add_directories, 1, message=str(e))
-    
+
     @arg('-j', '--jobs', type=int, help="Number of jobs to help parsing tex files.")
     @arg('-d', '--debug', help="Enables debug mode")
     def update(self, jobs=None, debug=False):
@@ -48,10 +48,10 @@ class LinterCLI(CLI):
             num_changed = self.linter.update(jobs, debug)
             self.logger.info(f"{num_changed} files changed")
             self.changed = num_changed != 0
-            self.return_result(self.update, 0, message=f'{num_changed} files updated')
+            self.return_result(self.logger, 0, message=f'{num_changed} files updated')
         except Exception as e:
             self.logger.exception("Exception thrown during update")
-            self.return_result(self.update, 1, message=str(e))
+            self.return_result(self.logger, 1, message=str(e))
 
     @arg('path', help="Path to a tagger model")
     def load_tagger(self, path: str):
@@ -79,6 +79,12 @@ class LinterCLI(CLI):
             self.add_directories,
             self.update,
             self.load_tagger,
+            self.linter.ls,
+            self.linter.modules,
+            self.linter.symbols,
+            self.linter.bindings,
+            self.linter.trefis,
+            self.linter.defis,
             *extra_commands
         ])
 

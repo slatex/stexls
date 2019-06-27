@@ -161,7 +161,7 @@ class GimportSymbol(Symbol):
 
 
 class EnvironmentSymbolWithStaticArgumentCount(Symbol):
-    MASTER_PATTERN = re.compile(r'([ma]*)(sym|tref|def)(i+)s?\*?')
+    MASTER_PATTERN = re.compile(r'([ma]*)(sym|tref|def)(i+)s?\*?|symdef')
 
     def __init__(self,
                  symbol_name: str,
@@ -186,7 +186,10 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
         match = EnvironmentSymbolWithStaticArgumentCount.MASTER_PATTERN.fullmatch(self.env_name)
         if not match:
             raise LinterException(f'{self} Invalid environment name "{env_name}"')
-        self.is_alt = 'a' in match.group(1)
+        if env_name == 'symdef':
+            self.is_alt = False
+        else:
+            self.is_alt = 'a' in match.group(1)
 
     def name_contains(self, position: Position) -> bool:
         """ Tests whether position is on top of any symbol name identifier """
@@ -251,6 +254,25 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
 
         return symbol_name, symbol_name_locations, search_terms
 
+    @staticmethod
+    def get_name_argument_and_location(env: Environment) -> Optional[Tuple[str, Location]]:
+        if len(env.oargs) != 1:
+            return None
+        oarg = env.oargs[0]
+        pattern = re.compile(r'([\[,]\s*name\s*=\s*)(.+?)(?:[$\s,\]]|$)')
+        matches = list(re.finditer(pattern, oarg.text))
+        if len(matches) != 1:
+            raise LinterArgumentCountException.create(_node_to_location(oarg), 'exactly 1 "name="', len(matches))
+        match = matches[0]
+        symbol_name = match.group(2)
+        oarg_begin, oarg_end = list(oarg.split_range(pattern, keep_delimeter=True))[1]
+        oarg_begin += len(match.group(1))
+        oarg_end = oarg_begin + len(symbol_name)
+        return symbol_name, Location(env.parser.file, Range(
+            Position(*env.parser.offset_to_position(oarg_begin)),
+            Position(*env.parser.offset_to_position(oarg_end))
+        ))
+
 
 class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
     SYM_PATTERN = re.compile(r'symi+s?\*?|symdef')
@@ -267,8 +289,16 @@ class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
     @staticmethod
     def from_node(symbol: Environment):
         if symbol.env_name == 'symdef':
-            # TODO
-            raise NotImplementedError()
+            location = _node_to_location(symbol)
+            name_argument = EnvironmentSymbolWithStaticArgumentCount.get_name_argument_and_location(symbol)
+            if name_argument is None:
+                raise LinterInternalException.create(str(symbol), f'Expected "name=" argument in symdef')
+            symbol_name, symbol_name_location = name_argument
+            symbol_name_locations = [symbol_name_location]
+            return SymiSymbol(
+                symbol_name, symbol_name_locations,
+                [], 'symdef', symbol.parser.file, location.range
+            )
         else:
             symbol_name, symbol_name_locations, search_terms = EnvironmentSymbolWithStaticArgumentCount.get_info(symbol)
 
@@ -283,6 +313,7 @@ class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
     DEFI_PATTERN = re.compile(r'[ma]*defi+s?\*?')
 
     def __init__(self,
+                 name_argument_location: Location,
                  symbol_name: str,
                  symbol_name_locations: List[Location],
                  search_terms: List[List[str]],
@@ -290,6 +321,7 @@ class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                  file: str,
                  full_range: Range):
         super().__init__(symbol_name, symbol_name_locations, search_terms, env_name, file, full_range)
+        self.name_argument_location = name_argument_location
 
     @staticmethod
     def from_node(defi: Environment) -> DefiSymbol:
@@ -297,24 +329,14 @@ class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
         location = _node_to_location(defi)
 
-        if len(defi.oargs) == 1:
-            oarg = defi.oargs[0].remove_brackets()
-            pattern = re.compile(r'(name\s*=\s*)(.*?)(?:[$\s,\]]|$)')
-            matches = list(re.finditer(pattern, oarg.text))
-            if len(matches) != 1:
-                raise LinterArgumentCountException.create(_node_to_location(oarg), 'exactly 1 "name="', len(matches))
-            match = matches[0]
-            symbol_name = match.group(2)
-            oargbegin, oargend = list(oarg.split_range(pattern, keep_delimeter=True))[1]
-            oargbegin += len(match.group(1))
-            oargend = oargbegin + len(symbol_name)
-            symbol_name_locations.insert(0, Location(defi.parser.file, Range(
-                Position(*defi.parser.offset_to_position(oargbegin)),
-                Position(*defi.parser.offset_to_position(oargend))
-            )))
+        name_argument_location = None
+        name_argument = EnvironmentSymbolWithStaticArgumentCount.get_name_argument_and_location(defi)
+        if name_argument is not None:
+            symbol_name, name_argument_location = name_argument
+            symbol_name_locations.insert(0, name_argument_location)
 
         return DefiSymbol(
-            symbol_name, symbol_name_locations, search_terms,
+            name_argument_location, symbol_name, symbol_name_locations, search_terms,
             defi.env_name, defi.parser.file, location.range)
 
 

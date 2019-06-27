@@ -29,19 +29,22 @@ class ImportGraph:
         # dict from unresolved imported modules to the module and location where it was imported from
         self.unresolved: Dict[str, Dict[str, Location]] = dict()
 
-        # dict from module to modules that are transitively imported by the module at location
-        self.transitive: Dict[str, Dict[str, List[Location]]] = dict()
+        # dict from module to modules that are transitively imported
+        self.transitive: Dict[str, Dict[str, List[str]]] = dict()
 
-        # dict from module to modules that are directly imported but also indirectly imported at location
-        self.redundant: Dict[str, Dict[str, List[Location]]] = dict()
+        # dict from module to modules that are directly imported but also indirectly
+        self.redundant: Dict[str, Dict[str, List[str]]] = dict()
 
-        # dict from module to import that causes a cycle at location
-        self.cycles: Dict[str, Dict[str, List[Location]]] = dict()
+        # dict from module to import that causes a cycle
+        self.cycles: Dict[str, Dict[str, List[str]]] = dict()
 
         # log of modules that changed: cleared on update
         self._changed: Set[str] = set()
 
-    def update(self) -> List[str]:
+    def update(self) -> Set[str]:
+        """ Needs to be called after all modules have been added or removed. This is a kind of linker, that
+            uses the imports of all modules to find transitive, redundant and cyclical imports.
+            :returns set of changed modules """
         # mark all parents of all nodes that have been changed as changed as well
         frontier = self._changed
         need_update = set()
@@ -72,6 +75,7 @@ class ImportGraph:
         return need_update
 
     def add(self, document: Document):
+        """ Adds a module to the graph. """
         assert document is not None
         assert document.module is not None
         document_module = str(document.module_identifier)
@@ -118,6 +122,7 @@ class ImportGraph:
                 self.graph[document_module][imported_module] = gimport
 
     def remove(self, module: ModuleIdentifier):
+        """ Removes a module and its associated information from the graph. """
         module = str(module)
         if module not in self.modules:
             raise LinterInternalException.create(
@@ -153,7 +158,20 @@ class ImportGraph:
         del self.cycles[module]
 
     def reachable_modules_of(self, module: Union[ModuleIdentifier, str]) -> Set[str]:
+        """ Returns set of all modules that are directly or indirectly imported as well as the current module. """
         return {str(module)} | set(self.transitive[str(module)]) | set(self.graph[str(module)])
+
+    def parents_of(self, module: Union[ModuleIdentifier, str]) -> Set[str]:
+        """ Returns set of all parents that reference this module directly or indirectly. """
+        visited = set()
+        frontier = {str(module)}
+        while frontier:
+            current = frontier.pop()
+            visited.add(current)
+            for reference in self.references[current]:
+                if reference not in visited:
+                    frontier.add(reference)
+        return visited
 
     def write_image(self,
               root: Union[ModuleIdentifier, str],
@@ -230,20 +248,20 @@ class ImportGraph:
                     # transitive array always empty if accessing something on the stack
                     # mark cycle
                     self.cycles[current].setdefault(child, [])
-                    self.cycles[current][child].append(location)
+                    self.cycles[current][child].append(child)
                 for transitive_child in self._reduce_transitive(child, stack):
                     if transitive_child == current:
                         # transitive import is self -> cycle
                         self.cycles[current].setdefault(child, [])
-                        self.cycles[current][child].append(location)
+                        self.cycles[current][child].append(child)
                     elif transitive_child in self.graph[current]:
                         # transitive import is in direct imports -> redundant import
                         self.redundant[current].setdefault(transitive_child, [])
-                        self.redundant[current][transitive_child].append(location)
+                        self.redundant[current][transitive_child].append(child)
                     else:
                         # else register as transitive
                         self.transitive[current].setdefault(transitive_child, [])
-                        self.transitive[current][transitive_child].append(location)
+                        self.transitive[current][transitive_child].append(child)
 
         popped = stack.pop()
         assert current == popped, "Stack resolution failed"

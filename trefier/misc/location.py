@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 import os.path as _path
 import json
@@ -180,6 +180,15 @@ class Location:
     def union(self, other: Union[Location, Range]) -> Location:
         other_range = other if isinstance(other, Range) else other.range
         return Location(self.file, self.range.union(other_range))
+
+    @staticmethod
+    def reduce_union(locations: List[Location]) -> Location:
+        """ Reduces the union of all locations in the list. """
+        assert locations
+        location = locations[0]
+        for that in locations[1:]:
+            location = location.union(that)
+        return location
     
     @property
     def offset(self) -> Tuple[int, int]:

@@ -345,7 +345,8 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
     def __init__(self,
                  target_module: ModuleIdentifier,
-                 target_module_location: Location,
+                 target_module_location: Optional[Location],
+                 target_symbol_location: Optional[Location],
                  symbol_name: str,
                  symbol_name_locations: List[Location],
                  search_terms: List[List[str]],
@@ -355,6 +356,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
         super().__init__(symbol_name, symbol_name_locations, search_terms, env_name, file, full_range)
         self.target_module = target_module
         self.target_module_location = target_module_location
+        self.target_symbol_location = target_symbol_location
 
     @staticmethod
     def from_node(trefi: Environment) -> TrefiSymbol:
@@ -364,6 +366,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
         target_module_identifier: ModuleIdentifier = ModuleIdentifier.from_file(trefi.parser.file)
         target_module_location: Optional[Location] = None
+        target_symbol_location: Optional[Location] = None
 
         # get the module and optionally the symbol from an oarg if present
         if len(trefi.oargs) == 1:
@@ -397,6 +400,6 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                     Range(Position(*parts[-1][0]), Position(*parts[-1][1])))
                 symbol_name_locations.insert(0, target_symbol_location)
 
-        return TrefiSymbol(target_module_identifier, target_module_location,
+        return TrefiSymbol(target_module_identifier, target_module_location, target_symbol_location,
                            symbol_name, symbol_name_locations, search_terms,
                            trefi.env_name, trefi.parser.file, location.range)

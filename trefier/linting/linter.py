@@ -5,6 +5,7 @@ import os
 import itertools
 import multiprocessing
 import difflib
+import re
 
 from trefier.misc.location import *
 from trefier.misc.file_watcher import FileWatcher
@@ -143,10 +144,7 @@ class Linter:
                     added += 1
         return added
 
-    def update(self,
-               n_jobs: Optional[int] = None,
-               use_multiprocessing: bool = True):
-        # update watched directories
+    def _update_watched_directories(self):
         for dirname in list(self._watched_directories):
             if not os.path.isdir(dirname):
                 # remove if no longer valid directory
@@ -154,12 +152,17 @@ class Linter:
             else:
                 # else add all direct files inside it
                 self._file_watcher.add(os.path.join(dirname, '*'))
+        return self._file_watcher.update()
 
-        # update watched file index
-        deleted, modified = self._file_watcher.update()
+    def update(self,
+               n_jobs: Optional[int] = None,
+               use_multiprocessing: bool = True):
+        # get file changes
+        deleted, modified = self._update_watched_directories()
         if not (modified or deleted):
             return {}
 
+        # remove all changed files
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
                 self._unlink(file)
@@ -171,36 +174,129 @@ class Linter:
         else:
             documents = list(map(Document, modified))
 
-        #  update exception dictionary
-        for document in filter(lambda doc: doc.exceptions, documents):
-            self.exceptions.setdefault(document.file, [])
-            self.exceptions[document.file].extend(document.exceptions)
-
-        #
-        failed_documents: Set[str] = set()
-        for failed_document in filter(lambda doc: not doc.success, documents):
-            failed_documents.add(failed_document.file)
-
+        # link successfully compiled documents
         for document in filter(lambda doc: doc.success, documents):
             self._link(document)
 
-        linting_errors = dict.fromkeys(deleted | failed_documents)
+        # get all modules that were changed
+        changed_modules = self.import_graph.update(set(str(d.module_identifier) for d in documents))
 
-        for changed_module in self.import_graph.update():
-            module_errors = self._get_module_linting_errors(changed_module)
-            #linting_errors.update(module_errors)
+        print(changed_modules)
 
-        self.linting_errors.update(linting_errors)
+        report = self.make_report(changed_modules)
 
-        return linting_errors
+        # set all other unhandled files to None in order to mark them as deleted
+        for unhandled in itertools.chain(deleted, modified):
+            report.setdefault(unhandled)
 
-    def _get_module_linting_errors(
-            self, module: Union[ModuleIdentifier, str]) -> Dict[str, List[Tuple[Location, str]]]:
-        pass
+        return report
+
+    def make_report(self, modules: Optional[Set[str]] = None) -> Dict[str, List[ReportEntry]]:
+        report: Dict[str, List[ReportEntry]] = dict()
+
+        # argument is none, create report for all modules currently tracked
+        if modules is None:
+            modules = set(self._map_module_identifier_to_module)
+
+        # accumulate module reports
+        for changed_module in modules:
+            report.update(self._make_module_report(changed_module))
+
+        # add bindings without module to report
+        for undefined_module in (
+                set(self._map_module_identifier_to_bindings) - set(self._map_module_identifier_to_module)):
+            for lang, binding in self._map_module_identifier_to_bindings[undefined_module]:
+                report.setdefault(binding.file, [])
+                report[binding.file].append(ReportEntry(binding.binding, 'unresolved'))
+
+        # reports for files with duplicates need to be added because these dependencies are not modeled
+        for file_with_duplicates, items in self._duplicate_definition_report.items():
+            if file_with_duplicates not in report:
+                report[file_with_duplicates] = list(self._make_file_report(file_with_duplicates))
+
+        return report
+
+    def _make_module_report(
+            self, module: Union[ModuleIdentifier, str]) -> Dict[str, List[ReportEntry]]:
+        """ Create detailed error report for all files within this module. """
+
+        module = str(module)
+        document = self._map_module_identifier_to_module[module]
+
+        report: Dict[str, List[ReportEntry]] = dict()
+
+        if module not in self._map_module_identifier_to_bindings:
+            report.setdefault(document.file, [])
+            report[document.file].append(ReportEntry(document.module, "no_bindings"))
+
+        for redundant, sources in self.import_graph.redundant.get(str(document.module_identifier), {}).items():
+            for gimport in document.gimports:
+                if str(gimport.imported_module) == redundant:
+                    report.setdefault(document.file, [])
+                    report[document.file].append(
+                        ReportEntry(gimport, 'redundant', imported_from=sources))
+                    break
+            else:
+                raise Exception(f"Module not found {redundant}")
+
+        for file in itertools.chain(
+                (document.file,),
+                (binding_document.file
+                 for lang, binding_document
+                 in self._map_module_identifier_to_bindings.get(module, {}).items())):
+            report.setdefault(file, [])
+            report[file].extend(self._make_file_report(file))
+        return report
+
+    def _make_document_exception_report(self, document: Document) -> Iterator[ReportEntry]:
+        for e in document.exceptions:
+            message = str(e)
+            location = document.file
+            match = re.match(r'^"?(\s*)"?:(\d+):\d+', message)
+            if match:
+                pos = Position(int(match.group(2)), int(match.group(3)))
+                location = Location(match.group(1), Range(pos, pos))
+            yield ReportEntry(location, 'error', message=message)
+        yield from self._duplicate_definition_report.get(document.file, ())
+
+    def _make_document_binding_report(self, document: Document) -> Iterator[ReportEntry]:
+        for trefi in document.trefis:
+            if trefi.target_module_location and not self._resolve_module(trefi.module, trefi.target_module):
+                yield ReportEntry(trefi.target_module_location, "unresolved")
+                unresolved_module = self._map_module_identifier_to_module.get(str(trefi.target_module))
+                if unresolved_module:
+                    yield ReportEntry(
+                        trefi.target_module_location, 'missing_import', module=unresolved_module.module_identifier)
+            elif not self._resolve_symbol(trefi.module, trefi.symbol_name, trefi.target_module):
+                yield ReportEntry(
+                    trefi.target_symbol_location or trefi.symbol_name_locations[-1], "unresolved")
+                unresolved_module = self._map_module_identifier_to_module.get(str(trefi.target_module))
+                if unresolved_module:
+                    yield ReportEntry(
+                        trefi.target_module_location, 'missing_import', module=unresolved_module.module_identifier)
+        for defi in document.defis:
+            if not self._resolve_symbol(defi.module, defi.symbol_name):
+                yield ReportEntry(defi.name_argument_location or defi.symbol_name_locations[-1], 'unresolved')
+        if document.file in self.tags:
+            for module, name, locations in self._get_possible_trefi_matches(document):
+                yield ReportEntry(
+                    Location.reduce_union(locations), 'match', module=module, name=name, tokens=locations)
+
+    def _make_document_module_report(self, document: Document) -> Iterator[ReportEntry]:
+        for gimport in document.gimports:
+            if not self._resolve_module(document.module_identifier, gimport.imported_module):
+                yield ReportEntry(gimport, 'unresolved')
+
+    def _make_file_report(self, file: str) -> Iterator[ReportEntry]:
+        document = self._map_file_to_document[file]
+        yield from self._make_document_exception_report(document)
+        if document.binding:
+            yield from self._make_document_binding_report(document)
+        elif document.module:
+            yield from self._make_document_module_report(document)
 
     def _get_possible_trefi_matches(
-            self,
-            document: Document) -> List[Tuple[Union[ModuleIdentifier, str], str, List[Location]]]:
+            self, document: Document) -> List[Tuple[Union[ModuleIdentifier, str], str, List[Location]]]:
         """ Looks at the tags for a document and returns possibly matching symbols with the
             source location of the matching tokens.
             :returns List of tuples of (module of match, symbol name of match, List of source tokens in the file) """
@@ -224,10 +320,11 @@ class Linter:
                 if ratio > threshold:
                     yield (ratio, symi)
 
-    def _resolve_module(self, module: ModuleIdentifier, target: ModuleIdentifier) -> Optional[ModuleDefinitonSymbol]:
+    def _resolve_module(
+            self, module: Union[ModuleIdentifier, str], target: ModuleIdentifier) -> Optional[ModuleDefinitonSymbol]:
         """ Resolves the location of target module given the current module """
         if str(target) in self.import_graph.reachable_modules_of(str(module)):
-            return self._map_file_to_document.get(self.import_graph.modules.get(str(target))).module
+            return self._map_module_identifier_to_module[str(target)].module
 
     def _resolve_symbol(self,
                         module: ModuleIdentifier,
@@ -236,7 +333,7 @@ class Linter:
         """ Resolves a symbol definition given the current module, the symbol name
             and an optional hint of the module that contains the symbol """
         target_module = symbol_module or module
-        if not self._resolve_module(module, target_module):
+        if str(symbol_module) != str(module) and not self._resolve_module(module, target_module):
             return None
         if target_module is not None:
             document = self._map_module_identifier_to_module.get(str(target_module))
@@ -272,6 +369,7 @@ class Linter:
         return None
 
     def _named_symbol_at_position(self, file: str, line: int, column: int) -> Optional[Tuple[ModuleIdentifier, str]]:
+        """ Returns the module and symbol name of a sym, def or tref at the given position """
         doc = self._map_file_to_document.get(file)
         if doc is None:
             raise Exception("File not tracked")
@@ -292,24 +390,22 @@ class Linter:
         return None
 
     def _is_linked(self, file: str) -> bool:
+        """ Checks if file is linked """
         return self._map_file_to_document.get(file) is not None
 
-    def _unlink(self, file: str):
+    def _unlink(self, file: str, silent: bool = True):
         """ Deletes all symbols/links provided by the file if tracked. """
-        assert self._is_linked(file), "Unable to unlink unlinked file"
-
-        if file in self.exceptions:
-            del self.exceptions[file]
-
         if file in self.tags:
             del self.tags[file]
+
+        if file in self._duplicate_definition_report:
+            del self._duplicate_definition_report[file]
 
         document = self._map_file_to_document.get(file)
 
         module_id = str(document.module_identifier)
 
         if document.binding:
-            print('-BINDING', document.binding.lang, module_id)
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
             if not self._map_module_identifier_to_bindings[module_id]:
                 del self._map_module_identifier_to_bindings[module_id]
@@ -317,76 +413,83 @@ class Linter:
                 del self.tags[document.file]
             if document.file in self.possible_trefis:
                 del self.possible_trefis[document.file]
-
-        if document.module:
-            print('-MODULE', module_id)
+            if not silent:
+                print('-BINDING', document.binding.lang, module_id)
+        elif document.module:
             self.import_graph.remove(document.module_identifier)
             del self._map_module_identifier_to_module[module_id]
+            if not silent:
+                print('-MODULE', module_id)
 
-        if file in self.linting_errors:
-            del self.linting_errors[file]
-
-        print('-FILE', file)
         del self._map_file_to_document[file]
+        if not silent:
+            print('-FILE', file)
 
-    def _link(self, document: Document):
+    def _link(self, document: Document, silent: bool = False):
         """ Starts tracking a document. Indexes links and symbols provided by it. """
         assert not self._is_linked(document.file), "Duplicate link"
-        print('+FILE', document.file)
-        self._map_file_to_document[document.file] = document
         module = str(document.module_identifier)
         if document.binding:
-            print("+BINDING", module, document.binding.lang, os.path.basename(document.file))
+            if document.binding.lang in self._map_module_identifier_to_bindings.get(module, ()):
+                self._duplicate_definition_report.setdefault(document.file, [])
+                self._duplicate_definition_report[document.file].append(
+                    ReportEntry(
+                        document.binding,
+                        'duplicate_definition',
+                        previous_definition=(
+                            self._map_module_identifier_to_bindings[module][document.binding.lang].binding)))
+                return
             self._map_module_identifier_to_bindings.setdefault(module, {})
-            if document.binding.lang in self._map_module_identifier_to_bindings[module]:
-                raise LinterDuplicateDefinitionException.create(
-                    identifier=f'{document.module_identifier}/{document.binding.lang}',
-                    new=document.binding,
-                    previous=self._map_module_identifier_to_bindings[module][document.binding.lang].binding)
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
             if self.tagger and document.binding.lang in ('en', 'lang'):
                 self.tags[document.file] = self.tagger.predict(document.file)
-
-        if document.module:
-            print("+MODULE", module, os.path.basename(document.file))
+            if not silent:
+                print("+BINDING", module, document.binding.lang, os.path.basename(document.file))
+        elif document.module:
             if module in self._map_module_identifier_to_module:
-                raise LinterDuplicateDefinitionException.create(
-                    identifier=module,
-                    new=document.module,
-                    previous=self._map_module_identifier_to_module[module].module)
+                self._duplicate_definition_report.setdefault(document.file, [])
+                self._duplicate_definition_report[document.file].append(
+                    ReportEntry(
+                        document.module,
+                        'duplicate_definition',
+                        previous_definition=(
+                            self._map_module_identifier_to_module[module].module)))
+                return
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
+            if not silent:
+                print("+MODULE", module, os.path.basename(document.file))
+
+        self._map_file_to_document[document.file] = document
+        if not silent:
+            print('+FILE', document.file)
 
     def __init__(self):
         self._file_watcher = FileWatcher(['.tex'])
+        self._watched_directories: List[str] = []
+
         self._map_file_to_document: Dict[str, Document] = dict()
         self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = dict()
         self._map_module_identifier_to_module: Dict[str, Document] = dict()
-        self._watched_directories: List[str] = []
 
-        self.exceptions: Dict[str, List[Exception]] = dict()
         self.import_graph = ImportGraph()
-
-        # dict of file to list of linting errors of location and message
-        self.linting_errors: Dict[str, List[Tuple[Location, str]]] = dict()
+        self._duplicate_definition_report: Dict[str, List[ReportEntry]] = dict()
 
         self.tagger_path: Optional[str] = None
         self.tagger: Optional[seq2seq.Model] = None
         self.tags: Dict[str, object] = dict()
-
         # dict of file to list of possible trefis (module, name, token locations to wrap)
         self.possible_trefis: Dict[str, List[Tuple[ModuleIdentifier, str, List[Location]]]] = dict()
 
     def __getstate__(self):
         return (
             self._file_watcher,
+            self._watched_directories,
             self._map_file_to_document,
             self._map_module_identifier_to_bindings,
             self._map_module_identifier_to_module,
-            self._watched_directories,
-            self.exceptions,
             self.import_graph,
-            self.linting_errors,
+            self._duplicate_definition_report,
             self.tagger_path,
             self.tags,
             self.possible_trefis,
@@ -398,14 +501,21 @@ class Linter:
 
         # load state
         (self._file_watcher,
+         self._watched_directories,
          self._map_file_to_document,
          self._map_module_identifier_to_bindings,
          self._map_module_identifier_to_module,
-         self._watched_directories,
-         self.exceptions,
          self.import_graph,
-         self.linting_errors,
+         self._duplicate_definition_report,
          self.tagger_path,
          self.tags,
          self.possible_trefis,) = state
 
+
+class ReportEntry:
+    def __init__(self, location: Union[Location, str], entry_type: str, **kwargs):
+        if isinstance(location, str):
+            location = Location(location, Range(Position(1, 1), Position(1, 1)))
+        self.location = location
+        self.entry_type = entry_type
+        self.__dict__.update(kwargs)

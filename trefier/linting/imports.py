@@ -41,12 +41,14 @@ class ImportGraph:
         # log of modules that changed: cleared on update
         self._changed: Set[str] = set()
 
-    def update(self) -> Set[str]:
+    def update(self, force_update: Set[Union[ModuleIdentifier, str]]) -> Set[str]:
         """ Needs to be called after all modules have been added or removed. This is a kind of linker, that
             uses the imports of all modules to find transitive, redundant and cyclical imports.
+            :param force_update: Set of modules that the user wants to force mark updated
             :returns set of changed modules """
         # mark all parents of all nodes that have been changed as changed as well
-        frontier = self._changed
+        frontier = self._changed | set(map(str, force_update))
+        self._changed.clear()
         need_update = set()
         while frontier:
             current = frontier.pop()
@@ -71,7 +73,6 @@ class ImportGraph:
         for current in need_update:
             self._reduce_transitive(current, [])
         
-        assert not self._changed, "all changed modules should have been handled"
         return need_update
 
     def add(self, document: Document):

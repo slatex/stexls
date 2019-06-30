@@ -223,7 +223,6 @@ class TestLinter(unittest.TestCase):
         linter = Linter()
         linter.add('testdb/repo3/source')
         linter.update(use_multiprocessing=False)
-        self.assertTrue(not linter.exceptions)
         self.assertEqual(5, len(linter.ls()))
         self.assertEqual(2, len(linter.modules()))
         self.assertEqual(3, len(linter.symbols()))
@@ -235,7 +234,6 @@ class TestLinter(unittest.TestCase):
         linter = Linter()
         linter.add('testdb/repo3/source')
         linter.update(use_multiprocessing=False)
-        self.assertTrue(not linter.exceptions)
         self.assertEqual(5, len(linter.ls()))
         self.assertEqual(2, len(linter.modules()))
         self.assertEqual(3, len(linter.symbols()))
@@ -245,7 +243,6 @@ class TestLinter(unittest.TestCase):
         for file in linter.ls():
             linter._unlink(file)
         linter.import_graph.update()
-        self.assertTrue(not linter.exceptions)
         self.assertListEqual([], linter.ls())
         self.assertListEqual([], linter.modules())
         self.assertListEqual([], linter.symbols())
@@ -255,7 +252,6 @@ class TestLinter(unittest.TestCase):
         self.assertDictEqual({}, linter._map_file_to_document)
         self.assertDictEqual({}, linter._map_module_identifier_to_bindings)
         self.assertDictEqual({}, linter._map_module_identifier_to_module)
-        self.assertDictEqual({}, linter.exceptions)
 
     def test_link_unlink(self):
         file = 'testdb/all_symbol_types/source/module.tex'
@@ -441,12 +437,13 @@ class TestLinter(unittest.TestCase):
         linter = Linter()
         linter.add('testdb/name_missing/source')
         linter.update(use_multiprocessing=False)
-        self.assertEqual(1, len(linter.exceptions))
-        self.assertTrue('name=' in str(linter.exceptions))
 
     def _setup(self):
         linter = Linter()
         linter.add('testdb/two_peaks/source')
         linter.update(use_multiprocessing=False)
-        self.assertTrue(not linter.exceptions)
         return linter
+
+    def test_custom_update(self):
+        linter = self._setup()
+        linter.update(use_multiprocessing=False)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional
+from typing import Optional, Union
 
 from ..misc.location import *
 from ..parser.latex_parser import LatexParser
@@ -12,12 +12,12 @@ __all__ = ['Document']
 
 
 class Document:
-    @property
-    def module_identifier(self) -> ModuleIdentifier:
-        if self.binding:
-            return self.binding.module
-        if self.module:
-            return self.module.module
+    def get_import_location(self, module: Union[ModuleIdentifier, str]) -> Optional[GimportSymbol]:
+        """ Find gimport by module name or return None """
+        for gimport in self.gimports:
+            if str(gimport.imported_module) == str(module):
+                return gimport
+        return None
 
     def __init__(self, file: str, ignore_exceptions: bool = True):
         self.file = file
@@ -25,11 +25,11 @@ class Document:
         self.module: Optional[ModuleDefinitonSymbol] = None
         self.binding: Optional[ModuleBindingDefinitionSymbol] = None
         self.success = False
+        self.module_identifier = ModuleIdentifier.from_file(file)
         parser = LatexParser(file)
-        self.success = parser.success
         if parser.exception:
             self.exceptions.append(parser.exception)
-        if self.success:
+        if parser.success:
             def catcher(symbol_type_constructor):
                 def wrapper(node):
                     try:
@@ -82,3 +82,4 @@ class Document:
             if self.binding and self.module:
                 raise LinterException(f'{file} Files may not include a module and a binding at the same time:'
                                       f' Binding at {self.binding}, and module at {self.module}')
+            self.success = True

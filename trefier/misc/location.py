@@ -236,6 +236,10 @@ class Location:
         return location
     
     def __eq__(self, other):
+        if other is None:
+            return False
+        if not isinstance(other, Location):
+            return False
         return _path.abspath(self.file) == _path.abspath(other.file) and self.range == other.range
     
     def __ne__(self, other):

@@ -7,6 +7,7 @@ from loguru import logger
 from functools import wraps
 import argh
 import threading
+import sys
 
 from trefier.misc.location import *
 from trefier.linting.symbols import ModuleIdentifier
@@ -37,8 +38,7 @@ class LinterCLI(CLI):
                     rejected += 1
             self.return_result(self.add, 0, message=f'Added {added}, rejected {rejected}')
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during add_directory")
             self.return_result(self.add, 1, message=str(e))
 
@@ -52,8 +52,7 @@ class LinterCLI(CLI):
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception thrown during update")
             self.return_result(self.update, 1, message=str(e))
 
@@ -64,8 +63,7 @@ class LinterCLI(CLI):
             self.logger.info(f"{len(report)} files in report")
             self.return_result(self.make_report, 0, report=report)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception thrown during make_report")
             self.return_result(self.make_report, 1, message=str(e))
 
@@ -76,8 +74,7 @@ class LinterCLI(CLI):
             self.linter.load_tagger_model(path)
             self.return_result(self.load_tagger, 0, settings=self.linter.tagger.settings)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during load_tagger")
             self.return_result(self.load_tagger, 1, message=str(e))
 
@@ -87,8 +84,7 @@ class LinterCLI(CLI):
             self.linter.import_graph.open_in_image_viewer(ModuleIdentifier.from_file(file))
             self.return_result(self.draw_graph, 0)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during draw_graph")
             self.return_result(self.draw_graph, 1, message=str(e))
 
@@ -101,8 +97,7 @@ class LinterCLI(CLI):
             definition = self.linter.goto_definition(file, line, column)
             self.return_result(self.goto_definition, 0, definition=definition)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during goto_definition")
             self.return_result(self.goto_definition, 1, message=str(e))
 
@@ -115,8 +110,7 @@ class LinterCLI(CLI):
             implementations = self.linter.goto_implementation(file, line, column)
             self.return_result(self.goto_implementation, 0, implementations=implementations)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during goto_implementation")
             self.return_result(self.goto_implementation, 1, message=str(e))
 
@@ -129,8 +123,7 @@ class LinterCLI(CLI):
             references = self.linter.find_references(file, line, column)
             self.return_result(self.find_references, 0, references=references)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during find_references")
             self.return_result(self.find_references, 1, message=str(e))
 
@@ -142,8 +135,7 @@ class LinterCLI(CLI):
             completion_items = self.linter.auto_complete(file, context)
             self.return_result(self.auto_complete, 0, completion_items=completion_items)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception("Exception during auto_complete")
             self.return_result(self.auto_complete, 1, message=str(e))
 
@@ -180,8 +172,7 @@ class LinterCLI(CLI):
             self.logger.info(f"Returning {command.__name__} with status {status}")
             return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
         except Exception as e:
-            if __debug__:
-                raise
+            #if __debug__: raise
             self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
             super().return_result(command, 1, message=str(e))
 
@@ -218,10 +209,7 @@ if __name__ == '__main__':
     @argh.arg('--root', help="Root dir")
     @argh.arg('--cache', help="Name of the file used as cache")
     def _main(root: str = None, cache: str = None):
-        if __debug__:
-            raise Exception("DEBUG")
-            import sys
-            sys.stdin = iter(())
+        #if __debug__: sys.stdin = iter(())
         with Cache(cache, LinterCLI) as cache:
             cache.data.setup()
             if root:

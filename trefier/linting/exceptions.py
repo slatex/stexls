@@ -23,9 +23,9 @@ class LinterGimportModuleFormatException(LinterException):
 
 class LinterModuleFromFilenameException(LinterException):
     @staticmethod
-    def create(file: str) -> LinterModuleFromFilenameException:
+    def create() -> LinterModuleFromFilenameException:
         return LinterModuleFromFilenameException(
-            f'Unable to extract module from file "{file}":'
+            f'Unable to extract module from file:'
             f'Expected filename format is .../<base>/<repository>/"source"/<module>')
 
 

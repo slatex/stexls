@@ -6,11 +6,6 @@ __all__ = ['ModuleIdentifier', 'SymbolIdentifier']
 
 class ModuleIdentifier:
     def __init__(self, base: str, repository_name: str, module_name: str):
-        if not (base or repository_name or module_name):
-            raise Exception(f'Module identifier arguments may not be falsy: Found'
-                            f' "{base or "<undefined>"}'
-                            f'/{repository_name or "<undefined>"}'
-                            f'/{module_name or "<undefined>"}"')
         self.base = base
         self.repository_name = repository_name
         self.module_name = module_name
@@ -31,7 +26,7 @@ class ModuleIdentifier:
         parts = file.split('/')
 
         if parts[-2] != 'source' or len(parts) < 4:
-            raise LinterModuleFromFilenameException.create(file)
+            raise LinterModuleFromFilenameException.create()
 
         return ModuleIdentifier(
             base=parts[-4],

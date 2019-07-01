@@ -180,6 +180,7 @@ class Linter:
 
         # link successfully compiled documents
         for document in filter(lambda doc: doc.success, documents):
+            assert document.module_identifier
             changed_modules.add(str(document.module_identifier))
             self._link(document)
 
@@ -187,6 +188,11 @@ class Linter:
         changed_modules = self.import_graph.update(changed_modules)
 
         report = self.make_report(changed_modules)
+
+        # add exceptions from not successfully compiled documents to report
+        for document in filter(lambda doc: not doc.success, documents):
+            report.setdefault(document.file, [])
+            report[document.file].extend(ReportEntry.error(document.file, e) for e in document.exceptions)
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
@@ -210,7 +216,7 @@ class Linter:
                 set(self._map_module_identifier_to_bindings) - set(self._map_module_identifier_to_module)):
             for lang, binding in self._map_module_identifier_to_bindings[undefined_module].items():
                 report.setdefault(binding.file, [])
-                report[binding.file].append(ReportEntry(binding.binding, 'unresolved'))
+                report[binding.file].append(ReportEntry.unresolved(binding.binding, undefined_module))
 
         # reports for files with duplicates need to be added because these dependencies are not modeled
         for file_with_duplicates, items in self._duplicate_definition_report.items():
@@ -230,13 +236,13 @@ class Linter:
         document = self._map_module_identifier_to_module.get(module)
 
         if document is not None:
-            report.setdefault(document.file, [])
+            assert document.module
+            report.setdefault(
+                document.file, list(self._make_file_report(document.file)))
 
         if module not in self._map_module_identifier_to_bindings:
             assert document is not None
-            assert document.module
             report[document.file].append(ReportEntry.no_bindings(document.module))
-            report[document.file].extend(self._make_file_report(document.file))
 
         assert document is None or module in self.import_graph.graph
 
@@ -254,9 +260,15 @@ class Linter:
                 report[document.file].append(
                     ReportEntry.duplicate(location, symbol_name=duplicate))
 
-        for unresolved, location in self.import_graph.unresolved.get(module, {}).items():
-            report[document.file].append(
-                ReportEntry.unresolved(location, unresolved))
+        for unresolved, from_module in self.import_graph.unresolved.items():
+            location = from_module.get(module)
+            if location:
+                report[document.file].append(ReportEntry.unresolved(location, unresolved))
+
+        for cycle_causing_module, others in self.import_graph.cycles.get(module, {}).items():
+            location = document.get_import_location(cycle_causing_module)
+            if location:
+                report[document.file].append(ReportEntry.cycle(location, cycle_causing_module, others=others))
 
         for lang, binding in self._map_module_identifier_to_bindings.get(module, {}).items():
             report.setdefault(binding.file, [])
@@ -272,7 +284,7 @@ class Linter:
             if match:
                 pos = Position(int(match.group(2)), int(match.group(3)))
                 location = Location(match.group(1), Range(pos, pos))
-            yield ReportEntry(location, 'error', message=message)
+            yield ReportEntry.error(location, message=message)
         yield from self._duplicate_definition_report.get(document.file, ())
 
     def _make_document_binding_report(self, document: Document) -> Iterator[ReportEntry]:
@@ -316,7 +328,8 @@ class Linter:
                     if trefi.target_module == gimport.imported_module:
                         break
                 else:
-                    yield ReportEntry.unused_import(binding.binding, 'unused', unused_module=gimport.imported_module)
+                    yield ReportEntry.unused_import(
+                        binding.binding, unused_module=gimport.imported_module)
 
     def _make_file_report(self, file: str) -> Iterator[ReportEntry]:
         document = self._map_file_to_document[file]
@@ -426,7 +439,7 @@ class Linter:
         """ Checks if file is linked """
         return self._map_file_to_document.get(file) is not None
 
-    def _unlink(self, file: str, silent: bool = True):
+    def _unlink(self, file: str, silent: bool = False):
         """ Deletes all symbols/links provided by the file if tracked. """
         if file in self.tags:
             del self.tags[file]
@@ -581,3 +594,14 @@ class ReportEntry:
     @staticmethod
     def duplicate(location: Union[Location, str], symbol_name: str):
         return ReportEntry(location, 'duplicate', symbol_name=symbol_name)
+
+    @classmethod
+    def cycle(self,
+              location: Union[Location, str],
+              cycle_causing_module: Union[ModuleIdentifier, str],
+              others: List[Union[ModuleIdentifier, str]]):
+        return ReportEntry(location, 'cycle', module=cycle_causing_module, others=others)
+
+    @classmethod
+    def error(self, location: Union[Location, str], message: Union[Exception, str]):
+        return ReportEntry(location, 'error', message=str(message))

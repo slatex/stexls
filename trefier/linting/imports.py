@@ -58,6 +58,9 @@ class ImportGraph:
             for parent in self.references.get(current, ()):
                 if parent not in need_update:
                     frontier.add(parent)
+            for child in self.graph.get(current, ()):
+                if child not in need_update:
+                    frontier.add(child)
 
         # remove unresolved from update
         need_update -= set(self.unresolved)

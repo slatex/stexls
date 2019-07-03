@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Optional
 
 import os.path as _path
 import json
@@ -81,7 +81,7 @@ class Position:
 
 
 class Range:
-    def __init__(self, begin: Position, end: Position):
+    def __init__(self, begin: Position, end: Optional[Position]):
         """
         A range between two positions
         :param begin: Begin of the range
@@ -89,10 +89,10 @@ class Range:
         """
         if not isinstance(begin, Position):
             raise ValueError(f"begin must be of type Position. Found: {str(type(begin))}")
-        if not isinstance(end, Position):
+        if end is not None and not isinstance(end, Position):
             raise ValueError(f"end must be of type Position. Found: {str(type(end))}")
         self.begin = begin
-        self.end = end
+        self.end = end or begin
 
     def copy_from(self, that: Range):
         self.begin = Position(0, 0)

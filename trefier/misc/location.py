@@ -81,7 +81,7 @@ class Position:
 
 
 class Range:
-    def __init__(self, begin: Position, end: Optional[Position]):
+    def __init__(self, begin: Position, end: Optional[Position] = None):
         """
         A range between two positions
         :param begin: Begin of the range

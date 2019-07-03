@@ -16,6 +16,10 @@ class Position:
         self.line = line
         self.column = column
 
+    def copy_from(self, that: Position):
+        self.line = that.line
+        self.column = that.column
+
     def __repr__(self):
         return f'Position(line={self.line}, column={self.column})'
     
@@ -89,6 +93,12 @@ class Range:
             raise ValueError(f"end must be of type Position. Found: {str(type(end))}")
         self.begin = begin
         self.end = end
+
+    def copy_from(self, that: Range):
+        self.begin = Position(0, 0)
+        self.begin.copy_from(that.begin)
+        self.end = Position(0, 0)
+        self.end.copy_from(that.end)
 
     def __le__(self, other: Union[Range, Position]) -> bool:
         return self.before(other)
@@ -176,6 +186,13 @@ class Location:
         self.range = range
         self._offset = offset
         self._text = None
+
+    def copy_from(self, that: Location):
+        self.file = that.file
+        self.range = Range(Position(0, 0), Position(0, 0))
+        self.range.copy_from(that.range)
+        self._offset = that._offset
+        self._text = that._text
 
     def union(self, other: Union[Location, Range]) -> Location:
         other_range = other if isinstance(other, Range) else other.range

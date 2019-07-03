@@ -6,6 +6,7 @@ import itertools
 import multiprocessing
 import difflib
 import re
+from functools import partial
 
 from trefier.misc.location import *
 from trefier.misc.file_watcher import FileWatcher
@@ -22,12 +23,10 @@ __all__ = ['Linter']
 
 class Linter:
     def load_tagger_model(self, path: str):
-        if self.tagger_path != path:
-            # reset tags if a new tagger is loaded
-            self.tags.clear()
         if seq2seq.Seq2SeqModel.verify_loadable(path):
             self.tagger = seq2seq.Seq2SeqModel.load(path)
             self.tagger_path = os.path.abspath(path)
+            self.tags = dict()
             for module, bindings in self._map_module_identifier_to_bindings.items():
                 for lang, binding in bindings.items():
                     if lang in ('en', 'lang') and binding.file not in self.tags:
@@ -156,150 +155,92 @@ class Linter:
 
     def update(self,
                n_jobs: Optional[int] = None,
-               use_multiprocessing: bool = True):
+               use_multiprocessing: bool = True,
+               debug: bool = False):
         # get file changes
         deleted, modified = self._update_watched_directories()
         if not (modified or deleted):
             return {}
 
-        # accumulate modules of all unlinked and relinked documents
-        changed_modules = set()
-
         # remove all changed files
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
-                changed_modules.add(str(self._map_file_to_document[file].module_identifier))
-                self._unlink(file)
+                self._unlink(file, silent=not debug)
 
         # Parse all files in parallel or sequential
-        if use_multiprocessing:
+        if use_multiprocessing and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
                 documents = pool.map(Document, modified)
         else:
-            documents = list(map(Document, modified))
+            constructor = partial(Document, ignore_exceptions=False) if debug else Document
+            documents = list(map(constructor, modified))
 
         # link successfully compiled documents
         for document in filter(lambda doc: doc.success, documents):
-            assert document.module_identifier
-            changed_modules.add(str(document.module_identifier))
-            self._link(document)
+            self._link(document, silent=not debug)
 
         # get all modules that were changed
-        changed_modules = self.import_graph.update(changed_modules)
+        changed_modules = self.import_graph.update()
 
-        report = self.make_report(changed_modules)
+        report: Dict[str, Optional[List[ReportEntry]]] = dict(self.make_report())
 
         # add exceptions from not successfully compiled documents to report
         for document in filter(lambda doc: not doc.success, documents):
             report.setdefault(document.file, [])
             report[document.file].extend(ReportEntry.error(document.file, e) for e in document.exceptions)
+            if document.syntax_errors:
+                for syntax_error_location, information in document.syntax_errors.items():
+                    report[document.file].append(
+                        ReportEntry.syntax_error(
+                            syntax_error_location, message=information['msg'], symbol=information['symbol']))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
             report.setdefault(unhandled)
+            if not report[unhandled]:
+                report[unhandled] = None
 
         return report
 
-    def make_report(self, modules: Optional[Set[str]] = None) -> Dict[str, List[ReportEntry]]:
-        report: Dict[str, List[ReportEntry]] = dict()
+    def make_report(self, documents: Optional[List[Document]] = None) -> Iterator[Tuple[str, List[ReportEntry]]]:
+        if not documents:
+            documents = list(self._map_file_to_document.values())
 
-        # argument is none, create report for all modules currently tracked
-        if modules is None:
-            modules = set(self._map_module_identifier_to_module)
+        for document in documents:
+            yield (document.file, list(self._make_document_report(document)))
 
-        # accumulate module reports
-        for changed_module in modules:
-            report.update(self._make_module_report(changed_module))
-
-        # add bindings without module to report
-        for undefined_module in (
-                set(self._map_module_identifier_to_bindings) - set(self._map_module_identifier_to_module)):
-            for lang, binding in self._map_module_identifier_to_bindings[undefined_module].items():
-                report.setdefault(binding.file, [])
-                report[binding.file].append(ReportEntry.unresolved(binding.binding, undefined_module))
-
-        # reports for files with duplicates need to be added because these dependencies are not modeled
-        for file_with_duplicates, items in self._duplicate_definition_report.items():
-            if file_with_duplicates not in report:
-                report[file_with_duplicates] = list(self._make_file_report(file_with_duplicates))
-
-        return report
-
-    def _make_module_report(
-            self, module: Union[ModuleIdentifier, str]) -> Dict[str, List[ReportEntry]]:
-        """ Create detailed error report for all files within this module. """
-
-        module = str(module)
-
-        report: Dict[str, List[ReportEntry]] = dict()
-
-        document = self._map_module_identifier_to_module.get(module)
-
-        if document is not None:
-            assert document.module
-            report.setdefault(
-                document.file, list(self._make_file_report(document.file)))
-
-        if module not in self._map_module_identifier_to_bindings:
-            assert document is not None
-            report[document.file].append(ReportEntry.no_bindings(document.module))
-
-        assert document is None or module in self.import_graph.graph
-
-        for redundant, sources in self.import_graph.redundant.get(module, {}).items():
-            location = document.get_import_location(redundant)
-            if not location:
-                raise LinterInternalException.create(document.module, f'module {redundant} not found in {module}')
-            report.setdefault(document.file, [])
-            for source in sources:
-                report[document.file].append(
-                    ReportEntry.redundant(location, redundant_module_name=source))
-
-        for duplicate, locations in self.import_graph.duplicates.get(module, {}).items():
-            for location in locations:
-                report[document.file].append(
-                    ReportEntry.duplicate(location, symbol_name=duplicate))
-
-        for unresolved, from_module in self.import_graph.unresolved.items():
-            location = from_module.get(module)
-            if location:
-                report[document.file].append(ReportEntry.unresolved(location, unresolved))
-
-        for cycle_causing_module, others in self.import_graph.cycles.get(module, {}).items():
-            location = document.get_import_location(cycle_causing_module)
-            if location:
-                report[document.file].append(ReportEntry.cycle(location, cycle_causing_module, others=others))
-
-        for lang, binding in self._map_module_identifier_to_bindings.get(module, {}).items():
-            report.setdefault(binding.file, [])
-            report[binding.file].extend(self._make_file_report(binding.file))
-
-        return report
-
-    def _make_document_exception_report(self, document: Document) -> Iterator[ReportEntry]:
-        for e in document.exceptions:
-            message = str(e)
-            location = document.file
-            match = re.match(r'^"?(\s*)"?:(\d+):\d+', message)
-            if match:
-                pos = Position(int(match.group(2)), int(match.group(3)))
-                location = Location(match.group(1), Range(pos, pos))
-            yield ReportEntry.error(location, message=message)
-        yield from self._duplicate_definition_report.get(document.file, ())
+    def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
+        """ Returns an iterator for all files assigned to that module """
+        module_document = self._map_module_identifier_to_module.get(str(module))
+        if module_document:
+            yield module_document
+        yield from self._map_module_identifier_to_bindings.get(module, {}).values()
 
     def _make_document_binding_report(self, document: Document) -> Iterator[ReportEntry]:
-        # report for trefis
+        # check wether the module of the filename matches environment
+        if document.binding.module_and_file_name_mismatch:
+            yield ReportEntry.module_name_mismatch(document.binding)
+
+        # check wether the language of the filename matches the environment
+        if document.binding.module_lang_and_file_name_lang_mismatch:
+            yield ReportEntry.binding_lang_mismatch(document.binding)
+
+        # report module defined
+        if str(document.module_identifier) not in self._map_module_identifier_to_module:
+            yield ReportEntry.unresolved(document.binding, str(document.module_identifier))
+
+        # report undefined trefis
         for trefi in document.trefis:
             if not self._resolve_module(trefi.module, trefi.target_module):
                 # create unresolved report if trefi module not resolved
-                location = trefi or trefi.target_module_location
+                location = trefi.target_module_location or trefi
                 yield ReportEntry.unresolved(
-                    location, str(trefi.target_module))
+                    location, trefi.target_module)
                 unresolved_module = self._map_module_identifier_to_module.get(trefi.target_module)
                 # if unresolved module name was found, make report for missing import
                 if unresolved_module:
                     yield ReportEntry.missing_import(
-                        location, str(unresolved_module.module_identifier))
+                        location, unresolved_module.module_identifier)
             elif not self._resolve_symbol(trefi.module, trefi.symbol_name, trefi.target_module):
                 # create unresolved report for trefi symbol name
                 yield ReportEntry.unresolved(
@@ -309,31 +250,73 @@ class Linter:
                     symbol.module for symbol in self.symbols()
                     if symbol.symbol_name == trefi.symbol_name)
                 for required_module in possible_required_modules:
-                    yield ReportEntry.missing_import(
-                        trefi, required_module)
+                    yield ReportEntry.missing_import(trefi, required_module)
+
+        # report undefined defis
         for defi in document.defis:
             if not self._resolve_symbol(defi.module, defi.symbol_name):
                 yield ReportEntry.unresolved(
                     defi, os.path.join(str(defi.module), defi.symbol_name))
+
+        # report tag matches
         if document.file in self.tags:
             for module, name, locations in self._get_possible_trefi_matches(document):
                 yield ReportEntry.tag_match(locations, module=module, symbol_name=name)
 
     def _make_document_module_report(self, document: Document) -> Iterator[ReportEntry]:
+        # report module name in file and environment mismatch
+        if document.module.module_and_file_name_mismatch:
+            yield ReportEntry.module_name_mismatch(document.module)
+
+        # check gimports resolveable
         for gimport in document.gimports:
             if not self._resolve_module(document.module_identifier, gimport.imported_module):
                 yield ReportEntry.unresolved(gimport, gimport.imported_module)
-            for lang, binding in self._map_module_identifier_to_bindings.get(str(document.module_identifier), {}).items():
-                for trefi in binding.trefis:
-                    if trefi.target_module == gimport.imported_module:
-                        break
-                else:
-                    yield ReportEntry.unused_import(
-                        binding.binding, unused_module=gimport.imported_module)
+            else:
+                for lang, binding in self._map_module_identifier_to_bindings.get(str(document.module_identifier), {}).items():
+                    for trefi in binding.trefis:
+                        if trefi.target_module == gimport.imported_module:
+                            break
+                    else:
+                        yield ReportEntry.unused_import(
+                            gimport, unused_module=gimport.imported_module, lang=binding.binding.lang)
 
-    def _make_file_report(self, file: str) -> Iterator[ReportEntry]:
-        document = self._map_file_to_document[file]
-        yield from self._make_document_exception_report(document)
+        # report that this module has no language bindings
+        if str(document.module_identifier) not in self._map_module_identifier_to_bindings:
+            yield ReportEntry.no_bindings(document.module)
+
+        # report redundant imports
+        for redundant, sources in self.import_graph.redundant.get(str(document.module_identifier), {}).items():
+            location = document.get_import_location(redundant)
+            for source in sources:
+                yield ReportEntry.redundant(location, redundant_module_name=source)
+
+        # report duplicate imports
+        for duplicate, locations in self.import_graph.duplicates.get(str(document.module_identifier), {}).items():
+            for location in locations:
+                yield ReportEntry.duplicate(location, symbol_name=duplicate)
+
+        # report cyclic imports
+        for cycle_causing_module, others in self.import_graph.cycles.get(str(document.module_identifier), {}).items():
+            location = document.get_import_location(cycle_causing_module)
+            if location:
+                yield ReportEntry.cycle(location, cycle_causing_module, others=others)
+
+    def _make_document_report(self, document: Document) -> Iterator[ReportEntry]:
+        # report exceptions of the document
+        for e in document.exceptions:
+            message = str(e)
+            location = document.file
+            match = re.match(r'^"?(\s*)"?:(\d+):(\d+)', message)
+            if match:
+                pos1 = Position(int(match.group(2)), int(match.group(3)))
+                pos2 = Position(pos1.line, pos1.column + 1)
+                location = Location(match.group(1), Range(pos1, pos2))
+            yield ReportEntry.error(location, message=message)
+
+        # report duplicate definition errors generated during linking
+        yield from self._duplicate_definition_report.get(document.file, ())
+
         if document.binding:
             yield from self._make_document_binding_report(document)
         elif document.module:
@@ -367,7 +350,7 @@ class Linter:
     def _resolve_module(
             self, module: Union[ModuleIdentifier, str], target: ModuleIdentifier) -> Optional[ModuleDefinitonSymbol]:
         """ Resolves the location of target module given the current module """
-        if str(target) not in self.import_graph.graph:
+        if str(target) not in self._map_module_identifier_to_module:
             return None
         if str(target) in self.import_graph.reachable_modules_of(str(module)):
             return self._map_module_identifier_to_module[str(target)].module
@@ -568,7 +551,7 @@ class ReportEntry:
 
     @staticmethod
     def unresolved(location: Union[Location, str], unresolved_symbol_or_module_name: str):
-        return ReportEntry(location, 'unresolved', symbol=unresolved_symbol_or_module_name)
+        return ReportEntry(location, 'unresolved', symbol=str(unresolved_symbol_or_module_name))
 
     @staticmethod
     def redundant(location: Union[Location, str], redundant_module_name: Union[ModuleIdentifier, str]):
@@ -579,29 +562,45 @@ class ReportEntry:
         return ReportEntry(location, 'missing_import', module=str(missing_module))
 
     @staticmethod
-    def tag_match(locations: List[Union[Location, str]], module: Union[ModuleIdentifier, str], symbol_name: str):
+    def tag_match(
+            locations: List[Union[Location, str]],
+            module: Union[ModuleIdentifier, str],
+            symbol_name: Union[ModuleIdentifier, Symbol, str]):
         return ReportEntry(
-            Location.reduce_union(locations), 'match', module=str(module), name=symbol_name, tokens=locations)
+            Location.reduce_union(locations), 'match', module=str(module), name=str(symbol_name), tokens=locations)
 
     @staticmethod
-    def unused_import(location: Union[Location, str], unused_module: Union[ModuleIdentifier, str]):
-        return ReportEntry(location, 'unused', module=unused_module)
+    def unused_import(location: Union[Location, str], unused_module: Union[ModuleIdentifier, str], lang: str):
+        return ReportEntry(location, 'unused', module=str(unused_module), lang=lang)
 
     @staticmethod
     def no_bindings(module: ModuleDefinitonSymbol):
         return ReportEntry(module, 'no_bindings', module_name=module.module_name)
 
     @staticmethod
-    def duplicate(location: Union[Location, str], symbol_name: str):
-        return ReportEntry(location, 'duplicate', symbol_name=symbol_name)
+    def duplicate(
+            location: Union[Location, str],
+            symbol_name: Union[ModuleIdentifier, Symbol, str]):
+        return ReportEntry(location, 'duplicate', symbol_name=str(symbol_name))
 
-    @classmethod
-    def cycle(self,
-              location: Union[Location, str],
+    @staticmethod
+    def cycle(location: Union[Location, str],
               cycle_causing_module: Union[ModuleIdentifier, str],
               others: List[Union[ModuleIdentifier, str]]):
-        return ReportEntry(location, 'cycle', module=cycle_causing_module, others=others)
+        return ReportEntry(location, 'cycle', module=str(cycle_causing_module), others=list(map(str, others)))
 
-    @classmethod
-    def error(self, location: Union[Location, str], message: Union[Exception, str]):
+    @staticmethod
+    def error(location: Union[Location, str], message: Union[Exception, str]):
         return ReportEntry(location, 'error', message=str(message))
+
+    @staticmethod
+    def module_name_mismatch(location: Union[Location, str]):
+        return ReportEntry(location, 'module_name_mismatch')
+
+    @staticmethod
+    def binding_lang_mismatch(location: Union[Location, str]):
+        return ReportEntry(location, 'binding_lang_mismatch')
+
+    @staticmethod
+    def syntax_error(location: Union[Location, str], message: str, symbol: object):
+        return ReportEntry(location, 'syntax_error', message=message)

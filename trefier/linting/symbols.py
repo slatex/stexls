@@ -44,9 +44,7 @@ class ModuleDefinitonSymbol(Symbol):
     def __init__(self, module_name: str, file: str, full_range: Range):
         super().__init__(file, full_range)
         self.module_name = module_name
-        if module_name != self.module.module_name:
-            raise LinterException(f'Module name inferred from the file name ({self.module.module_name})'
-                                  f' does not match with the name ({module_name}) written in the environment ')
+        self.module_and_file_name_mismatch = module_name != self.module.module_name
 
     @staticmethod
     def from_node(node: Environment) -> ModuleDefinitonSymbol:
@@ -73,9 +71,8 @@ class ModuleBindingDefinitionSymbol(Symbol):
         super().__init__(file, full_range)
         self.lang = lang
         self.bound_module_name = bound_module_name
-        if bound_module_name != self.module.module_name:
-            raise LinterException(f'Module name inferred from filename ({self.module.module_name})'
-                                  f'does not match with the environment ({bound_module_name})')
+        self.module_and_file_name_mismatch = bound_module_name != self.module.module_name
+        self.module_lang_and_file_name_lang_mismatch = f'.{lang}.' not in file
 
     @staticmethod
     def from_node(node: Environment) -> ModuleBindingDefinitionSymbol:
@@ -217,6 +214,9 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
 
         match = EnvironmentSymbolWithStaticArgumentCount.MASTER_PATTERN.fullmatch(env.env_name)
 
+        if match is None:
+            raise LinterInternalException(f'{location} Invalid environment: {env.env_name}')
+
         is_alt = 'a' in match.group(1)
 
         static_argument_count = len(match.group(3)) + int(is_alt)
@@ -256,13 +256,13 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
 
     @staticmethod
     def get_name_argument_and_location(env: Environment) -> Optional[Tuple[str, Location]]:
-        if len(env.oargs) != 1:
+        if len(env.oargs) < 1:
             return None
         oarg = env.oargs[0]
         pattern = re.compile(r'([\[,]\s*name\s*=\s*)(.+?)(?:[$\s,\]]|$)')
         matches = list(re.finditer(pattern, oarg.text))
         if len(matches) != 1:
-            raise LinterArgumentCountException.create(_node_to_location(oarg), 'exactly 1 "name="', len(matches))
+            return None
         match = matches[0]
         symbol_name = match.group(2)
         oarg_begin, oarg_end = list(oarg.split_range(pattern, keep_delimeter=True))[1]
@@ -291,10 +291,19 @@ class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
         if symbol.env_name == 'symdef':
             location = _node_to_location(symbol)
             name_argument = EnvironmentSymbolWithStaticArgumentCount.get_name_argument_and_location(symbol)
-            if name_argument is None:
-                raise LinterInternalException.create(str(symbol), f'Expected "name=" argument in symdef')
-            symbol_name, symbol_name_location = name_argument
-            symbol_name_locations = [symbol_name_location]
+            if name_argument is not None:
+                # first use name= argument as symbol name
+                symbol_name, symbol_name_location = name_argument
+                symbol_name_locations = [symbol_name_location]
+            elif len(symbol.rargs) >= 1:
+                # else use first rarg
+                symbol_name_location = None
+                rarg = symbol.rargs[0].remove_brackets()
+                symbol_name_locations = [_node_to_location(rarg)]
+                symbol_name = rarg.text.strip()
+            else:
+                # else exception
+                raise LinterInternalException.create(location, f'Expected "name=" argument in symdef')
             return SymiSymbol(
                 symbol_name, symbol_name_locations,
                 [], 'symdef', symbol.parser.file, location.range

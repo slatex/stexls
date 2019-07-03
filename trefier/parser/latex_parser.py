@@ -1,14 +1,17 @@
 from __future__ import annotations
-from typing import Tuple, List, Iterator, Union, Pattern
+from typing import Iterator, Pattern, Dict
 import itertools
-import copy
 import os
 import re
+
+from trefier.misc.location import *
 
 from .grammar.out.SmglomLatexLexer import SmglomLatexLexer
 from .grammar.out.SmglomLatexParserListener import SmglomLatexParserListener
 from .grammar.out.SmglomLatexParser import SmglomLatexParser
 import antlr4
+from antlr4.error.ErrorListener import ErrorListener
+
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'Math', 'Node']
 
@@ -252,7 +255,8 @@ class LatexParser(SmglomLatexParserListener):
     def exitEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
         assert isinstance(self._stack[-1], Environment)
         if not self._stack[-1].name.text.strip() == str(ctx.TOKEN()).strip():
-            raise Exception(f"Environment unbalanced: Expected {self._stack[-1].name.text.strip()} found {str(ctx.TOKEN()).strip()}")
+            raise Exception(f"Environment unbalanced:"
+                            f" Expected {self._stack[-1].name.text.strip()} found {str(ctx.TOKEN()).strip()}")
 
     def enterMath(self, ctx: SmglomLatexParser.MathContext):
         pass
@@ -331,16 +335,44 @@ class LatexParser(SmglomLatexParserListener):
             lexer = SmglomLatexLexer(antlr4.InputStream(self.source))
             stream = antlr4.CommonTokenStream(lexer)
             parser = SmglomLatexParser(stream)
-            parser._errHandler = antlr4.BailErrorStrategy()
+            error_listener = MyErrorListener(self.file)
+            parser.addErrorListener(error_listener)
             tree = parser.main()
             walker = antlr4.ParseTreeWalker()
             walker.walk(self, tree)
             self.root = self._stack[0]
+            self.syntax_errors = error_listener.syntax_errors
             self.success = True
         except Exception as e:
             if ignore_exceptions:
-                self.exception = str(e)
+                self.exception = e
             else:
                 raise
         finally:
             del self._stack
+
+
+class MyErrorListener(ErrorListener):
+    def __init__(self, file: str):
+        super().__init__()
+        self.file = file
+        self.syntax_errors: Dict[Location, str] = {}
+
+    def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
+        assert isinstance(line, int)
+        assert isinstance(column, int)
+        assert isinstance(msg, str)
+        self.syntax_errors[Location(self.file, Range(Position(line, column)))] = msg
+
+    def reportAmbiguity(self, recognizer, dfa, startIndex, stopIndex, exact, ambigAlts, configs):
+        if exact:
+            print("AMBIGUITY", self.file, startIndex, stopIndex, exact, ambigAlts)
+        pass #raise Exception(f'reportAmbiguity start={startIndex}, stop={stopIndex}, ambigAlts={ambigAlts}')
+
+    def reportAttemptingFullContext(self, recognizer, dfa, startIndex, stopIndex, conflictingAlts, configs):
+        # print("fullContext", self.file, startIndex, stopIndex, conflictingAlts)
+        pass #raise Exception(f'reportAttemptingFullContext start={startIndex}, stop={stopIndex}')
+
+    def reportContextSensitivity(self, recognizer, dfa, startIndex, stopIndex, prediction, configs):
+        print('contextSensitive', self.file, startIndex, stopIndex, prediction)
+        pass #raise Exception(f'reportContextSensitivity start={startIndex}, stop={stopIndex}, {prediction}')

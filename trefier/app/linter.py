@@ -4,18 +4,28 @@ from glob import glob
 from os.path import isdir, expanduser
 import itertools
 from loguru import logger
-from functools import wraps
 import argh
-import threading
-import sys
+import traceback
+import functools
 
 from trefier.misc.location import *
-from trefier.linting.symbols import ModuleIdentifier
+from trefier.linting.identifiers import ModuleIdentifier
 from trefier.misc.Cache import Cache
 from trefier.linting.linter import Linter
 from trefier.app.cli import CLI
 
 __all__ = ['LinterCLI']
+
+
+def ignore_exceptions(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except:
+            traceback.print_exc()
+
+    return wrapper
 
 
 class LinterCLI(CLI):
@@ -38,21 +48,20 @@ class LinterCLI(CLI):
                     rejected += 1
             self.return_result(self.add, 0, message=f'Added {added}, rejected {rejected}')
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during add_directory")
             self.return_result(self.add, 1, message=str(e))
 
     @arg('-j', '--jobs', type=int, help="Number of jobs to help parsing tex files.")
+    @arg('-m', '--use_multiprocessing', help="Enables multiprocessing")
     @arg('-d', '--debug', help="Enables debug mode")
-    def update(self, jobs=None, debug=False):
-        self.logger.info(f"Updating linter jobs={jobs} debug={debug}")
+    def update(self, jobs=None, use_multiprocessing=True, debug=False):
+        self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
-            report = self.linter.update(jobs, debug)
+            report = self.linter.update(jobs, use_multiprocessing=use_multiprocessing, debug=debug)
             self.changed |= len(report) > 0
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception thrown during update")
             self.return_result(self.update, 1, message=str(e))
 
@@ -63,7 +72,6 @@ class LinterCLI(CLI):
             self.logger.info(f"{len(report)} files in report")
             self.return_result(self.make_report, 0, report=report)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception thrown during make_report")
             self.return_result(self.make_report, 1, message=str(e))
 
@@ -74,7 +82,6 @@ class LinterCLI(CLI):
             self.linter.load_tagger_model(path)
             self.return_result(self.load_tagger, 0, settings=self.linter.tagger.settings)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during load_tagger")
             self.return_result(self.load_tagger, 1, message=str(e))
 
@@ -84,7 +91,6 @@ class LinterCLI(CLI):
             self.linter.import_graph.open_in_image_viewer(ModuleIdentifier.from_file(file))
             self.return_result(self.draw_graph, 0)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during draw_graph")
             self.return_result(self.draw_graph, 1, message=str(e))
 
@@ -97,7 +103,6 @@ class LinterCLI(CLI):
             definition = self.linter.goto_definition(file, line, column)
             self.return_result(self.goto_definition, 0, definition=definition)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during goto_definition")
             self.return_result(self.goto_definition, 1, message=str(e))
 
@@ -110,7 +115,6 @@ class LinterCLI(CLI):
             implementations = self.linter.goto_implementation(file, line, column)
             self.return_result(self.goto_implementation, 0, implementations=implementations)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during goto_implementation")
             self.return_result(self.goto_implementation, 1, message=str(e))
 
@@ -123,7 +127,6 @@ class LinterCLI(CLI):
             references = self.linter.find_references(file, line, column)
             self.return_result(self.find_references, 0, references=references)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during find_references")
             self.return_result(self.find_references, 1, message=str(e))
 
@@ -135,16 +138,84 @@ class LinterCLI(CLI):
             completion_items = self.linter.auto_complete(file, context)
             self.return_result(self.auto_complete, 0, completion_items=completion_items)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception("Exception during auto_complete")
             self.return_result(self.auto_complete, 1, message=str(e))
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def transitive(self, module: ModuleIdentifier):
+        yield from self.linter.import_graph.transitive.get(str(module), ())
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def references(self, module: ModuleIdentifier):
+        yield from self.linter.import_graph.references.get(str(module), ())
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def parents(self, module: ModuleIdentifier):
+        yield from self.linter.import_graph.parents_of(str(module), ())
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def ls(self, module: ModuleIdentifier):
+        yield from [
+            d.file
+            for d in self.linter._documents_in_module(str(module))
+        ]
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def exceptions(self, module: ModuleIdentifier):
+        return {
+            d.file: d.exceptions
+            for d in self.linter._documents_in_module(str(module))
+        }
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def modules(self, module: ModuleIdentifier):
+        return self.linter.import_graph.modules.get(str(module))
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def imports(self, module: ModuleIdentifier):
+        return self.linter.import_graph.graph.get(str(module))
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def symbols(self, module: ModuleIdentifier):
+        document = self.linter._map_module_identifier_to_module.get(str(module))
+        if document:
+            return document.module
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def bindings(self, module: ModuleIdentifier):
+        return [
+            binding.binding
+            for lang, binding
+            in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items()
+        ]
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def defis(self, module: ModuleIdentifier):
+        for lang, binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items():
+            yield from binding.defis
+
+    @arg('module', type=ModuleIdentifier.from_id_string)
+    @ignore_exceptions
+    def trefis(self, module: ModuleIdentifier):
+        for lang, binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items():
+            yield from binding.trefis
 
     def setup(self):
         self._setup_called = True
         self.changed = False
-        self.logger = logger.bind(name="model_cli")
-        self.logger.add(expanduser('~/.trefier/database_cli.log'), enqueue=True)
-        self.logger.info("Beginning session")
+        self.logger = logger.bind(name="linter_cli")
+        self.logger.add(expanduser('~/.trefier/linter.log'), enqueue=True)
+        self.logger.info("Session start")
         self.return_result(self.setup, 0)
 
     def run(self, *extra_commands):
@@ -158,12 +229,16 @@ class LinterCLI(CLI):
             self.load_tagger,
             self.auto_complete,
             self.draw_graph,
-            self.linter.ls,
-            self.linter.modules,
-            self.linter.symbols,
-            self.linter.bindings,
-            self.linter.trefis,
-            self.linter.defis,
+            self.transitive,
+            self.references,
+            self.ls,
+            self.exceptions,
+            self.modules,
+            self.imports,
+            self.symbols,
+            self.bindings,
+            self.trefis,
+            self.defis,
             *extra_commands
         ])
 
@@ -172,7 +247,6 @@ class LinterCLI(CLI):
             self.logger.info(f"Returning {command.__name__} with status {status}")
             return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
         except Exception as e:
-            #if __debug__: raise
             self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
             super().return_result(command, 1, message=str(e))
 
@@ -201,20 +275,21 @@ class LinterJSONEncoder(json.JSONEncoder):
             return {"begin": obj.begin, "end": obj.end}
         if isinstance(obj, Location):
             return {"file": obj.file, "range": obj.range}
+        if isinstance(obj, ModuleIdentifier):
+            return str(obj)
         return obj.__dict__
-        #raise Exception("Object is not serializable")
 
 
 if __name__ == '__main__':
-    @argh.arg('--root', help="Root dir")
     @argh.arg('--cache', help="Name of the file used as cache")
-    def _main(root: str = None, cache: str = None):
-        #if __debug__: sys.stdin = iter(())
+    @argh.arg('--root', nargs='*', help="Root dir")
+    @argh.arg('--debug', help="Enables debug mode")
+    def _main(cache: str = None, root: List[str] = None, debug: bool = False):
         with Cache(cache, LinterCLI) as cache:
             cache.data.setup()
             if root:
-                cache.data.add([[root]])
-                cache.data.update()
+                cache.data.add([root])
+                cache.data.update(debug=debug)
             try:
                 cache.data.run()
             finally:

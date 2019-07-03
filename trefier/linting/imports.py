@@ -58,9 +58,6 @@ class ImportGraph:
             for parent in self.references.get(current, ()):
                 if parent not in need_update:
                     frontier.add(parent)
-            for child in self.graph.get(current, ()):
-                if child not in need_update:
-                    frontier.add(child)
 
         # remove unresolved from update
         need_update -= set(self.unresolved)
@@ -164,8 +161,7 @@ class ImportGraph:
 
     def reachable_modules_of(self, module: Union[ModuleIdentifier, str]) -> Set[str]:
         """ Returns set of all modules that are directly or indirectly imported as well as the current module. """
-        return (
-                {str(module)}
+        return ({str(module)}
                 | set(self.transitive.get(str(module), {}))
                 | set(self.graph.get(str(module), {})))
 

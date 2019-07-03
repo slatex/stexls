@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Union
+from typing import Optional, Dict
 
 from ..misc.location import *
 from ..parser.latex_parser import LatexParser
@@ -31,11 +31,11 @@ class Document:
         self.exceptions: List[Exception] = []
         self.module: Optional[ModuleDefinitonSymbol] = None
         self.binding: Optional[ModuleBindingDefinitionSymbol] = None
+        self.syntax_errors: Optional[Dict[Location, Dict[str, object]]] = None
         self.success = False
-        parser = LatexParser(file)
-        if parser.exception:
-            self.exceptions.append(parser.exception)
         try:
+            parser = LatexParser(file, ignore_exceptions=False)
+            self.syntax_errors = parser.syntax_errors
             if parser.success:
                 def catcher(symbol_type_constructor):
                     def wrapper(node):
@@ -68,29 +68,16 @@ class Document:
                     filter(None, map(catcher(ModuleDefinitonSymbol.from_node),
                                      parser.root.finditer(ModuleDefinitonSymbol.MODULE_PATTERN))))
 
-                if len(modules) > 1:
-                    raise LinterException(f'Too many modules defined ({len(modules)}): More at {modules[1]}')
-
-                if len(modules) == 1:
+                if len(modules) >= 1:
                     self.module = modules[0]
 
                 bindings: List[ModuleBindingDefinitionSymbol] = list(
                     filter(None, map(catcher(ModuleBindingDefinitionSymbol.from_node),
                                      parser.root.finditer(ModuleBindingDefinitionSymbol.MODULE_BINDING_PATTERN))))
 
-                if len(bindings) > 1:
-                    raise LinterException(f'Too many bindings defined ({len(bindings)}): More at {bindings[1]}')
-
-                if len(bindings) == 1:
+                if len(bindings) >= 1:
                     self.binding = bindings[0]
 
-                if self.binding and self.module:
-                    raise LinterException(f'Files must include either one binding or one module definition:'
-                                          f' Binding at {self.binding}, and module at {self.module}')
-
-                #if not self.binding and not self.module:
-                #    raise LinterException(f'File does neither contain a binding nor a module definition')
-
-                self.success = True
+                self.success = self.binding != self.module
         except Exception as e:
             self.exceptions.append(e)

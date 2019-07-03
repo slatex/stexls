@@ -222,7 +222,7 @@ class TestLinter(unittest.TestCase):
     def test_first_update(self):
         linter = Linter()
         linter.add('testdb/repo3/source')
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)
         self.assertEqual(5, len(linter.ls()))
         self.assertEqual(2, len(linter.modules()))
         self.assertEqual(3, len(linter.symbols()))
@@ -233,7 +233,7 @@ class TestLinter(unittest.TestCase):
     def test_unlink_all(self):
         linter = Linter()
         linter.add('testdb/repo3/source')
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)
         self.assertEqual(5, len(linter.ls()))
         self.assertEqual(2, len(linter.modules()))
         self.assertEqual(3, len(linter.symbols()))
@@ -405,13 +405,13 @@ class TestLinter(unittest.TestCase):
             self.assertIsNotNone(name_arg_impl.name_argument_location)
 
         file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/peak2.lang.tex'
-        impl = linter.goto_implementation(file, 6, 40)
+        impl = linter.goto_implementation(file, 5, 40)
         self.assertEqual(1, len(impl))
         for trefi_impl in impl:
             self.assertIsInstance(trefi_impl, DefiSymbol)
             self.assertEqual('middle3-symbol1', trefi_impl.symbol_name)
 
-        impl = linter.goto_implementation(file, 6, 20)
+        impl = linter.goto_implementation(file, 5, 20)
         self.assertEqual(1, len(impl))
         for trefi_module_impl in impl:
             self.assertIsInstance(trefi_module_impl, ModuleBindingDefinitionSymbol)
@@ -430,20 +430,54 @@ class TestLinter(unittest.TestCase):
     def test_unresolved_missing_import(self):
         linter = Linter()
         linter.add('testdb/missing_import/source')
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)
         raise NotImplementedError()
 
     def test_name_missing(self):
         linter = Linter()
         linter.add('testdb/name_missing/source')
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)
+
+    def test_symdef(self):
+        linter = Linter()
+        linter.add('testdb/symdef/source')
+        linter.update(debug=True)
+
+        sym1 = linter._map_module_identifier_to_module['testdb/symdef/module1'].symis
+        self.assertEqual(1, len(sym1))
+        self.assertEqual('module1-symdef', sym1[0].symbol_name)
+        self.assertEqual(1, len(sym1[0].symbol_name_locations))
+        self.assertEqual(31, sym1[0].symbol_name_locations[0].range.begin.column)
+        self.assertEqual(45, sym1[0].symbol_name_locations[0].range.end.column)
+
+        sym2 = linter._map_module_identifier_to_module['testdb/symdef/module2'].symis
+        self.assertEqual(1, len(sym2))
+        self.assertEqual('module2-symdef', sym2[0].symbol_name)
+        self.assertEqual(1, len(sym2[0].symbol_name_locations))
+        self.assertEqual(43, sym2[0].symbol_name_locations[0].range.begin.column)
+        self.assertEqual(57, sym2[0].symbol_name_locations[0].range.end.column)
+
+        mod1lang_file = linter._map_module_identifier_to_bindings['testdb/symdef/module1']['lang'].binding.file
+        definition = linter.goto_definition(mod1lang_file, 6, 53)
+        self.assertIsNotNone(definition)
+        self.assertIsInstance(definition, SymiSymbol)
+        self.assertEqual('module2-symdef', definition.symbol_name)
+
+        definition = linter.goto_definition(mod1lang_file, 5, 65)
+        self.assertIsNotNone(definition)
+        self.assertIsInstance(definition, SymiSymbol)
+        self.assertEqual('module2-symdef', definition.symbol_name)
+
+        definition = linter.goto_definition(mod1lang_file, 5, 55)
+        self.assertIsNotNone(definition)
+        self.assertIsInstance(definition, ModuleDefinitonSymbol)
 
     def _setup(self):
         linter = Linter()
         linter.add('testdb/two_peaks/source')
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)
         return linter
 
     def test_custom_update(self):
         linter = self._setup()
-        linter.update(use_multiprocessing=False)
+        linter.update(debug=True)

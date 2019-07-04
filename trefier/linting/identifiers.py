@@ -17,9 +17,10 @@ class ModuleIdentifier:
         return hash(self.base) ^ hash(self.repository_name) ^ hash(self.module_name)
 
     def __eq__(self, other: ModuleIdentifier):
-        return (self.base == other.base
-                and self.repository_name == other.repository_name
-                and self.module_name == other.module_name)
+
+        return other is not None and (self.base == other.base
+                                      and self.repository_name == other.repository_name
+                                      and self.module_name == other.module_name)
 
     @staticmethod
     def from_file(file: str) -> ModuleIdentifier:

@@ -421,7 +421,7 @@ class TestLinter(unittest.TestCase):
         linter = self._setup()
         file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/bottom3.lang.tex'
         ref_module = linter.find_references(file, 1, 36)
-        self.assertEqual(1, len(ref_module))
+        self.assertEqual(7, len(ref_module))
 
         file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/peak1.lang.tex'
         refs = linter.find_references(file, 8, 60)

@@ -353,7 +353,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
     TREFI_PATTERN = re.compile(r'[ma]*trefi+s?\*?')
 
     def __init__(self,
-                 target_module: ModuleIdentifier,
+                 target_module: Optional[str],
                  target_module_location: Optional[Location],
                  target_symbol_location: Optional[Location],
                  symbol_name: str,
@@ -363,6 +363,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                  file: str,
                  full_range: Range):
         super().__init__(symbol_name, symbol_name_locations, search_terms, env_name, file, full_range)
+        assert target_module is None or isinstance(target_module, str)
         self.target_module = target_module
         self.target_module_location = target_module_location
         self.target_symbol_location = target_symbol_location
@@ -373,7 +374,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
         location = _node_to_location(trefi)
 
-        target_module_identifier: ModuleIdentifier = ModuleIdentifier.from_file(trefi.parser.file)
+        target_module_identifier: Optional[str] = None
         target_module_location: Optional[Location] = None
         target_symbol_location: Optional[Location] = None
 
@@ -395,7 +396,7 @@ class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
             # assign new module from oarg or inherit in case of "trefi[?name]"
             if len(parts) >= 1 and parts[0][-1]:
-                target_module_identifier.module_name = parts[0][-1]
+                target_module_identifier = parts[0][-1]
                 target_module_location = Location(
                     trefi.parser.file,
                     Range(Position(*parts[0][0]), Position(*parts[0][1])))

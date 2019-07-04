@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set, Iterator
 import numpy as np
 import subprocess
 import sys
@@ -160,7 +160,10 @@ class ImportGraph:
         del self.cycles[module]
 
     def reachable_modules_of(self, module: Union[ModuleIdentifier, str]) -> Set[str]:
-        """ Returns set of all modules that are directly or indirectly imported as well as the current module. """
+        """ Returns set of all modules that are directly or indirectly imported as well as the current module.
+            If the module is not in the graph an empty set is returned. """
+        if str(module) not in self.graph:
+            return set()
         return ({str(module)}
                 | set(self.transitive.get(str(module), {}))
                 | set(self.graph.get(str(module), {})))
@@ -234,8 +237,10 @@ class ImportGraph:
             self,
             current: Union[ModuleIdentifier, str],
             stack: List[Union[ModuleIdentifier, str]]) -> Set[str]:
+        """ Reduces all modules that are transitively imported by current.
+            Returns the set of transitive as well as direct imports. """
         # return empty transitive set if unresolved
-        if current in self.unresolved:
+        if current not in self.graph:
             return set()
 
         stack.append(current)
@@ -273,3 +278,29 @@ class ImportGraph:
         # return transitive with respect to the caller
         # => current transitive imports + direct imports
         return set(self.transitive[current]) | set(self.graph[current])
+
+    def find_module(
+            self,
+            target_module: str,
+            module: Optional[Union[ModuleIdentifier, str]] = None) -> Iterator[ModuleIdentifier]:
+        """ Finds all modules in the import graph of <module> that have the module name <target_name>.
+            If no module is specified, all modules are considered. """
+        if module:
+            module = str(module)
+            if module not in self.graph:
+                return
+            for child in self.reachable_modules_of(module):
+                if child.endswith('/' + target_module):
+                    yield ModuleIdentifier.from_id_string(child)
+        else:
+            for module in self.graph:
+                if module.endswith('/' + target_module):
+                    yield ModuleIdentifier.from_id_string(module)
+        return
+
+    def is_module_reachable(
+            self,
+            imported_module: Union[ModuleIdentifier, str],
+            module: Union[ModuleIdentifier, str]) -> bool:
+        """ Tests if imported_module is reachable from module. """
+        return str(imported_module) in self.reachable_modules_of(module)

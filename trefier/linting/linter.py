@@ -237,8 +237,7 @@ class Linter:
                             assert symbol.target_module
                             yield ReportEntry.unresolved(symbol.target_symbol_location or symbol, symbol.target_module)
                             for missing_module in self.import_graph.find_module(symbol.target_module):
-                                if str(missing_module) not in child_modules:
-                                    yield ReportEntry.missing_import(symbol.target_symbol_location or symbol, missing_module)
+                                yield ReportEntry.missing_import(symbol.target_symbol_location or symbol, missing_module)
                         else:
                             yield ReportEntry.unresolved(symbol, str(target_module) + '/' + symbol.symbol_name)
                             for sym in self.symbols():

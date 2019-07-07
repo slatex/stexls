@@ -1,7 +1,7 @@
 from argh import *
 import argparse
 from glob import glob
-from os.path import isdir, expanduser
+from os.path import isdir, expanduser, abspath
 import itertools
 from loguru import logger
 import argh
@@ -60,7 +60,7 @@ class LinterCLI(CLI):
             report = self.linter.update(jobs, use_multiprocessing=use_multiprocessing, debug=debug)
             self.changed |= len(report) > 0
             self.logger.info(f"{len(report)} files updated")
-            self.return_result(self.update, 0)#, report=report)
+            self.return_result(self.update, 0, report=report)
         except Exception as e:
             self.logger.exception("Exception thrown during update")
             self.return_result(self.update, 1, message=str(e))
@@ -287,11 +287,15 @@ if __name__ == '__main__':
     def _main(cache: str = None, root: List[str] = None, debug: bool = False):
         with Cache(cache, LinterCLI) as cache:
             cache.data.setup()
+            if cache.path:
+                cache.data.logger.info(f'using cachefile at {abspath(cache.path)}')
+            else:
+                cache.data.logger.info('no cachefile specified: No cache will be saved')
             if root:
                 cache.data.add([root])
                 cache.data.update(debug=debug)
             try:
-                cache.data.run()
+                cache.data.run(cache.write)
             finally:
                 cache.write_on_exit = cache.write_on_exit and cache.data.changed
     argh.dispatch_command(_main)

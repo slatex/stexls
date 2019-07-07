@@ -3,6 +3,7 @@ import argparse
 from glob import glob
 from os.path import isdir, expanduser, abspath
 import itertools
+import os
 from loguru import logger
 import argh
 import traceback
@@ -33,20 +34,13 @@ class LinterCLI(CLI):
          nargs=argparse.REMAINDER,
          type=lambda x: glob(x, recursive=True),
          help="List of directories to add to watched list.")
-    def add(self, directories):
+    def add(self, directories: Union[List[os.PathLike], os.PathLike]):
         self.logger.info(f"Adding directories")
-        added = 0
-        rejected = 0
         try:
-            for directory in itertools.chain(*directories):
-                if isdir(directory):
-                    added += 1
-                    self.logger.info(f"Adding {directory}")
-                    self.linter.add(directory)
-                else:
-                    self.logger.info(f"Rejecting {directory}")
-                    rejected += 1
-            self.return_result(self.add, 0, message=f'Added {added}, rejected {rejected}')
+            if isinstance(directories, (str, os.PathLike)):
+                directories = glob(directories, recursive=True)
+            count_added = sum(map(self.linter.add, directories))
+            self.return_result(self.add, 0, message=f'Added {count_added}, rejected {len(directories) - count_added}')
         except Exception as e:
             self.logger.exception("Exception during add_directory")
             self.return_result(self.add, 1, message=str(e))
@@ -282,9 +276,9 @@ class LinterJSONEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
     @argh.arg('--cache', help="Name of the file used as cache")
-    @argh.arg('--root', nargs='*', help="Root dir")
+    @argh.arg('--root', type=str, help="Root dir")
     @argh.arg('--debug', help="Enables debug mode")
-    def _main(cache: str = None, root: List[str] = None, debug: bool = False):
+    def _main(cache: str = None, root: str = None, debug: bool = False):
         with Cache(cache, LinterCLI) as cache:
             cache.data.setup()
             if cache.path:
@@ -292,7 +286,8 @@ if __name__ == '__main__':
             else:
                 cache.data.logger.info('no cachefile specified: No cache will be saved')
             if root:
-                cache.data.add([root])
+                assert os.path.isdir(root)
+                cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
                 cache.data.update(debug=debug)
             try:
                 cache.data.run(cache.write)

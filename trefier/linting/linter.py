@@ -123,14 +123,14 @@ class Linter:
                                     references.append(symbol)
         return references
 
-    def add(self, directory):
-        added = 0
-        for d in glob(directory, recursive=True):
-            if os.path.isdir(d):
-                if d not in self._watched_directories:
-                    self._watched_directories.append(d)
-                    added += 1
-        return added
+    def add(self, directory: os.PathLike):
+        """ Adds a single directory to watched directory list.
+            Returns True if watched directory list changed, returns False otherwise. """
+        if os.path.isdir(directory):
+            if directory not in self._watched_directories:
+                self._watched_directories.append(directory)
+                return True
+        return False
 
     def _update_watched_directories(self):
         for dirname in list(self._watched_directories):
@@ -235,10 +235,10 @@ class Linter:
                         target_module = self._resolve_target_module_identifier(symbol)
                         if not target_module:
                             assert symbol.target_module
-                            yield ReportEntry.unresolved(symbol.target_symbol_location, symbol.target_module)
+                            yield ReportEntry.unresolved(symbol.target_symbol_location or symbol, symbol.target_module)
                             for missing_module in self.import_graph.find_module(symbol.target_module):
                                 if str(missing_module) not in child_modules:
-                                    yield ReportEntry.missing_import(symbol.target_symbol_location, missing_module)
+                                    yield ReportEntry.missing_import(symbol.target_symbol_location or symbol, missing_module)
                         else:
                             yield ReportEntry.unresolved(symbol, str(target_module) + '/' + symbol.symbol_name)
                             for sym in self.symbols():
@@ -685,6 +685,7 @@ class Linter:
 
 class ReportEntry:
     def __init__(self, location: Union[Location, str], entry_type: str, **kwargs):
+        assert location is not None
         if isinstance(location, str):
             location = Location(location, Range(Position(1, 1), Position(1, 1)))
         self.location = location

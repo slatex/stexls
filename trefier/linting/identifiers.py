@@ -22,6 +22,11 @@ class ModuleIdentifier:
                                       and self.repository_name == other.repository_name
                                       and self.module_name == other.module_name)
 
+    @property
+    def without_name(self) -> str:
+        """ Returns the string for the identifier without the module name at the end. """
+        return self.base + '/' + self.repository_name
+
     @staticmethod
     def from_file(file: str) -> ModuleIdentifier:
         parts = file.split('/')

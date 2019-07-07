@@ -32,14 +32,16 @@ def ignore_exceptions(f):
 class LinterCLI(CLI):
     @arg('directories',
          nargs=argparse.REMAINDER,
-         type=lambda x: glob(x, recursive=True),
+         type=str,
          help="List of directories to add to watched list.")
-    def add(self, directories: Union[List[os.PathLike], os.PathLike]):
+    def add(self, directories: List[os.PathLike]):
         self.logger.info(f"Adding directories")
         try:
-            if isinstance(directories, (str, os.PathLike)):
-                directories = glob(directories, recursive=True)
-            count_added = sum(map(self.linter.add, directories))
+            count_added = 0
+            for globs in map(functools.partial(glob, recursive=True), directories):
+                for directory in globs:
+                    self.logger.info(f'Adding {directory}')
+                    count_added += self.linter.add(directory)
             self.return_result(self.add, 0, message=f'Added {count_added}, rejected {len(directories) - count_added}')
         except Exception as e:
             self.logger.exception("Exception during add_directory")

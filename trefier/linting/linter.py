@@ -224,7 +224,7 @@ class Linter:
 
         # report module defined
         if str(document.module_identifier) not in self._map_module_identifier_to_module:
-            yield ReportEntry.unresolved(document.binding, str(document.module_identifier))
+            yield ReportEntry.unresolved(document.binding, str(document.module_identifier), 'module')
         else:
             # report undefined symbols
             # but do not report symbols if the module was not resolved
@@ -235,16 +235,24 @@ class Linter:
                         target_module = self._resolve_target_module_identifier(symbol)
                         if not target_module:
                             assert symbol.target_module
-                            yield ReportEntry.unresolved(symbol.target_symbol_location or symbol, symbol.target_module)
+                            yield ReportEntry.unresolved(
+                                symbol.target_module_location or symbol,
+                                symbol.target_module,
+                                'module')
                             for missing_module in self.import_graph.find_module(symbol.target_module):
-                                yield ReportEntry.missing_import(symbol.target_symbol_location or symbol, missing_module)
+                                yield ReportEntry.missing_import(
+                                    symbol.target_module_location or symbol,
+                                    missing_module)
                         else:
-                            yield ReportEntry.unresolved(symbol, str(target_module) + '/' + symbol.symbol_name)
+                            yield ReportEntry.unresolved(
+                                symbol.target_symbol_location or symbol,
+                                str(target_module) + '/' + symbol.symbol_name,
+                                'symbol')
                             for sym in self.symbols():
                                 if sym.symbol_name == symbol.symbol_name and str(sym.module) not in child_modules:
                                     yield ReportEntry.missing_import(symbol, sym.module)
                     else:
-                        yield ReportEntry.unresolved(symbol, symbol.symbol_name)
+                        yield ReportEntry.unresolved(symbol, symbol.symbol_name, 'symbol')
 
             # report if the binding uses the module
             if not self._check_binding_uses_module(document, document.module_identifier):
@@ -290,7 +298,7 @@ class Linter:
         # check gimports resolveable
         for gimport in document.gimports:
             if not self._resolve_symbol(gimport):
-                yield ReportEntry.unresolved(gimport, gimport.imported_module)
+                yield ReportEntry.unresolved(gimport, gimport.imported_module, 'module')
             else:
                 for binding in self._map_module_identifier_to_bindings.get(
                         str(document.module_identifier), {}).values():
@@ -325,7 +333,7 @@ class Linter:
         # report exceptions of the document
         for e in document.exceptions:
             message = str(e)
-            location = document.file
+            location = Location(document.file, Range(Position()))
             match = re.match(r'^"?([^<>:;,?"*|/]+?)"?:(\d+):(\d+)', message)
             if match:
                 pos1 = Position(int(match.group(2)), int(match.group(3)))
@@ -683,45 +691,48 @@ class Linter:
 
 
 class ReportEntry:
-    def __init__(self, location: Union[Location, str], entry_type: str, **kwargs):
-        assert location is not None
-        if isinstance(location, str):
-            location = Location(location, Range(Position(1, 1), Position(1, 1)))
-        self.location = location
+    def __init__(self, range: Range, entry_type: str, **kwargs):
+        assert range is not None
+        if isinstance(range, str):
+            range = Range(Position(1, 1), Position(1, 1))
+        self.range = range
         self.entry_type = entry_type
         self.__dict__.update(kwargs)
 
     @staticmethod
-    def unresolved(location: Union[Location, str], unresolved_symbol_or_module_name: str):
-        return ReportEntry(location, 'unresolved', symbol=str(unresolved_symbol_or_module_name))
+    def unresolved(location: Location, unresolved_symbol_or_module_name: str, symbol_type: str):
+        return ReportEntry(location.range,
+                           'unresolved',
+                           symbol=str(unresolved_symbol_or_module_name),
+                           symbol_type=symbol_type)
 
     @staticmethod
-    def redundant(location: Union[Location, str], redundant_module_name: Union[ModuleIdentifier, str]):
-        return ReportEntry(location, 'redundant', module=str(redundant_module_name))
+    def redundant(location: Location, redundant_module_name: Union[ModuleIdentifier, str]):
+        return ReportEntry(location.range, 'redundant', module=str(redundant_module_name))
 
     @staticmethod
-    def missing_import(location: Union[Location, str], missing_module: Union[ModuleIdentifier, str]):
-        return ReportEntry(location, 'missing_import', module=str(missing_module))
+    def missing_import(location: Location, missing_module: Union[ModuleIdentifier, str]):
+        return ReportEntry(location.range, 'missing_import', module=str(missing_module))
 
     @staticmethod
     def tag_match(
-            locations: List[Union[Location, str]],
+            locations: List[Location],
             module: Union[ModuleIdentifier, str],
             symbol_name: Union[ModuleIdentifier, Symbol, str]):
-        return ReportEntry(
-            Location.reduce_union(locations), 'match', module=str(module), name=str(symbol_name), tokens=locations)
+        return ReportEntry(Location.reduce_union(locations).range,
+                           'match', module=str(module), name=str(symbol_name), tokens=locations)
 
     @staticmethod
-    def unused_import(location: Union[Location, str], unused_module: Union[ModuleIdentifier, str]):
-        return ReportEntry(location, 'unused', module=str(unused_module))
+    def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):
+        return ReportEntry(location.range, 'unused', module=str(unused_module))
 
     @staticmethod
     def no_bindings(module: ModuleDefinitonSymbol):
-        return ReportEntry(module, 'no_bindings', module_name=module.module_name)
+        return ReportEntry(module.range, 'no_bindings', module_name=module.module_name)
 
     @staticmethod
     def duplicate(
-            location: Union[Location, str],
+            location: Location,
             symbol: Union[ModuleIdentifier, Symbol, ModuleDefinitonSymbol, ModuleBindingDefinitionSymbol, str],
             symbol_type: Optional[str] = None):
         if isinstance(symbol, SymiSymbol):
@@ -733,26 +744,26 @@ class ReportEntry:
         elif isinstance(symbol, ModuleBindingDefinitionSymbol):
             symbol = symbol.module + '.' + symbol.lang
             symbol_type = 'binding'
-        return ReportEntry(location, 'duplicate', symbol=str(symbol), symbol_type=symbol_type)
+        return ReportEntry(location.range, 'duplicate', symbol=str(symbol), symbol_type=symbol_type)
 
     @staticmethod
-    def cycle(location: Union[Location, str],
+    def cycle(location: Location,
               cycle_causing_module: Union[ModuleIdentifier, str],
               others: List[Union[ModuleIdentifier, str]]):
-        return ReportEntry(location, 'cycle', module=str(cycle_causing_module), others=list(map(str, others)))
+        return ReportEntry(location.range, 'cycle', module=str(cycle_causing_module), others=list(map(str, others)))
 
     @staticmethod
-    def error(location: Union[Location, str], message: Union[Exception, str]):
-        return ReportEntry(location, 'error', message=str(message))
+    def error(location: Location, message: Union[Exception, str]):
+        return ReportEntry(location.range, 'error', message=str(message))
 
     @staticmethod
-    def module_name_mismatch(location: Union[Location, str]):
-        return ReportEntry(location, 'module_name_mismatch')
+    def module_name_mismatch(location: Location):
+        return ReportEntry(location.range, 'module_name_mismatch')
 
     @staticmethod
-    def binding_lang_mismatch(location: Union[Location, str]):
-        return ReportEntry(location, 'binding_lang_mismatch')
+    def binding_lang_mismatch(location: Location):
+        return ReportEntry(location.range, 'binding_lang_mismatch')
 
     @staticmethod
-    def syntax_error(location: Union[Location, str], message: str):
-        return ReportEntry(location, 'syntax_error', message=message)
+    def syntax_error(location: Location, message: str):
+        return ReportEntry(location.range, 'syntax_error', message=message)

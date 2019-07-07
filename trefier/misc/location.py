@@ -7,7 +7,7 @@ import copy
 
 
 class Position:
-    def __init__(self, line: int, column: int):
+    def __init__(self, line: int = 1, column: int = 1):
         """
         A position in a file.
         :param line: 1-indexed line

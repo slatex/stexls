@@ -68,7 +68,7 @@ class LinterCLI(CLI):
     def make_report(self):
         self.logger.info("making report for all files")
         try:
-            report = self.linter.make_report()
+            report = dict(self.linter.make_report())
             self.logger.info(f"{len(report)} files in report")
             self.return_result(self.make_report, 0, report=report)
         except Exception as e:

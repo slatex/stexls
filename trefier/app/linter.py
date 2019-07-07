@@ -132,14 +132,14 @@ class LinterCLI(CLI):
 
     @arg('file', help="Path to current file")
     @arg('context', type=int, help="Context that appears before the cursor")
-    def auto_complete(self, file: str, context: str):
-        self.logger.info(f'auto_complete "{file}" "{context}"')
+    def complete(self, file: str, context: str):
+        self.logger.info(f'complete "{file}" "{context}"')
         try:
             completion_items = self.linter.auto_complete(file, context)
-            self.return_result(self.auto_complete, 0, completion_items=completion_items)
+            self.return_result(self.complete, 0, completion_items=completion_items)
         except Exception as e:
-            self.logger.exception("Exception during auto_complete")
-            self.return_result(self.auto_complete, 1, message=str(e))
+            self.logger.exception("Exception during complete")
+            self.return_result(self.complete, 1, message=str(e))
 
     @arg('module', type=ModuleIdentifier.from_id_string)
     @ignore_exceptions
@@ -227,7 +227,7 @@ class LinterCLI(CLI):
             self.update,
             self.make_report,
             self.load_tagger,
-            self.auto_complete,
+            self.complete,
             self.draw_graph,
             self.transitive,
             self.references,

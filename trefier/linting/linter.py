@@ -553,6 +553,135 @@ class Linter:
          self.tagger_path,
          self.tags,) = state
 
+    def auto_complete(self, file: str, context: str):
+        """
+        \trefis[abadw-ad?kljh-ad21_213]{dawdaw}{d2ad
+        \mtrefii[abadw-ad?kljh-ad21_213]{
+        \matrefiii[abadw-ad?kljh-ad21
+        \atrefis[abadw-ad?
+        \atrefi[abadw-
+        \matrefiii[
+
+        \trefi[abadw-ad]{dawdaw}{d2ad
+        \trefi[abadw-ad]{
+
+        \trefi[?abadw-ad]{dawdaw}{d2ad
+        \atrefi[?abadw-ad]{
+        \trefi[?abadw-
+        \trefi[?
+
+        \trefi{asihA}{2131
+        \trefi{
+
+        \adefii[name=asA_-ad2ab2]{dawdaw}{d2ad
+        \adefi[name=asA_-ad2ab2]{
+        \defii[name = asA_-ad2ab2
+        \defii[ gcn=N,name=asA_-ad2ab2
+        \defis[ name=
+        \adefii{dawdaw}{d2ad
+        \adefii{
+
+        \gimport{
+        \gimport{fasdsa
+        \gimport{fasdsa}
+
+        \gimport [base/rep1 ]{
+        \gimport [base/rep2]{fasdsa
+        \gimport [base/rep2]{fasdsa}
+
+        \gimport [base/rep1_
+        \gimport [base/rep2
+        \gimport[ bas
+        \gimport[ base/
+        \gimport[
+        :param file:
+        :param context:
+        :return:
+        """
+        document = self._map_file_to_document.get(file)
+
+        if not document:
+            raise Exception("File not tracked")
+
+        yielded_values: Set[str] = set()
+
+        # find trefis, reverse so that first match moves to the front
+        for match in reversed(list(re.finditer(r'\\([ma]*)tref(i+)s?', context))):
+            # remove irrelevant matches from context
+            sub_context = context[match.span()[0]:]
+            for trefi_module in re.finditer(r'\\[ma]*trefi+s?\s*\[\s*([\w\-]*)$', sub_context):
+                for module in self.import_graph.reachable_modules_of(document.module_identifier):
+                    if (self._map_module_identifier_to_module[module]
+                            .module_identifier
+                            .module_name).startswith(trefi_module.group(1)):
+                        value = self._map_module_identifier_to_module[module].module_identifier.module_name
+                        if value not in yielded_values:
+                            yield {
+                                'type': 'module',
+                                'value': value
+                            }
+                            yielded_values.add(value)
+                return
+
+            for trefi_symbol in re.finditer(r'\\[ma]*trefi+s?\s*\[(.*?)\?([\w\-]*)$', sub_context):
+                target_module_name = trefi_symbol.group(1) or document.module_identifier.module_name
+                for target_module in self.import_graph.find_module(
+                        target_module_name, document.module_identifier):
+                    for symi in self._map_module_identifier_to_module[str(target_module)].symis:
+                        if symi.symbol_name.startswith(trefi_symbol.group(2)):
+                            value = symi.symbol_name
+                            if value not in yielded_values:
+                                yield {'type': 'symbol', 'value': value}
+                                yielded_values.add(value)
+                return
+            # for trefi_text in re.finditer(r'\\[ma]*trefi+s?(?:\[(.*?)?(?:\?(.*?))?\])?\{(.*?)$', trefi_context):
+            #     is_alt = 'a' in trefi_match.group(1)
+            #     arg_count = len(trefi_match.group(2))
+            #     return
+            return
+
+        for match in reversed(list(re.finditer(r'\\([ma]*)def(i+)s?', context))):
+            # remove irrelevant matches from context
+            sub_context = context[match.span()[0]:]
+            for defi in re.finditer(
+                    r'\\[ma]*defi+s?\s*\[(?:\s*[\w\-]+\s*=\s*[\w\-]+,)*\s*name\s*=\s*([\w\-]*)$', sub_context):
+                defi_name = defi.group(1)
+                for symi in self._map_module_identifier_to_module[str(document.module_identifier)].symis:
+                    value = symi.symbol_name
+                    if value not in yielded_values:
+                        if symi.symbol_name.startswith(defi_name):
+                            yield {'type': 'symbol', 'value': value}
+                        yielded_values.add(value)
+                return
+            return
+
+        for match in reversed(list(re.finditer(r'\\gimport', context))):
+            # remove irrelevant matches from context
+            sub_context = context[match.span()[0]:]
+            for imported_module in re.finditer(r'\\gimport\s*(?:\[\s*(\w+/\w+)\s*\])?\s*{(.*?)$', sub_context):
+                identifier = (imported_module.group(1) or document.module_identifier.without_name) + "/" + imported_module.group(2)
+                for module in self.import_graph.graph:
+                    if module.startswith(identifier):
+                        value = self._map_module_identifier_to_module[module].module_identifier.module_name
+                        if value not in yielded_values:
+                            yield {
+                                'type': 'module',
+                                'value': value
+                            }
+                            yielded_values.add(value)
+                return
+
+            for imported_module in re.finditer(r'\\gimport\s*\[\s*([\w\-/]*)$', sub_context):
+                for module in self.import_graph.graph:
+                    mod_id_part = self._map_module_identifier_to_module[module].module_identifier.without_name
+                    if mod_id_part.startswith(imported_module.group(1)):
+                        value = mod_id_part
+                        if value not in yielded_values:
+                            yield {'type': 'repository', 'value': value}
+                            yielded_values.add(value)
+                return
+            return
+
 
 class ReportEntry:
     def __init__(self, location: Union[Location, str], entry_type: str, **kwargs):

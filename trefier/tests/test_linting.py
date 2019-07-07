@@ -437,6 +437,80 @@ class TestLinter(unittest.TestCase):
         linter = Linter()
         linter.add('testdb/name_missing/source')
         linter.update(debug=True)
+        raise NotImplementedError()
+
+    def test_autocomplete(self):
+        linter = self._setup()
+        file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/bottom1.lang.tex'
+        match_name = list(linter.auto_complete(file, r'    Symdef Define \adefiii[name=bottom1'))
+        self.assertListEqual([
+            {
+                'type': 'symbol',
+                'value': 'bottom1-symbol1'
+            }, {
+                'type': 'symbol',
+                'value': 'bottom1-symdef1'
+            }], match_name)
+        match_name = list(linter.auto_complete(file, r'    Symdef Define \adefiii[name=bottom1-symd'))
+        self.assertListEqual([{
+                'type': 'symbol',
+                'value': 'bottom1-symdef1'
+            }], match_name)
+
+        file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/bottom1.lang.tex'
+        match_trefi_module = list(linter.auto_complete(file, r'Reference by name \trefi[bottom1?bott'))
+        self.assertListEqual([{
+                'type': 'symbol',
+                'value': 'bottom1-symbol1'
+            }, {
+                'type': 'symbol',
+                'value': 'bottom1-symdef1'
+            }], match_trefi_module)
+        file = '/home/marian/projects/trefier-backend/trefier/tests/testdb/two_peaks/source/peak1.tex'
+        match_repositories = list(linter.auto_complete(file, r' dawioduawod \gimport['))
+        self.assertListEqual([
+            {
+                'type': 'repository',
+                'value': 'testdb/two_peaks'
+            }], match_repositories)
+        match_repositories = list(linter.auto_complete(file, r' all importable modules \gimport{'))
+        self.assertDictEqual({
+            'bottom1': 'module',
+            'bottom2': 'module',
+            'bottom3': 'module',
+            'middle1': 'module',
+            'middle2': 'module',
+            'middle3': 'module',
+            'peak1': 'module',
+            'peak2': 'module'},
+            {item['value']: item['type'] for item in match_repositories})
+        local_symbols_by_symbol_name = list(linter.auto_complete(file, r' resolve modules \trefii['))
+        self.assertDictEqual({
+            'bottom1': 'module',
+            'bottom2': 'module',
+            'bottom3': 'module',
+            'middle1': 'module',
+            'middle2': 'module',
+            #'middle3': 'module',
+            'peak1': 'module'},
+            {item['value']: item['type'] for item in local_symbols_by_symbol_name})
+        not_local_symbols_by_symbol_name = list(linter.auto_complete(file, r' taiwohtf o8a2 9f $$ \trefii[bottom1?'))
+        self.assertListEqual([
+            {
+                'type': 'symbol',
+                'value': 'bottom1-symbol1'
+            },
+            {
+                'type': 'symbol',
+                'value': 'bottom1-symdef1'
+            }], not_local_symbols_by_symbol_name)
+        restricted_not_local_symbols_by_symbol_name = list(
+            linter.auto_complete(file, r' taiwohtf o8a2 9f $$ \trefii[bottom1?bottom1-symd'))
+        self.assertListEqual([
+            {
+                'type': 'symbol',
+                'value': 'bottom1-symdef1'
+            }], restricted_not_local_symbols_by_symbol_name)
 
     def test_symdef(self):
         linter = Linter()

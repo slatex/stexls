@@ -186,6 +186,11 @@ class Location:
         self.range = range
         self._offset = offset
         self._text = None
+    
+    def contains(self, location: Union[Location, Range, Position]) -> bool:
+        if isinstance(location, Location):
+            return self.range.contains(location.range)
+        return self.range.contains(location)
 
     def copy_from(self, that: Location):
         self.file = that.file

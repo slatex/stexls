@@ -106,14 +106,17 @@ class ModuleBindingDefinitionSymbol(Symbol):
 class GimportSymbol(Symbol):
     GIMPORT_PATTERN = re.compile(r'gimport\*?')
 
-    def __init__(self, imported_module_location: Location,
+    def __init__(self,
+                 imported_module_location: Location,
                  imported_module: ModuleIdentifier,
+                 repository_range: Optional[Range],
                  file: str,
                  full_range: Range):
         """ Gimport symbol \\gimport[imported_module.base/imported_module.repository]{imported_module.module_name} """
         super().__init__(file, full_range)
         self.imported_module_location = imported_module_location
         self.imported_module = imported_module
+        self.repository_range = repository_range
 
     @staticmethod
     def from_node(gimport: Environment, containing_module: ModuleIdentifier = None) -> GimportSymbol:
@@ -141,9 +144,13 @@ class GimportSymbol(Symbol):
             parts = list(oarg_str.split('/'))
             if len(parts) != 2 or not all(map(len, parts)):
                 raise LinterGimportModuleFormatException.create(_node_to_location(oarg), oarg_str)
+            oarg_effective_range = oarg.effective_range
+            oarg_begin = Position(oarg_effective_range[0][0], oarg_effective_range[0][1])
+            oarg_end = Position(oarg_effective_range[1][0], oarg_effective_range[1][1])
             return GimportSymbol(
                 Location(location.file, imported_module_arg_range),
                 ModuleIdentifier(*parts, imported_module_name),
+                Range(oarg_begin, oarg_end),
                 gimport.parser.file,
                 location.range
             )
@@ -152,6 +159,7 @@ class GimportSymbol(Symbol):
         return GimportSymbol(
             Location(location.file, imported_module_arg_range),
             ModuleIdentifier(containing_module.base, containing_module.repository_name, imported_module_name),
+            None,
             gimport.parser.file,
             location.range
         )
@@ -352,16 +360,17 @@ class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
     TREFI_PATTERN = re.compile(r'[ma]*trefi+s?\*?')
 
-    def __init__(self,
-                 target_module: Optional[str],
-                 target_module_location: Optional[Location],
-                 target_symbol_location: Optional[Location],
-                 symbol_name: str,
-                 symbol_name_locations: List[Location],
-                 search_terms: List[List[str]],
-                 env_name: str,
-                 file: str,
-                 full_range: Range):
+    def __init__(
+        self,
+        target_module: Optional[str],
+        target_module_location: Optional[Location],
+        target_symbol_location: Optional[Location],
+        symbol_name: str,
+        symbol_name_locations: List[Location],
+        search_terms: List[List[str]],
+        env_name: str,
+        file: str,
+        full_range: Range):
         super().__init__(symbol_name, symbol_name_locations, search_terms, env_name, file, full_range)
         assert target_module is None or isinstance(target_module, str)
         self.target_module = target_module

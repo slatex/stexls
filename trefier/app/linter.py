@@ -35,6 +35,9 @@ class LinterCLI(CLI):
          type=str,
          help="List of directories to add to watched list.")
     def add(self, directories: List[os.PathLike]):
+        """ Adds a list of directories to the watched directory list.
+            All .tex files inside these added directories will be
+            automatically detected and scanned by the linter. """
         self.logger.info(f"Adding directories")
         try:
             count_added = 0
@@ -51,6 +54,7 @@ class LinterCLI(CLI):
     @arg('-m', '--use_multiprocessing', help="Enables multiprocessing")
     @arg('-d', '--debug', help="Enables debug mode")
     def update(self, jobs=None, use_multiprocessing=True, debug=False):
+        """ Updates the linter """
         self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
             report = self.linter.update(jobs, use_multiprocessing=use_multiprocessing, debug=debug)
@@ -62,6 +66,7 @@ class LinterCLI(CLI):
             self.return_result(self.update, 1, message=str(e))
 
     def make_report(self):
+        """ Gathers all information and makes a report """
         self.logger.info("making report for all files")
         try:
             report = dict(self.linter.make_report())
@@ -73,6 +78,9 @@ class LinterCLI(CLI):
 
     @arg('path', help="Path to a tagger model")
     def load_tagger(self, path: str):
+        """ Loads a *.model file and uses it to predict tags for files.
+            Adding a tagger will enable the trefi hint functionality in the
+            update report. """
         self.logger.info(f'load_tagger from "{path}"')
         try:
             self.linter.load_tagger_model(path)
@@ -82,9 +90,12 @@ class LinterCLI(CLI):
             self.return_result(self.load_tagger, 1, message=str(e))
 
     @arg('file', help="File used as root for the graph")
-    def draw_graph(self, file: str):
+    @arg('--image_viewer', help="Name of the programm you want to open the graph image with or None for default")
+    def draw_graph(self, file: str, image_viewer: Optional[str] = None):
+        """ Simply creates the import graph of the provided file and displays it with
+            the specified image viewer or the default for your OS. """
         try:
-            self.linter.import_graph.open_in_image_viewer(ModuleIdentifier.from_file(file))
+            self.linter.import_graph.open_in_image_viewer(ModuleIdentifier.from_file(file), image_viewer=image_viewer)
             self.return_result(self.draw_graph, 0)
         except Exception as e:
             self.logger.exception("Exception during draw_graph")
@@ -94,10 +105,12 @@ class LinterCLI(CLI):
     @arg('line', type=int, help="Line of the cursor")
     @arg('column', type=int, help="Column of the cursor")
     def goto_definition(self, file: str, line: int, column: int):
+        """ Gathers definition information for the object at the specified location. """
         self.logger.info(f'goto_definition "{file}" {line} {column}')
         try:
             definition = self.linter.goto_definition(file, line, column)
-            self.return_result(self.goto_definition, 0, definition=definition)
+            object_range = self.linter.get_object_range_at_position(file, line, column)
+            self.return_result(self.goto_definition, 0, definition=definition, range=object_range)
         except Exception as e:
             self.logger.exception("Exception during goto_definition")
             self.return_result(self.goto_definition, 1, message=str(e))
@@ -106,10 +119,12 @@ class LinterCLI(CLI):
     @arg('line', type=int, help="Line of the cursor")
     @arg('column', type=int, help="Column of the cursor")
     def goto_implementation(self, file: str, line: int, column: int):
+        """ Gathers implementation details for the object at the specified location. """
         self.logger.info(f'goto_implementation "{file}" {line} {column}')
         try:
             implementations = self.linter.goto_implementation(file, line, column)
-            self.return_result(self.goto_implementation, 0, implementations=implementations)
+            object_range = self.linter.get_object_range_at_position(file, line, column)
+            self.return_result(self.goto_implementation, 0, implementations=implementations, range=object_range)
         except Exception as e:
             self.logger.exception("Exception during goto_implementation")
             self.return_result(self.goto_implementation, 1, message=str(e))
@@ -118,6 +133,7 @@ class LinterCLI(CLI):
     @arg('line', type=int, help="Line of the cursor")
     @arg('column', type=int, help="Column of the cursor")
     def find_references(self, file: str, line: int, column: int):
+        """ Finds all references to the definition of the object at the location. """
         self.logger.info(f'find_references "{file}" {line} {column}')
         try:
             references = self.linter.find_references(file, line, column)
@@ -129,6 +145,7 @@ class LinterCLI(CLI):
     @arg('file', help="Path to current file")
     @arg('context', help="Context that appears before the cursor")
     def complete(self, file: str, context: str):
+        """ Returns a list of possible autocompletions for the file given the context. """
         self.logger.info(f'complete "{file}" "{context}"')
         try:
             completion_items = list(self.linter.auto_complete(file, context))
@@ -197,13 +214,13 @@ class LinterCLI(CLI):
     @arg('module', type=ModuleIdentifier.from_id_string)
     @ignore_exceptions
     def defis(self, module: ModuleIdentifier):
-        for lang, binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items():
+        for binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).values():
             yield from binding.defis
 
     @arg('module', type=ModuleIdentifier.from_id_string)
     @ignore_exceptions
     def trefis(self, module: ModuleIdentifier):
-        for lang, binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items():
+        for binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).values():
             yield from binding.trefis
 
     def setup(self):
@@ -221,7 +238,9 @@ class LinterCLI(CLI):
         super().run([
             self.add,
             self.update,
-            self.make_report,
+            self.goto_definition,
+            self.goto_implementation,
+            self.find_references,
             self.load_tagger,
             self.complete,
             self.draw_graph,

@@ -181,6 +181,35 @@ class Linter:
             report.setdefault(unhandled)
 
         return report
+    
+    def get_object_range_at_position(self, file: str, line: int, column: int) -> Optional[Range]:
+        document = self._map_file_to_document.get(file)
+        if not document:
+            raise Exception("File not tracked")
+
+        position = Position(line, column)
+
+        if document.module and document.module.range.contains(position):
+            return document.module.range
+        
+        if document.binding and document.binding.range.contains(position):
+            return document.binding.range
+        
+        for symbol in itertools.chain(document.trefis, document.defis, document.symis):
+            if isinstance(symbol, TrefiSymbol):
+                if symbol.target_module_location and symbol.target_module_location.contains(position):
+                    return symbol.target_module_location.range
+                if symbol.target_symbol_location and symbol.target_symbol_location.contains(position):
+                    return symbol.target_symbol_location.range
+            elif isinstance(symbol, DefiSymbol):
+                if symbol.name_argument_location and symbol.name_argument_location.contains(position):
+                    return symbol.name_argument_location.range
+            elif isinstance(symbol, GimportSymbol):
+                if symbol.imported_module_location and symbol.imported_module_location.contains(position):
+                    return symbol.imported_module_location.range
+            if symbol.contains(position):
+                return symbol.range
+        return None
 
     def make_report(self, documents: Optional[List[Document]] = None) -> Iterator[Tuple[str, List[ReportEntry]]]:
         if not documents:

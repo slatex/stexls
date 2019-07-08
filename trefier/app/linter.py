@@ -58,7 +58,7 @@ class LinterCLI(CLI):
         self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
             report = self.linter.update(jobs, use_multiprocessing=use_multiprocessing, debug=debug)
-            self.changed |= len(report) > 0
+            self.changed |= self.linter.changed
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
         except Exception as e:

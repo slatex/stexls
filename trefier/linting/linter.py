@@ -129,6 +129,7 @@ class Linter:
         if os.path.isdir(directory):
             if directory not in self._watched_directories:
                 self._watched_directories.append(directory)
+                self.changed = True
                 return True
         return False
 
@@ -149,7 +150,8 @@ class Linter:
         # get file changes
         deleted, modified = self._update_watched_directories()
         if not (modified or deleted):
-            return {}
+            return dict(self.make_report())
+        self.changed = True
 
         # remove all changed files
         for file in itertools.chain(deleted, modified):
@@ -560,6 +562,8 @@ class Linter:
 
         self._last_update_report = None
 
+        self.changed = False
+
     def __getstate__(self):
         return (
             self._file_watcher,
@@ -577,6 +581,7 @@ class Linter:
         # initialize other state
         self.tagger = None
         self._last_update_report = None
+        self.changed = False
 
         # load state
         (self._file_watcher,

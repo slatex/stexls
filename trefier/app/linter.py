@@ -298,8 +298,7 @@ class LinterJSONEncoder(json.JSONEncoder):
 if __name__ == '__main__':
     @argh.arg('--cache', help="Name of the file used as cache")
     @argh.arg('--root', type=str, help="Root dir")
-    @argh.arg('--debug', help="Enables debug mode")
-    def _main(cache: str = None, root: str = None, debug: bool = False):
+    def _main(cache: str = None, root: str = None):
         with Cache(cache, LinterCLI) as cache:
             cache.data.setup()
             if cache.path:
@@ -309,7 +308,6 @@ if __name__ == '__main__':
             if root:
                 assert os.path.isdir(root)
                 cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
-                cache.data.update(debug=debug)
             try:
                 cache.data.run(cache.write)
             finally:

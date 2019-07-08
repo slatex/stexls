@@ -1,0 +1,21 @@
+[]????
+In: /home/marian/projects/trefier-backend/data/smglom/algebra/source/bounded-lattice.de.tex
+Error: da"s
+
+
+/home/marian/projects/trefier-backend/data/smglom/arithmetics/source/ceilingfloor.tex
+[]????
+
+
+automorphism.en.tex
+Missing end{definition}
+
+set.zhs.tex
+stray ]
+
+recursive.de.tex
+Stray }
+\mtrefi[turing-machine-halts?total}
+
+automorphism-group.de.tex
+stary ]

@@ -42,7 +42,7 @@ class LinterCLI(CLI):
                 for directory in globs:
                     self.logger.info(f'Adding {directory}')
                     count_added += self.linter.add(directory)
-            self.return_result(self.add, 0, message=f'Added {count_added}, rejected {len(directories) - count_added}')
+            self.return_result(self.add, 0, message=f'Added {count_added} directories')
         except Exception as e:
             self.logger.exception("Exception during add_directory")
             self.return_result(self.add, 1, message=str(e))

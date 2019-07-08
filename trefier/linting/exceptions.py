@@ -9,16 +9,9 @@ class LinterException(Exception):
 
 class LinterArgumentCountException(LinterException):
     @staticmethod
-    def create(location: Location, expected: Union[int, str], found: int) -> LinterArgumentCountException:
+    def create(expected: Union[int, str], found: int) -> LinterArgumentCountException:
         return LinterArgumentCountException(
-            f'{location} Expected were {expected} argument(s) (found {found} argument(s))')
-
-
-class LinterGimportModuleFormatException(LinterException):
-    @staticmethod
-    def create(location: Location, found: str) -> LinterGimportModuleFormatException:
-        return LinterGimportModuleFormatException(f'{location} Invalid gimport argument "{found}":'
-                                                  f' Expected format is "<base>/<repository>"')
+            f'Expected were {expected} argument(s) (found {found} argument(s))')
 
 
 class LinterModuleFromFilenameException(LinterException):
@@ -29,14 +22,7 @@ class LinterModuleFromFilenameException(LinterException):
             f'Expected filename format is .../<base>/<repository>/"source"/<module>')
 
 
-class LinterDuplicateDefinitionException(LinterException):
-    @staticmethod
-    def create(identifier: str, new: Location, previous: Location) -> LinterDuplicateDefinitionException:
-        return LinterDuplicateDefinitionException(
-            f'{new} Duplicate definition of {identifier}: Previous definition here "{previous}"')
-
-
 class LinterInternalException(LinterException):
     @staticmethod
-    def create(file: str, message: str) -> LinterInternalException:
-        return LinterInternalException(f'{file} Internal exception: {message}')
+    def create(message: str) -> LinterInternalException:
+        return LinterInternalException(f'Internal exception: {message}')

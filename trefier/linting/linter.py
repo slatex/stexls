@@ -32,7 +32,7 @@ class Linter:
                     if lang in ('en', 'lang') and binding.file not in self.tags:
                         self.tags[binding.file] = self.tagger.predict(binding.file)
         else:
-            raise LinterInternalException.create(path, 'Unable to load tagger model')
+            raise LinterInternalException.create('Unable to load tagger model')
 
     def ls(self) -> List[str]:
         return list(self._map_file_to_document)
@@ -362,15 +362,8 @@ class Linter:
 
     def _make_document_report(self, document: Document) -> Iterator[ReportEntry]:
         # report exceptions of the document
-        for e in document.exceptions:
-            message = str(e)
-            location = Location(document.file, Range(Position()))
-            match = re.match(r'^"?([^<>:;,?"*|/]+?)"?:(\d+):(\d+)', message)
-            if match:
-                pos1 = Position(int(match.group(2)), int(match.group(3)))
-                pos2 = Position(pos1.line, pos1.column + 1)
-                location = Location(match.group(1), Range(pos1, pos2))
-            yield ReportEntry.error(location, message=message)
+        for range, message in document.exception_summary:
+            yield ReportEntry.error(range, message=message)
 
         if document.syntax_errors:
             for syntax_error_location, msg in document.syntax_errors.items():
@@ -787,8 +780,8 @@ class ReportEntry:
         return ReportEntry(location.range, 'cycle', module=str(cycle_causing_module), others=list(map(str, others)))
 
     @staticmethod
-    def error(location: Location, message: Union[Exception, str]):
-        return ReportEntry(location.range, 'error', message=str(message))
+    def error(range: Range, message: Union[Exception, str]):
+        return ReportEntry(range, 'error', message=str(message))
 
     @staticmethod
     def module_name_mismatch(location: Location):

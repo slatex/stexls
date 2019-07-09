@@ -26,11 +26,10 @@ class Linter:
         if seq2seq.Seq2SeqModel.verify_loadable(path):
             self.tagger = seq2seq.Seq2SeqModel.load(path)
             self.tagger_path = os.path.abspath(path)
+            files = list(self.tags)
             self.tags = dict()
-            for module, bindings in self._map_module_identifier_to_bindings.items():
-                for lang, binding in bindings.items():
-                    if lang in ('en', 'lang') and binding.file not in self.tags:
-                        self.tags[binding.file] = self.tagger.predict(binding.file)
+            for file in files:
+                self.tags[file] = self.tagger.predict(file)
         else:
             raise LinterInternalException.create('Unable to load tagger model')
 
@@ -298,8 +297,8 @@ class Linter:
                         yield ReportEntry.unused_import(document.binding, imported_module.module)
 
         # report tag matches
-        for module, name, locations in self._get_possible_trefi_matches(document):
-            yield ReportEntry.tag_match(locations, module=module, symbol_name=name)
+        for module, name, ranges in self._get_possible_trefi_matches(document):
+            yield ReportEntry.tag_match(ranges, module=module, symbol_name=name)
 
     def _check_binding_uses_module(self, binding: Document, module: ModuleIdentifier) -> bool:
         """ Returns true if the binding uses the specified module in any trefi """
@@ -378,22 +377,27 @@ class Linter:
             yield from self._make_document_module_report(document)
 
     def _get_possible_trefi_matches(
-            self, document: Document) -> List[Tuple[Union[ModuleIdentifier, str], str, List[Location]]]:
+            self, document: Document) -> List[Tuple[Union[ModuleIdentifier, str], str, List[Range]]]:
         """ Looks at the tags for a document and returns possibly matching symbols with the
             source location of the matching tokens.
             :returns List of tuples of (module of match, symbol name of match, List of source tokens in the file) """
         matches = []
         tags = self.tags.get(document.file)
         if tags:
-            pred, locations, tokens, envs = tags
+            pred, token_ranges, tokens, envs = tags
             for is_keyword, group in itertools.groupby(enumerate(pred > 0.5), key=lambda x: x[1]):
                 if not is_keyword:
                     continue
                 indices, values = zip(*group)
-                loc = [locations[i] for i in indices]
+                ranges = [
+                    Range(
+                        Position(token_ranges[i][0][0], token_ranges[i][0][1]),
+                        Position(token_ranges[i][1][0], token_ranges[i][1][1])
+                    ) for i in indices
+                ]
                 name = '-'.join(tokens[i] for i in indices)
                 for similarity, symi in self._find_similarly_named_symbols(name):
-                    matches.append((symi.module, symi.symbol_name, loc))
+                    matches.append((symi.module, symi.symbol_name, ranges))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0.8) -> Iterator[Tuple[float, SymiSymbol]]:
@@ -743,11 +747,11 @@ class ReportEntry:
 
     @staticmethod
     def tag_match(
-            locations: List[Location],
+            ranges: List[Range],
             module: Union[ModuleIdentifier, str],
             symbol_name: Union[ModuleIdentifier, Symbol, str]):
-        return ReportEntry(Location.reduce_union(locations).range,
-                           'match', module=str(module), name=str(symbol_name), tokens=locations)
+        return ReportEntry(Range.reduce_union(ranges),
+                           'match', module=str(module), name=str(symbol_name), tokens=ranges)
 
     @staticmethod
     def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):

@@ -210,7 +210,7 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
         return False
 
     @staticmethod
-    def get_info(env: Environment) -> Tuple[str, List[Location], List[List[str]]]:
+    def get_info(env: Environment) -> Tuple[str, List[Location], List[List[str]], List[str]]:
         """ Extracts vital information from symi, trefi and defi environments
         Extracts:
             - alt argument locations and search terms

@@ -297,18 +297,22 @@ class LinterJSONEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
     @argh.arg('--cache', help="Name of the file used as cache")
+    @argh.arg('--tagger', type=str, help="Path to tagger model")
     @argh.arg('--root', type=str, help="Root dir")
-    def _main(cache: str = None, root: str = None):
+    def _main(cache: str = None, tagger: str = None, root: str = None):
         with Cache(cache, LinterCLI) as cache:
-            cache.data.setup()
-            if cache.path:
-                cache.data.logger.info(f'using cachefile at {abspath(cache.path)}')
-            else:
-                cache.data.logger.info('no cachefile specified: No cache will be saved')
-            if root:
-                assert os.path.isdir(root)
-                cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
             try:
+                cache.data.setup()
+                if cache.path:
+                    cache.data.logger.info(f'using cachefile at {abspath(cache.path)}')
+                else:
+                    cache.data.logger.info('no cachefile specified: No cache will be saved')
+                if tagger:
+                    assert os.path.isfile(tagger)
+                    cache.data.load_tagger(tagger)
+                if root:
+                    assert os.path.isdir(root)
+                    cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
                 cache.data.run(cache.write)
             finally:
                 cache.write_on_exit = cache.write_on_exit and cache.data.changed

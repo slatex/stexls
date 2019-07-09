@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import List, Dict, Optional, Iterator, Set
-from glob import glob
+from typing import List, Dict, Optional, Iterator, Set, Iterable
 import os
 import itertools
 import multiprocessing
 import difflib
 import re
+import sys
 from functools import partial
 
 from trefier.misc.location import *
@@ -24,14 +24,20 @@ __all__ = ['Linter']
 class Linter:
     def load_tagger_model(self, path: str):
         if seq2seq.Seq2SeqModel.verify_loadable(path):
-            self.tagger = seq2seq.Seq2SeqModel.load(path)
-            self.tagger_path = os.path.abspath(path)
-            files = list(self.tags)
-            self.tags = dict()
-            for file in files:
-                self.tags[file] = self.tagger.predict(file)
+            tagger_path = os.path.abspath(path)
+            tagger = seq2seq.Seq2SeqModel.load(tagger_path)
+            if not self._last_tagger_path or self._last_tagger_path != tagger_path:
+                # update tags only if a new tagger was adder or the tagger is different from last time
+                self.tags = dict()
+                for binding in self.bindings():
+                    if binding.lang in ('en', 'lang'):
+                        print(f'TAGGING {os.path.basename(binding.file)}', file=sys.stderr)
+                        self.tags[binding.file] = tagger.predict(binding.file)
+                self._last_tagger_path = tagger_path
+                self.tagger_path = tagger_path
+            self.tagger = tagger
         else:
-            raise LinterInternalException.create('Unable to load tagger model')
+            raise LinterInternalException.create(f'Failed to load tagger from {path}')
 
     def ls(self) -> List[str]:
         return list(self._map_file_to_document)
@@ -145,28 +151,45 @@ class Linter:
     def update(self,
                n_jobs: Optional[int] = None,
                use_multiprocessing: bool = True,
+               silent: bool = True,
                debug: bool = False):
         # get file changes
+        if not silent: print('updating watchlist', file=sys.stderr)
         deleted, modified = self._update_watched_directories()
+
+        # delete tags if no tagger defined
+        if not self.tagger and self.tags:
+            if not silent: print('removing tags', file=sys.stderr)
+            self.tags = dict()
+            self.changed = True
+
         if not (modified or deleted):
+            if not silent: print('no changes: make general report', file=sys.stderr)
             return dict(self.make_report())
         self.changed = True
 
+        if not silent: print('unlinking', file=sys.stderr)
         # remove all changed files
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
-                self._unlink(file, silent=not debug)
+                self._unlink(file, silent=False if debug else silent)
 
         # Parse all files in parallel or sequential
+        documents = []
         if use_multiprocessing and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
-                documents = pool.map(Document, modified)
+                for d in pool.imap_unordered(Document, modified):
+                    if not silent: print(f'parsed {os.path.basename(d.file)}', file=sys.stderr)
+                    documents.append(d)
         else:
-            documents = list(map(partial(Document, ignore_exceptions=not debug), modified))
+            for d in map(partial(Document, ignore_exceptions=not debug), modified):
+                if not silent: print(f'parsed {os.path.basename(d.file)}', file=sys.stderr)
+                documents.append(d)
 
+        if not silent: print('linking', file=sys.stderr)
         # link successfully compiled documents
         for document in filter(lambda doc: doc.success, documents):
-            self._link(document, silent=not debug)
+            self._link(document, silent=False if debug else silent)
 
         # get all modules that were changed
         changed_modules = self.import_graph.update()
@@ -174,8 +197,7 @@ class Linter:
         report: Dict[str, Optional[List[ReportEntry]]] = dict(self.make_report())
 
         # add exceptions from not successfully compiled documents to report
-        for document in filter(lambda doc: not doc.success, documents):
-            report[document.file] = list(self._make_document_report(document))
+        report.update(dict(self.make_report(list(filter(lambda doc: not doc.success, documents)))))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
@@ -212,11 +234,11 @@ class Linter:
                 return symbol.range
         return None
 
-    def make_report(self, documents: Optional[List[Document]] = None) -> Iterator[Tuple[str, List[ReportEntry]]]:
+    def make_report(self, documents: Optional[Iterable[Document]] = None) -> Iterator[Tuple[str, List[ReportEntry]]]:
         if not documents:
             documents = list(self._map_file_to_document.values())
-
         for document in documents:
+            print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr)
             yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
@@ -298,7 +320,7 @@ class Linter:
 
         # report tag matches
         for module, name, ranges in self._get_possible_trefi_matches(document):
-            yield ReportEntry.tag_match(ranges, module=module, symbol_name=name)
+            yield ReportEntry.tag_match(ranges, module_name=module.module_name, symbol_name=name)
 
     def _check_binding_uses_module(self, binding: Document, module: ModuleIdentifier) -> bool:
         """ Returns true if the binding uses the specified module in any trefi """
@@ -377,7 +399,7 @@ class Linter:
             yield from self._make_document_module_report(document)
 
     def _get_possible_trefi_matches(
-            self, document: Document) -> List[Tuple[Union[ModuleIdentifier, str], str, List[Range]]]:
+            self, document: Document) -> List[Tuple[ModuleIdentifier, str, List[Range]]]:
         """ Looks at the tags for a document and returns possibly matching symbols with the
             source location of the matching tokens.
             :returns List of tuples of (module of match, symbol name of match, List of source tokens in the file) """
@@ -400,12 +422,22 @@ class Linter:
                     matches.append((symi.module, symi.symbol_name, ranges))
         return matches
 
-    def _find_similarly_named_symbols(self, name: str, threshold: float = 0.8) -> Iterator[Tuple[float, SymiSymbol]]:
+    def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
+        print(f'MATCH EQUAL {name}', file=sys.stderr)
+        perfect_match = False
         for module, document in self._map_module_identifier_to_module.items():
             for symi in document.symis:
-                ratio = difflib.SequenceMatcher(a=symi.symbol_name, b=name).ratio()
-                if ratio > threshold:
-                    yield (ratio, symi)
+                if symi.symbol_name == name:
+                    yield (1, symi)
+                    perfect_match = True
+
+        if not perfect_match and threshold and 0 < threshold <= 1:
+            print(f'MATCH SIMILAR {name}', file=sys.stderr)
+            for module, document in self._map_module_identifier_to_module.items():
+                for symi in document.symis:
+                    ratio = difflib.SequenceMatcher(a=symi.symbol_name, b=name).ratio()
+                    if ratio > threshold:
+                        yield (ratio, symi)
 
     def _resolve_symbol_name_in_module(
             self,
@@ -494,22 +526,22 @@ class Linter:
         module_id = str(document.module_identifier)
 
         if document.binding:
+            if not silent:
+                print('-BINDING', document.binding.lang, module_id, file=sys.stderr)
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
             if not self._map_module_identifier_to_bindings[module_id]:
                 del self._map_module_identifier_to_bindings[module_id]
             if document.file in self.tags:
                 del self.tags[document.file]
-            if not silent:
-                print('-BINDING', document.binding.lang, module_id)
         elif document.module:
+            if not silent:
+                print('-MODULE', module_id, file=sys.stderr)
             self.import_graph.remove(document.module_identifier)
             del self._map_module_identifier_to_module[module_id]
-            if not silent:
-                print('-MODULE', module_id)
 
         del self._map_file_to_document[file]
         if not silent:
-            print('-FILE', file)
+            print('-FILE', file, file=sys.stderr)
 
     def _link(self, document: Document, silent: bool = False):
         """ Starts tracking a document. Indexes links and symbols provided by it. """
@@ -521,26 +553,26 @@ class Linter:
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.binding, symbol=document.binding))
                 return
+            if not silent:
+                print("+BINDING", module, document.binding.lang, os.path.basename(document.file), file=sys.stderr)
             self._map_module_identifier_to_bindings.setdefault(module, {})
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
             if self.tagger and document.binding.lang in ('en', 'lang'):
                 self.tags[document.file] = self.tagger.predict(document.file)
-            if not silent:
-                print("+BINDING", module, document.binding.lang, os.path.basename(document.file))
         elif document.module:
             if module in self._map_module_identifier_to_module:
                 self._duplicate_definition_report.setdefault(document.file, [])
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.module, symbol=document.module))
                 return
+            if not silent:
+                print("+MODULE", module, os.path.basename(document.file), file=sys.stderr)
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
-            if not silent:
-                print("+MODULE", module, os.path.basename(document.file))
 
         self._map_file_to_document[document.file] = document
         if not silent:
-            print('+FILE', document.file)
+            print('+FILE', document.file, file=sys.stderr)
 
     def __init__(self):
         self._file_watcher = FileWatcher(['.tex'])
@@ -553,8 +585,13 @@ class Linter:
         self.import_graph = ImportGraph()
         self._duplicate_definition_report: Dict[str, List[ReportEntry]] = dict()
 
+        # currently loaded path to tagger
         self.tagger_path: Optional[str] = None
+        # tagger path loaded by __setstate__
+        self._last_tagger_path: Optional[str] = None
+        # loaded tagger instance
         self.tagger: Optional[seq2seq.Model] = None
+        # tags of the current tagger: Delete if None
         self.tags: Dict[str, object] = dict()
 
         self._last_update_report = None
@@ -570,13 +607,14 @@ class Linter:
             self._map_module_identifier_to_module,
             self.import_graph,
             self._duplicate_definition_report,
-            self.tagger_path,
             self.tags,
+            self.tagger_path
         )
 
     def __setstate__(self, state):
         # initialize other state
         self.tagger = None
+        self.tagger_path = None
         self._last_update_report = None
         self.changed = False
 
@@ -588,8 +626,8 @@ class Linter:
          self._map_module_identifier_to_module,
          self.import_graph,
          self._duplicate_definition_report,
-         self.tagger_path,
-         self.tags,) = state
+         self.tags,
+         self._last_tagger_path) = state
 
     def auto_complete(self, file: str, context: str):
         """
@@ -748,10 +786,10 @@ class ReportEntry:
     @staticmethod
     def tag_match(
             ranges: List[Range],
-            module: Union[ModuleIdentifier, str],
+            module_name: str,
             symbol_name: Union[ModuleIdentifier, Symbol, str]):
         return ReportEntry(Range.reduce_union(ranges),
-                           'match', module=str(module), name=str(symbol_name), tokens=ranges)
+                           'match', module=module_name, name=str(symbol_name), tokens=ranges)
 
     @staticmethod
     def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):

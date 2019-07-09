@@ -9,6 +9,7 @@ from collections import Counter
 from zipfile import ZipFile
 from tempfile import NamedTemporaryFile
 import pickle
+import re
 
 from trefier import datasets, keywords, tokenization, downloads
 from trefier.misc import Evaluation
@@ -162,12 +163,14 @@ class Seq2SeqModel(Model):
             if x_ != 0 # remove padding
         ])
 
-        self.evaluation = Evaluation(fit_result.history)
-        self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0:'text', 1:'keyword'})
+        self.evaluation = Evaluation.Evaluation(fit_result.history)
+        self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0: 'text', 1: 'keyword'})
     
-    def predict(self, path_or_tex_document):
+    def predict(self, path_or_tex_document, ignore_tagged_tokens: bool = True):
         if not isinstance(path_or_tex_document, tokenization.TexDocument):
             document = tokenization.TexDocument(path_or_tex_document, True, False)
+        else:
+            document = path_or_tex_document
         if not document.success:
             raise Exception("Failed to parse file")
         tokens, offsets, envs = self.glove_tokenizer.tex_files_to_tokens([document], return_offsets_and_envs=True)
@@ -187,7 +190,17 @@ class Seq2SeqModel(Model):
 
         positions = [tuple(map(document.offset_to_position, offset)) for offset in offsets[0]]
 
-        return y_pred[0], positions, tokens[0], envs[0]
+        if ignore_tagged_tokens:
+            match = re.compile(r'^[ma]*(tr|d)efi+s?$').match
+            keep = [not any(map(match, e)) and ('RArg' not in e ) and ('OArg' not in e) for e in envs[0]]
+            return (
+                np.array([item for item, flag in zip(y_pred[0], keep) if flag]),
+                [item for item, flag in zip(positions, keep) if flag],
+                [item for item, flag in zip(tokens[0], keep) if flag],
+                [item for item, flag in zip(envs[0], keep) if flag]
+            )
+        else:
+            return y_pred[0], positions, tokens[0], envs[0]
     
     def save(self, path):
         """ Saves the current state """

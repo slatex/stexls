@@ -4,6 +4,7 @@ from glob import glob
 from os.path import isdir, expanduser, abspath
 import itertools
 import os
+import sys
 from loguru import logger
 import argh
 import traceback
@@ -27,6 +28,16 @@ def ignore_exceptions(f):
             traceback.print_exc()
 
     return wrapper
+
+
+class ShowErrors:
+    """ Signals the wrapping extension that stderr should be interpreted as important information and should be
+        somehow displayed for a better user experience. """
+    def __enter__(self):
+        print('showErrors', file=sys.stderr)
+
+    def __exit__(self, *args, **kwargs):
+        print('hideErrors', file=sys.stderr)
 
 
 class LinterCLI(CLI):
@@ -53,11 +64,18 @@ class LinterCLI(CLI):
     @arg('-j', '--jobs', type=int, help="Number of jobs to help parsing tex files.")
     @arg('-m', '--use_multiprocessing', help="Enables multiprocessing")
     @arg('-d', '--debug', help="Enables debug mode")
-    def update(self, jobs=None, use_multiprocessing=True, debug=False):
+    @arg('-p', '--progress', help="Enables some progress hints during update")
+    def update(self, jobs: int = None, use_multiprocessing: bool = True, debug: bool = False, progress: bool = True):
         """ Updates the linter """
         self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
-            report = self.linter.update(jobs, use_multiprocessing=use_multiprocessing, debug=debug)
+            with ShowErrors():
+                report = self.linter.update(
+                    jobs,
+                    use_multiprocessing=use_multiprocessing,
+                    debug=debug,
+                    silent=not progress)
+                print('update report finished', file=sys.stderr)
             self.changed |= self.linter.changed
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
@@ -83,7 +101,8 @@ class LinterCLI(CLI):
             update report. """
         self.logger.info(f'load_tagger from "{path}"')
         try:
-            self.linter.load_tagger_model(path)
+            with ShowErrors():
+                self.linter.load_tagger_model(path)
             self.return_result(self.load_tagger, 0, settings=self.linter.tagger.settings)
         except Exception as e:
             self.logger.exception("Exception during load_tagger")

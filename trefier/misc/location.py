@@ -161,6 +161,15 @@ class Range:
     
     def to_json(self):
         return json.dumps(self, default=lambda obj: obj.__dict__)
+
+    @staticmethod
+    def reduce_union(ranges: List[Range]) -> Range:
+        """ Reduces the union of all ranges in the list. """
+        assert ranges
+        union = ranges[0]
+        for that in ranges[1:]:
+            union = union.union(that)
+        return union
     
     def __hash__(self):
         return hash(self.begin) ^ hash(self.end)

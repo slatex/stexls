@@ -94,7 +94,10 @@ class Linter:
                 for binding in self.bindings():
                     if binding.lang in ('en', 'lang'):
                         print(f'TAGGING {os.path.basename(binding.file)}', file=sys.stderr)
-                        self.tags[binding.file] = tagger.predict(binding.file)
+                        try:
+                            self.tags[binding.file] = tagger.predict(binding.file)
+                        except:
+                            pass
             self._last_tagger_path = path
             self.tagger_path = path
             self.tagger = tagger
@@ -223,16 +226,18 @@ class Linter:
             self.tagger_path = None
             self.changed = True
 
+        show_progress = not silent
+
         if not (deleted or modified):
             return dict(self.make_report(
                 list(self._map_file_to_document.values()),
                 n_jobs=n_jobs,
                 use_multiprocessing=use_multiprocessing,
-                show_progress=not silent))
+                show_progress=show_progress))
         self.changed = True
 
         # remove changed files
-        if not silent: print('UNLINKING', file=sys.stderr, flush=True)
+        if not silent: print(f'UNLINKING {len(list(itertools.chain(deleted, modified)))}', file=sys.stderr, flush=True)
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
                 self._unlink(file, silent=False if debug else silent)
@@ -246,11 +251,11 @@ class Linter:
                     documents.append(d)
         else:
             for d in map(partial(Document, ignore_exceptions=not debug), modified):
-                if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
+                if not silent: print(f'PARSEDseq {os.path.basename(d.file)}', file=sys.stderr, flush=True)
                 documents.append(d)
 
         # link successfully compiled documents
-        if not silent: print('LINKING', file=sys.stderr, flush=True)
+        if not silent: print(f'LINKING {len(list(filter(lambda doc: doc.success, documents)))}', file=sys.stderr, flush=True)
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)
 
@@ -261,19 +266,18 @@ class Linter:
                 list(self._map_file_to_document.values()),
                 n_jobs=n_jobs,
                 use_multiprocessing=use_multiprocessing,
-                show_progress=not silent))
+                show_progress=show_progress))
 
         # add reports for documents that failed to parse this time
         report.update(dict(self.make_report(
             list(filter(lambda doc: not doc.success, documents)),
             n_jobs=n_jobs,
             use_multiprocessing=use_multiprocessing,
-            show_progress=not silent)))
+            show_progress=show_progress)))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
             report.setdefault(unhandled)
-        
         return report
     
     def get_object_range_at_position(self, file: str, line: int, column: int) -> Optional[Range]:
@@ -604,7 +608,7 @@ class Linter:
 
     def _is_linked(self, file: str) -> bool:
         """ Checks if file is linked """
-        return self._map_file_to_document.get(file) is not None
+        return file in self._map_file_to_document
 
     def _unlink(self, file: str, silent: bool = False):
         """ Deletes all symbols/links provided by the file if tracked. """
@@ -655,7 +659,11 @@ class Linter:
             self._map_module_identifier_to_bindings.setdefault(module, {})
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
             if self.tagger and document.binding.lang in ('en', 'lang'):
-                self.tags[document.file] = self.tagger.predict(document.file)
+                try:
+                    self.tags[document.file] = self.tagger.predict(document.file)
+                except:
+                    if document.file in self.tags:
+                        del self.tags[document.file]
         elif document.module:
             if module in self._map_module_identifier_to_module:
                 self._duplicate_definition_report.setdefault(document.file, [])

@@ -68,13 +68,17 @@ class LinterCLI(CLI):
     @arg('-m', '--use_multiprocessing', help="Enables multiprocessing")
     @arg('-d', '--debug', help="Enables debug mode")
     @arg('-p', '--progress', help="Enables some progress hints during update")
-    def update(self, jobs: int = None, use_multiprocessing: bool = True, debug: bool = False, progress: bool = True):
+    def update(self,
+               jobs: int = None,
+               use_multiprocessing: bool = True,
+               progress: bool = True,
+               debug: bool = False,):
         """ Updates the linter """
         self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
             with ShowErrors():
                 report = self.linter.update(
-                    jobs,
+                    n_jobs=jobs,
                     use_multiprocessing=use_multiprocessing,
                     debug=debug,
                     silent=not progress)

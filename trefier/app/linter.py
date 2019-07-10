@@ -336,7 +336,6 @@ if __name__ == '__main__':
                     cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
                 cache.data.run(cache.write)
             except:
-                cache.write_on_exit = False
                 cache.data.logger.exception("Exception during top-level run()")
                 raise
             finally:

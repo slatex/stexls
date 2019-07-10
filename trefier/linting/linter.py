@@ -486,7 +486,7 @@ class Linter:
                     ) for i in indices
                 ]
                 name = '-'.join(tokens[i] for i in indices)
-                for similarity, symi in self._find_similarly_named_symbols(name, 0.8):
+                for similarity, symi in self._find_similarly_named_symbols(name):
                     matches.append((symi.module, symi.symbol_name, ranges))
         return matches
 

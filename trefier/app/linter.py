@@ -253,6 +253,12 @@ class LinterCLI(CLI):
     def status(self):
         return self.linter.tagger_path, self.linter.tagger, len(self.linter.tags)
 
+    def raise_exception(self):
+        raise Exception("raise_exception raised an exception!")
+
+    def return_error_message(self):
+        self.return_result(self.return_error_message, 1, message="Error message returned!")
+
     def run(self, *extra_commands):
         if not self._setup_called:
             raise Exception("linter_cli.setup() must be called before running")
@@ -277,6 +283,8 @@ class LinterCLI(CLI):
             self.trefis,
             self.defis,
             self.status,
+            self.return_error_message,
+            self.raise_exception,
             *extra_commands
         ])
 

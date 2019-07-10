@@ -5,6 +5,7 @@ import os.path as _path
 import json
 import copy
 
+__all__ = ['Position', 'Range', 'Location']
 
 class Position:
     def __init__(self, line: int = 1, column: int = 1):

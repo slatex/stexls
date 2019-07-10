@@ -3,6 +3,7 @@ from typing import Iterator, Pattern, Dict
 import itertools
 import os
 import re
+import copy
 
 from trefier.misc.location import *
 

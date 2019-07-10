@@ -23,18 +23,22 @@ __all__ = ['Linter']
 
 class Linter:
     def load_tagger_model(self, path: str):
+        path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
-            tagger_path = os.path.abspath(path)
-            tagger = seq2seq.Seq2SeqModel.load(tagger_path)
-            if not self._last_tagger_path or self._last_tagger_path != tagger_path:
+            tagger = seq2seq.Seq2SeqModel.load(path)
+            print(f'loading tagger from {path}: previous {self._last_tagger_path}', file=sys.stderr)
+            # update tags if the loaded tagger is new,
+            # or if the new tagger is different from the old tagger
+            if not self._last_tagger_path or self._last_tagger_path != path:
                 # update tags only if a new tagger was adder or the tagger is different from last time
                 self.tags = dict()
+                self.changed = True
                 for binding in self.bindings():
                     if binding.lang in ('en', 'lang'):
                         print(f'TAGGING {os.path.basename(binding.file)}', file=sys.stderr)
                         self.tags[binding.file] = tagger.predict(binding.file)
-                self._last_tagger_path = tagger_path
-                self.tagger_path = tagger_path
+            self._last_tagger_path = path
+            self.tagger_path = path
             self.tagger = tagger
         else:
             raise LinterInternalException.create(f'Failed to load tagger from {path}')
@@ -154,21 +158,21 @@ class Linter:
                silent: bool = True,
                debug: bool = False):
         # get file changes
-        if not silent: print('updating watchlist', file=sys.stderr)
+        if not silent: print('UPDATE WATCHLIST', file=sys.stderr)
         deleted, modified = self._update_watched_directories()
 
         # delete tags if no tagger defined
         if not self.tagger and self.tags:
-            if not silent: print('removing tags', file=sys.stderr)
+            if not silent: print('CLEAR TAGS', file=sys.stderr)
             self.tags = dict()
+            self.tagger_path = None
             self.changed = True
 
         if not (modified or deleted):
-            if not silent: print('no changes: make general report', file=sys.stderr)
             return dict(self.make_report())
         self.changed = True
 
-        if not silent: print('unlinking', file=sys.stderr)
+        if not silent: print('UNLINKING', file=sys.stderr)
         # remove all changed files
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
@@ -179,14 +183,14 @@ class Linter:
         if use_multiprocessing and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
                 for d in pool.imap_unordered(Document, modified):
-                    if not silent: print(f'parsed {os.path.basename(d.file)}', file=sys.stderr)
+                    if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr)
                     documents.append(d)
         else:
             for d in map(partial(Document, ignore_exceptions=not debug), modified):
-                if not silent: print(f'parsed {os.path.basename(d.file)}', file=sys.stderr)
+                if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr)
                 documents.append(d)
 
-        if not silent: print('linking', file=sys.stderr)
+        if not silent: print('LINKING', file=sys.stderr)
         # link successfully compiled documents
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)

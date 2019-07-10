@@ -75,8 +75,6 @@ class LinterCLI(CLI):
                     use_multiprocessing=use_multiprocessing,
                     debug=debug,
                     silent=not progress)
-                print('update report finished', file=sys.stderr)
-            self.changed |= self.linter.changed
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
         except Exception as e:
@@ -244,11 +242,13 @@ class LinterCLI(CLI):
 
     def setup(self):
         self._setup_called = True
-        self.changed = False
         self.logger = logger.bind(name="linter_cli")
         self.logger.add(expanduser('~/.trefier/linter.log'), enqueue=True)
         self.logger.info("Session start")
         self.return_result(self.setup, 0)
+    
+    def status(self):
+        return self.linter.tagger_path, self.linter.tagger, len(self.linter.tags)
 
     def run(self, *extra_commands):
         if not self._setup_called:
@@ -273,6 +273,7 @@ class LinterCLI(CLI):
             self.bindings,
             self.trefis,
             self.defis,
+            self.status,
             *extra_commands
         ])
 
@@ -287,13 +288,11 @@ class LinterCLI(CLI):
     def __init__(self):
         super().__init__()
         self.logger = None
-        self.changed = False
         self._setup_called = False
         self.linter = Linter()
 
     def __setstate__(self, state):
         self.logger = None
-        self.changed = False
         self._setup_called = False
         self.linter = state
 
@@ -333,6 +332,14 @@ if __name__ == '__main__':
                     assert os.path.isdir(root)
                     cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
                 cache.data.run(cache.write)
+            except:
+                cache.write_on_exit = False
+                cache.data.logger.exception("Exception during top-level run()")
+                raise
             finally:
-                cache.write_on_exit = cache.write_on_exit and cache.data.changed
+                try:
+                    cache.write_on_exit = cache.write_on_exit and cache.data.linter.changed
+                except Exception as e:
+                    cache.data.logger.exception('Exception during determining write_on_exit')
+                    cache.write_on_exit = False
     argh.dispatch_command(_main)

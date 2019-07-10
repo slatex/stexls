@@ -207,6 +207,8 @@ class Linter:
         return report
     
     def get_object_range_at_position(self, file: str, line: int, column: int) -> Optional[Range]:
+        """ Returns the range of any type of object at the specified position in a file
+            or None if no object is under the cursor. """
         document = self._map_file_to_document.get(file)
         if not document:
             raise Exception("File not tracked")

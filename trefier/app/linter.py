@@ -1,4 +1,6 @@
-from argh import *
+from __future__  import annotations
+from typing import List, Optional
+from argh import arg, aliases, dispatch_command
 import argparse
 from glob import glob
 from os.path import isdir, expanduser, abspath
@@ -9,8 +11,9 @@ from loguru import logger
 import argh
 import traceback
 import functools
+import json
 
-from trefier.misc.location import *
+from trefier.misc.location import Location, Range, Position
 from trefier.linting.identifiers import ModuleIdentifier
 from trefier.misc.Cache import Cache
 from trefier.linting.linter import Linter
@@ -339,7 +342,7 @@ if __name__ == '__main__':
             finally:
                 try:
                     cache.write_on_exit = cache.write_on_exit and cache.data.linter.changed
-                except Exception as e:
+                except:
                     cache.data.logger.exception('Exception during determining write_on_exit')
                     cache.write_on_exit = False
     argh.dispatch_command(_main)

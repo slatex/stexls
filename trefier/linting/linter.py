@@ -226,7 +226,11 @@ class Linter:
             self.tagger_path = None
 
         if not (deleted or modified):
-            return dict(self.make_report(self._map_file_to_document.values()))
+            return dict(self.make_report(
+                list(self._map_file_to_document.values()),
+                n_jobs=n_jobs,
+                use_multiprocessing=use_multiprocessing,
+                show_progress=not silent))
 
         # remove changed files
         if not silent: print('UNLINKING', file=sys.stderr, flush=True)
@@ -236,9 +240,9 @@ class Linter:
 
         # Parse all files in parallel or sequential
         documents = []
-        if use_multiprocessing and not debug:
+        if use_multiprocessing and len(modified) > (n_jobs or multiprocessing.cpu_count()) and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
-                for d in pool.imap_unordered(Document, modified):
+                for d in pool.imap_unordered(Document, modified, chunksize=pool._processes):
                     if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
                     documents.append(d)
         else:
@@ -253,10 +257,19 @@ class Linter:
 
         self.import_graph.update()
 
-        report: Dict[str, Optional[List[ReportEntry]]] = dict(self.make_report(self._map_file_to_document.values()))
+        report: Dict[str, Optional[List[ReportEntry]]] = dict(
+            self.make_report(
+                list(self._map_file_to_document.values()),
+                n_jobs=n_jobs,
+                use_multiprocessing=use_multiprocessing,
+                show_progress=not silent))
 
         # add reports for documents that failed to parse this time
-        report.update(dict(self.make_report(filter(lambda doc: not doc.success, documents))))
+        report.update(dict(self.make_report(
+            list(filter(lambda doc: not doc.success, documents)),
+            n_jobs=n_jobs,
+            use_multiprocessing=use_multiprocessing,
+            show_progress=not silent)))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
@@ -294,13 +307,29 @@ class Linter:
             if symbol.contains(position):
                 return symbol.range
         return None
+    
+    def _make_report_document_parallel(self, document: Document) -> List[ReportEntry]:
+        """ A wrapper for _make_document_report as pools can't handle iterator return types """
+        return document, list(self._make_document_report(document))
 
-    def make_report(self, documents: Iterable[Document], show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
+    def make_report(
+        self,
+        documents: List[Document],
+        n_jobs: int,
+        use_multiprocessing: bool,
+        show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
         """ Iterates through the given documents and creates a a tuple of (file path, file report)
             for every file. """
-        for document in documents:
-            if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
-            yield (document.file, list(self._make_document_report(document)))
+        if use_multiprocessing and len(documents) > (n_jobs or multiprocessing.cpu_count()):
+            with multiprocessing.Pool(n_jobs) as pool:
+                for cycle, (document, report) in zip(itertools.cycle(range(pool._processes)), pool.imap_unordered(
+                        self._make_report_document_parallel, documents, chunksize=len(documents)//pool._processes)):
+                    if show_progress and cycle == 0: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                    yield document.file, report
+        else:
+            for document in documents:
+                if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
         """ Returns an iterator for all files assigned to that module """

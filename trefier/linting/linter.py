@@ -8,11 +8,11 @@ import re
 import sys
 from functools import partial
 
-from trefier.misc.location import *
+from trefier.misc.location import Position, Range, Location
 from trefier.misc.file_watcher import FileWatcher
 from trefier.models import seq2seq
 
-from trefier.linting.exceptions import *
+from trefier.linting.exceptions import LinterException
 from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
 from trefier.linting.document import *
@@ -22,6 +22,62 @@ __all__ = ['Linter']
 
 
 class Linter:
+    def __init__(self):
+        self._file_watcher = FileWatcher(['.tex'])
+        self._watched_directories: List[str] = []
+
+        self._map_file_to_document: Dict[str, Document] = dict()
+        self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = dict()
+        self._map_module_identifier_to_module: Dict[str, Document] = dict()
+        self._symbol_index: Dict[str, List[SymiSymbol]] = dict()
+
+        self.import_graph = ImportGraph()
+        self._duplicate_definition_report: Dict[str, List[ReportEntry]] = dict()
+
+        # currently loaded path to tagger
+        self.tagger_path: Optional[str] = None
+        # tagger path loaded by __setstate__
+        self._last_tagger_path: Optional[str] = None
+        # loaded tagger instance
+        self.tagger: Optional[seq2seq.Model] = None
+        # tags of the current tagger: Delete if None
+        self.tags: Dict[str, object] = dict()
+
+        self._last_update_report = None
+
+        self.changed = False
+
+    def __getstate__(self):
+        return (
+            self._file_watcher,
+            self._watched_directories,
+            self._map_file_to_document,
+            self._map_module_identifier_to_bindings,
+            self._map_module_identifier_to_module,
+            self.import_graph,
+            self._duplicate_definition_report,
+            self.tags,
+            self.tagger_path
+        )
+
+    def __setstate__(self, state):
+        # initialize other state
+        self.tagger = None
+        self.tagger_path = None
+        self._last_update_report = None
+        self.changed = False
+
+        # load state
+        (self._file_watcher,
+         self._watched_directories,
+         self._map_file_to_document,
+         self._map_module_identifier_to_bindings,
+         self._map_module_identifier_to_module,
+         self.import_graph,
+         self._duplicate_definition_report,
+         self.tags,
+         self._last_tagger_path) = state
+
     def load_tagger_model(self, path: str):
         path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
@@ -98,7 +154,7 @@ class Linter:
         definition = self.goto_definition(file, line, column)
         implementations = []
         if definition is not None:
-            for lang, binding in self._map_module_identifier_to_bindings.get(str(definition.module), {}).items():
+            for _, binding in self._map_module_identifier_to_bindings.get(str(definition.module), {}).items():
                 if isinstance(definition, SymiSymbol):
                     for defi in binding.defis:
                         if defi.symbol_name == definition.symbol_name:
@@ -430,26 +486,21 @@ class Linter:
                     ) for i in indices
                 ]
                 name = '-'.join(tokens[i] for i in indices)
-                for similarity, symi in self._find_similarly_named_symbols(name):
+                for similarity, symi in self._find_similarly_named_symbols(name, 0.8):
                     matches.append((symi.module, symi.symbol_name, ranges))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
-        print(f'MATCH {name}', file=sys.stderr, flush=True)
-        perfect_match = False
-        for module, document in self._map_module_identifier_to_module.items():
-            for symi in document.symis:
-                if symi.symbol_name == name:
-                    yield (1, symi)
-                    perfect_match = True
-
-        if not perfect_match and threshold and 0 < threshold <= 1:
-            print(f'MATCH SIMILAR {name}', file=sys.stderr, flush=True)
-            for module, document in self._map_module_identifier_to_module.items():
-                for symi in document.symis:
-                    ratio = difflib.SequenceMatcher(a=symi.symbol_name, b=name).ratio()
-                    if ratio > threshold:
+        """ Finds all symbols which name's are equal or similar to the given name """
+        if len(name) > 4 and threshold and 0 < threshold <= 1:
+            for symbol_name, symis in self._symbol_index.items():
+                ratio = difflib.SequenceMatcher(a=symbol_name, b=name).ratio()
+                if ratio > threshold:
+                    for symi in symis:
                         yield (ratio, symi)
+        else:
+            for symi in self._symbol_index.get(name, ()):
+                yield (1, symi)
 
     def _resolve_symbol_name_in_module(
             self,
@@ -533,7 +584,7 @@ class Linter:
         if file in self._duplicate_definition_report:
             del self._duplicate_definition_report[file]
 
-        document = self._map_file_to_document.get(file)
+        document: Document = self._map_file_to_document[file]
 
         module_id = str(document.module_identifier)
 
@@ -548,6 +599,10 @@ class Linter:
         elif document.module:
             if not silent:
                 print('-MODULE', module_id, file=sys.stderr)
+            for sym in document.symis:
+                self._symbol_index[sym.symbol_name].remove(sym)
+                if not self._symbol_index[sym.symbol_name]:
+                    del self._symbol_index[sym.symbol_name]
             self.import_graph.remove(document.module_identifier)
             del self._map_module_identifier_to_module[module_id]
 
@@ -579,6 +634,9 @@ class Linter:
                 return
             if not silent:
                 print("+MODULE", module, os.path.basename(document.file), file=sys.stderr)
+            for sym in document.symis:
+                self._symbol_index.setdefault(sym.symbol_name, [])
+                self._symbol_index[sym.symbol_name].append(sym)
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
 
@@ -586,105 +644,10 @@ class Linter:
         if not silent:
             print('+FILE', document.file, file=sys.stderr)
 
-    def __init__(self):
-        self._file_watcher = FileWatcher(['.tex'])
-        self._watched_directories: List[str] = []
-
-        self._map_file_to_document: Dict[str, Document] = dict()
-        self._map_module_identifier_to_bindings: Dict[str, Dict[str, Document]] = dict()
-        self._map_module_identifier_to_module: Dict[str, Document] = dict()
-
-        self.import_graph = ImportGraph()
-        self._duplicate_definition_report: Dict[str, List[ReportEntry]] = dict()
-
-        # currently loaded path to tagger
-        self.tagger_path: Optional[str] = None
-        # tagger path loaded by __setstate__
-        self._last_tagger_path: Optional[str] = None
-        # loaded tagger instance
-        self.tagger: Optional[seq2seq.Model] = None
-        # tags of the current tagger: Delete if None
-        self.tags: Dict[str, object] = dict()
-
-        self._last_update_report = None
-
-        self.changed = False
-
-    def __getstate__(self):
-        return (
-            self._file_watcher,
-            self._watched_directories,
-            self._map_file_to_document,
-            self._map_module_identifier_to_bindings,
-            self._map_module_identifier_to_module,
-            self.import_graph,
-            self._duplicate_definition_report,
-            self.tags,
-            self.tagger_path
-        )
-
-    def __setstate__(self, state):
-        # initialize other state
-        self.tagger = None
-        self.tagger_path = None
-        self._last_update_report = None
-        self.changed = False
-
-        # load state
-        (self._file_watcher,
-         self._watched_directories,
-         self._map_file_to_document,
-         self._map_module_identifier_to_bindings,
-         self._map_module_identifier_to_module,
-         self.import_graph,
-         self._duplicate_definition_report,
-         self.tags,
-         self._last_tagger_path) = state
-
-    def auto_complete(self, file: str, context: str):
-        """
-        \trefis[abadw-ad?kljh-ad21_213]{dawdaw}{d2ad
-        \mtrefii[abadw-ad?kljh-ad21_213]{
-        \matrefiii[abadw-ad?kljh-ad21
-        \atrefis[abadw-ad?
-        \atrefi[abadw-
-        \matrefiii[
-
-        \trefi[abadw-ad]{dawdaw}{d2ad
-        \trefi[abadw-ad]{
-
-        \trefi[?abadw-ad]{dawdaw}{d2ad
-        \atrefi[?abadw-ad]{
-        \trefi[?abadw-
-        \trefi[?
-
-        \trefi{asihA}{2131
-        \trefi{
-
-        \adefii[name=asA_-ad2ab2]{dawdaw}{d2ad
-        \adefi[name=asA_-ad2ab2]{
-        \defii[name = asA_-ad2ab2
-        \defii[ gcn=N,name=asA_-ad2ab2
-        \defis[ name=
-        \adefii{dawdaw}{d2ad
-        \adefii{
-
-        \gimport{
-        \gimport{fasdsa
-        \gimport{fasdsa}
-
-        \gimport [base/rep1 ]{
-        \gimport [base/rep2]{fasdsa
-        \gimport [base/rep2]{fasdsa}
-
-        \gimport [base/rep1_
-        \gimport [base/rep2
-        \gimport[ bas
-        \gimport[ base/
-        \gimport[
-        :param file:
-        :param context:
-        :return:
+    def auto_complete(self, file: str, context: str) -> Iterator[dict]:
+        """ Yields a named tuple of type {type: str, value: str} for each possible autocomplete item
+        :param file: Current file
+        :param context: Context that needs completions
         """
         document = self._map_file_to_document.get(file)
 

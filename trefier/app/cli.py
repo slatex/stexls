@@ -53,7 +53,9 @@ class CLI:
                 :param commands: Commands available.
         """
         try:
-            line = next(sys.stdin)
+            line = None
+            for line in sys.stdin:
+                break
             try:
                 argh.dispatch_commands([*commands, self.exit, self.restart, self.echo], shlex.split(line))
             except SystemExit:

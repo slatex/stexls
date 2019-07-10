@@ -237,9 +237,11 @@ class Linter:
                 return symbol.range
         return None
 
-    def make_report(self, documents: Iterable[Document]) -> Iterator[Tuple[str, List[ReportEntry]]]:
+    def make_report(self, documents: Iterable[Document], show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
+        """ Iterates through the given documents and creates a a tuple of (file path, file report)
+            for every file. """
         for document in documents:
-            print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+            if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
             yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
@@ -251,6 +253,8 @@ class Linter:
 
     def _resolve_target_module_identifier(
             self, symbol: Union[TrefiSymbol, DefiSymbol, GimportSymbol]) -> Optional[ModuleIdentifier]:
+        """ Resolves the module identifier the given symbol "targets".
+            E.g.: trefi[target?...]{...}, gimport{target}. Defis target the own file's module. """
         if isinstance(symbol, TrefiSymbol):
             if symbol.target_module is None:
                 return symbol.module
@@ -267,6 +271,7 @@ class Linter:
             raise Exception(f'Target module for {type(symbol)} is undefined')
 
     def _make_document_binding_report(self, document: Document) -> Iterator[ReportEntry]:
+        """ Makes the report for a binding """
         # check wether the module of the filename matches environment
         if document.binding.module_and_file_name_mismatch:
             yield ReportEntry.module_name_mismatch(document.binding)
@@ -308,7 +313,7 @@ class Linter:
                         yield ReportEntry.unresolved(symbol, symbol.symbol_name, 'symbol')
 
             # report if the binding uses the module
-            if not self._check_binding_uses_module(document, document.module_identifier):
+            if self._check_module_unused(document, document.module_identifier):
                 yield ReportEntry.unused_import(document.binding, document.module_identifier)
 
             # report if a imported module is unused by this binding
@@ -316,24 +321,23 @@ class Linter:
                 imported_module = self._resolve_symbol(gimport)
                 if imported_module:
                     assert isinstance(imported_module, ModuleDefinitonSymbol)
-                    if not self._check_binding_uses_module(document, imported_module.module):
+                    if self._check_module_unused(document, imported_module.module):
                         yield ReportEntry.unused_import(document.binding, imported_module.module)
 
         # report tag matches
         for module, name, ranges in self._get_possible_trefi_matches(document):
             yield ReportEntry.tag_match(ranges, module_name=module.module_name, symbol_name=name)
 
-    def _check_binding_uses_module(self, binding: Document, module: ModuleIdentifier) -> bool:
-        """ Returns true if the binding uses the specified module in any trefi """
-        assert binding.binding
-        for symbol in itertools.chain(binding.trefis, binding.defis):
+    def _check_module_unused(self, document: Document, module: ModuleIdentifier) -> bool:
+        """ Returns True if the given module identifier is not used in any trefi import of the document. """
+        for symbol in document.trefis:
             if self._resolve_target_module_identifier(symbol) == module:
-                return True
-        return False
+                return False
+        return True
 
     def _resolve_symbol(
-            self,
-            symbol: Union[TrefiSymbol, DefiSymbol, GimportSymbol]) -> Optional[Union[SymiSymbol, ModuleDefinitonSymbol]]:
+            self, symbol: Union[TrefiSymbol, DefiSymbol, GimportSymbol]) -> Optional[Union[SymiSymbol, ModuleDefinitonSymbol]]:
+        """ Resolves the target symbol of trefis, defis and gimports """
         target_module = self._resolve_target_module_identifier(symbol)
         if target_module:
             if isinstance(symbol, GimportSymbol):
@@ -342,34 +346,41 @@ class Linter:
                     return module_definition.module
             else:
                 return self._resolve_symbol_name_in_module(symbol.symbol_name, target_module)
+    
+    def _report_unresolved_or_unused_imports(self, gimports: Iterable[GimportSymbol]) -> Iterable[ReportEntry]:
+        # check gimports resolveable
+        for gimport in gimports:
+            if not self._resolve_symbol(gimport):
+                yield ReportEntry.unresolved(gimport, gimport.imported_module, 'module')
+            else:
+                module = str(gimport.module)
+                for binding in self._map_module_identifier_to_bindings.get(
+                        module, {}).values():
+                    if self._check_module_unused(binding, gimport.imported_module):
+                        break
+                else:
+                    yield ReportEntry.unused_import(
+                        gimport, unused_module=gimport.imported_module)
+    
+    def _report_redundant_imports(self, document: Document) -> Iterable[ReportEntry]:
+        for redundant, sources in self.import_graph.redundant.get(str(document.module_identifier), {}).items():
+            location = document.get_import_location(redundant)
+            for source in sources:
+                yield ReportEntry.redundant(location, redundant_module_name=source)
 
     def _make_document_module_report(self, document: Document) -> Iterator[ReportEntry]:
         # report module name in file and environment mismatch
         if document.module.module_and_file_name_mismatch:
             yield ReportEntry.module_name_mismatch(document.module)
 
-        # check gimports resolveable
-        for gimport in document.gimports:
-            if not self._resolve_symbol(gimport):
-                yield ReportEntry.unresolved(gimport, gimport.imported_module, 'module')
-            else:
-                for binding in self._map_module_identifier_to_bindings.get(
-                        str(document.module_identifier), {}).values():
-                    if self._check_binding_uses_module(binding, gimport.imported_module):
-                        break
-                else:
-                    yield ReportEntry.unused_import(
-                        gimport, unused_module=gimport.imported_module)
+        yield from self._report_unresolved_or_unused_imports(document.gimports)
 
         # report that this module has no language bindings
         if str(document.module_identifier) not in self._map_module_identifier_to_bindings:
             yield ReportEntry.no_bindings(document.module)
 
         # report redundant imports
-        for redundant, sources in self.import_graph.redundant.get(str(document.module_identifier), {}).items():
-            location = document.get_import_location(redundant)
-            for source in sources:
-                yield ReportEntry.redundant(location, redundant_module_name=source)
+        yield from self._report_redundant_imports(document)
 
         # report duplicate imports
         for duplicate, locations in self.import_graph.duplicates.get(str(document.module_identifier), {}).items():

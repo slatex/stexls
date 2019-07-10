@@ -217,13 +217,11 @@ class Linter:
                debug: bool = False):
         deleted, modified = self._update_watched_directories()
 
-        # set changed flag
-        self.changed |= bool(modified or deleted or not(self.tagger and self.tags))
-
         # remove tags if no tagger specified
         if not self.tagger and self.tags:
             self.tags = dict()
             self.tagger_path = None
+            self.changed = True
 
         if not (deleted or modified):
             return dict(self.make_report(
@@ -231,6 +229,7 @@ class Linter:
                 n_jobs=n_jobs,
                 use_multiprocessing=use_multiprocessing,
                 show_progress=not silent))
+        self.changed = True
 
         # remove changed files
         if not silent: print('UNLINKING', file=sys.stderr, flush=True)
@@ -242,7 +241,7 @@ class Linter:
         documents = []
         if use_multiprocessing and len(modified) > (n_jobs or multiprocessing.cpu_count()) and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
-                for d in pool.imap_unordered(Document, modified, chunksize=pool._processes):
+                for d in pool.imap_unordered(Document, modified, chunksize=pool._processes<<2):
                     if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
                     documents.append(d)
         else:
@@ -274,7 +273,7 @@ class Linter:
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
             report.setdefault(unhandled)
-
+        
         return report
     
     def get_object_range_at_position(self, file: str, line: int, column: int) -> Optional[Range]:
@@ -322,9 +321,9 @@ class Linter:
             for every file. """
         if use_multiprocessing and len(documents) > (n_jobs or multiprocessing.cpu_count()):
             with multiprocessing.Pool(n_jobs) as pool:
-                for cycle, (document, report) in zip(itertools.cycle(range(pool._processes)), pool.imap_unordered(
-                        self._make_report_document_parallel, documents, chunksize=len(documents)//pool._processes)):
-                    if show_progress and cycle == 0: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                for document, report in pool.imap_unordered(
+                        self._make_report_document_parallel, documents, chunksize=len(documents)//pool._processes):
+                    if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
                     yield document.file, report
         else:
             for document in documents:
@@ -517,7 +516,7 @@ class Linter:
                     ) for i in indices
                 ]
                 name = '-'.join(tokens[i] for i in indices)
-                for similarity, symi in self._find_similarly_named_symbols(name):
+                for similarity, symi in self._find_similarly_named_symbols(name, 0):
                     matches.append((symi.module, symi.symbol_name, ranges))
         return matches
 
@@ -817,7 +816,7 @@ class ReportEntry:
             symbol = symbol.module
             symbol_type = 'module'
         elif isinstance(symbol, ModuleBindingDefinitionSymbol):
-            symbol = symbol.module + '.' + symbol.lang
+            symbol = str(symbol.module) + '.' + symbol.lang
             symbol_type = 'binding'
         return ReportEntry(location.range, 'duplicate', symbol=str(symbol), symbol_type=symbol_type)
 

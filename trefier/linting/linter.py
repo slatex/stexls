@@ -157,23 +157,21 @@ class Linter:
                use_multiprocessing: bool = True,
                silent: bool = True,
                debug: bool = False):
-        # get file changes
-        if not silent: print('UPDATE WATCHLIST', file=sys.stderr)
         deleted, modified = self._update_watched_directories()
 
-        # delete tags if no tagger defined
+        # set changed flag
+        self.changed |= bool(modified or deleted or not(self.tagger and self.tags))
+
+        # remove tags if no tagger specified
         if not self.tagger and self.tags:
-            if not silent: print('CLEAR TAGS', file=sys.stderr)
             self.tags = dict()
             self.tagger_path = None
-            self.changed = True
 
-        if not (modified or deleted):
-            return dict(self.make_report())
-        self.changed = True
+        if not (deleted or modified):
+            return dict(self.make_report(self._map_file_to_document.values()))
 
-        if not silent: print('UNLINKING', file=sys.stderr)
-        # remove all changed files
+        # remove changed files
+        if not silent: print('UNLINKING', file=sys.stderr, flush=True)
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
                 self._unlink(file, silent=False if debug else silent)
@@ -183,25 +181,24 @@ class Linter:
         if use_multiprocessing and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
                 for d in pool.imap_unordered(Document, modified):
-                    if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr)
+                    if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
                     documents.append(d)
         else:
             for d in map(partial(Document, ignore_exceptions=not debug), modified):
-                if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr)
+                if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
                 documents.append(d)
 
-        if not silent: print('LINKING', file=sys.stderr)
         # link successfully compiled documents
+        if not silent: print('LINKING', file=sys.stderr, flush=True)
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)
 
-        # get all modules that were changed
-        changed_modules = self.import_graph.update()
+        self.import_graph.update()
 
-        report: Dict[str, Optional[List[ReportEntry]]] = dict(self.make_report())
+        report: Dict[str, Optional[List[ReportEntry]]] = dict(self.make_report(self._map_file_to_document.values()))
 
-        # add exceptions from not successfully compiled documents to report
-        report.update(dict(self.make_report(list(filter(lambda doc: not doc.success, documents)))))
+        # add reports for documents that failed to parse this time
+        report.update(dict(self.make_report(filter(lambda doc: not doc.success, documents))))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
@@ -238,11 +235,9 @@ class Linter:
                 return symbol.range
         return None
 
-    def make_report(self, documents: Optional[Iterable[Document]] = None) -> Iterator[Tuple[str, List[ReportEntry]]]:
-        if not documents:
-            documents = list(self._map_file_to_document.values())
+    def make_report(self, documents: Iterable[Document]) -> Iterator[Tuple[str, List[ReportEntry]]]:
         for document in documents:
-            print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr)
+            print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
             yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
@@ -427,7 +422,7 @@ class Linter:
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
-        print(f'MATCH EQUAL {name}', file=sys.stderr)
+        print(f'MATCH {name}', file=sys.stderr, flush=True)
         perfect_match = False
         for module, document in self._map_module_identifier_to_module.items():
             for symi in document.symis:
@@ -436,7 +431,7 @@ class Linter:
                     perfect_match = True
 
         if not perfect_match and threshold and 0 < threshold <= 1:
-            print(f'MATCH SIMILAR {name}', file=sys.stderr)
+            print(f'MATCH SIMILAR {name}', file=sys.stderr, flush=True)
             for module, document in self._map_module_identifier_to_module.items():
                 for symi in document.symis:
                     ratio = difflib.SequenceMatcher(a=symi.symbol_name, b=name).ratio()

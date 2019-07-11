@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict, Optional, Iterator, Set, Iterable
+from typing import List, Dict, Optional, Iterator, Set, Iterable, Tuple, Union
 import os
 import itertools
 import multiprocessing
@@ -12,7 +12,7 @@ from trefier.misc.location import Position, Range, Location
 from trefier.misc.file_watcher import FileWatcher
 from trefier.models import seq2seq
 
-from trefier.linting.exceptions import LinterException
+from trefier.linting.exceptions import LinterException, LinterInternalException
 from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
 from trefier.linting.document import *
@@ -96,8 +96,8 @@ class Linter:
                         print(f'TAGGING {os.path.basename(binding.file)}', file=sys.stderr)
                         try:
                             self.tags[binding.file] = tagger.predict(binding.file)
-                        except:
-                            pass
+                        except Exception as e:
+                            print(str(e), file=sys.stderr)
             self._last_tagger_path = path
             self.tagger_path = path
             self.tagger = tagger
@@ -246,13 +246,13 @@ class Linter:
         documents = []
         if use_multiprocessing and len(modified) > (n_jobs or multiprocessing.cpu_count()) and not debug:
             with multiprocessing.Pool(n_jobs) as pool:
-                for d in pool.imap_unordered(Document, modified, chunksize=pool._processes<<2):
-                    if not silent: print(f'PARSED {os.path.basename(d.file)}', file=sys.stderr, flush=True)
-                    documents.append(d)
+                for document in pool.imap_unordered(Document, modified, chunksize=multiprocessing.cpu_count() << 2):
+                    if not silent: print(f'PARSED {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                    documents.append(document)
         else:
-            for d in map(partial(Document, ignore_exceptions=not debug), modified):
-                if not silent: print(f'PARSEDseq {os.path.basename(d.file)}', file=sys.stderr, flush=True)
-                documents.append(d)
+            for document in map(partial(Document, ignore_exceptions=not debug), modified):
+                if not silent: print(f'PARSEDseq {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                documents.append(document)
 
         # link successfully compiled documents
         if not silent: print(f'LINKING {len(list(filter(lambda doc: doc.success, documents)))}', file=sys.stderr, flush=True)
@@ -311,7 +311,7 @@ class Linter:
                 return symbol.range
         return None
     
-    def _make_report_document_parallel(self, document: Document) -> List[ReportEntry]:
+    def _make_report_document_parallel(self, document: Document) -> Tuple[Document, List[ReportEntry]]:
         """ A wrapper for _make_document_report as pools can't handle iterator return types """
         return document, list(self._make_document_report(document))
 
@@ -326,7 +326,9 @@ class Linter:
         if use_multiprocessing and len(documents) > (n_jobs or multiprocessing.cpu_count()):
             with multiprocessing.Pool(n_jobs) as pool:
                 for document, report in pool.imap_unordered(
-                        self._make_report_document_parallel, documents, chunksize=len(documents)//pool._processes):
+                        self._make_report_document_parallel,
+                        documents,
+                        chunksize=len(documents)//(multiprocessing.cpu_count() << 2)):
                     if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
                     yield document.file, report
         else:
@@ -415,8 +417,11 @@ class Linter:
                         yield ReportEntry.unused_import(document.binding, imported_module.module)
 
         # report tag matches
-        for module, name, ranges in self._get_possible_trefi_matches(document):
-            yield ReportEntry.tag_match(ranges, module_name=module.module_name, symbol_name=name)
+        for is_defi, ranges, symbol_name_or_text, module in self._get_possible_trefi_matches_or_mark_as_defi(document):
+            if is_defi:
+                yield ReportEntry.tag_defi(ranges, symbol_name_or_text)
+            else:
+                yield ReportEntry.tag_trefi(ranges, module_name=module.module_name, symbol_name=symbol_name_or_text)
 
     def _check_module_unused(self, document: Document, module: ModuleIdentifier) -> bool:
         """ Returns True if the given module identifier is not used in any trefi import of the document. """
@@ -500,11 +505,12 @@ class Linter:
         elif document.module:
             yield from self._make_document_module_report(document)
 
-    def _get_possible_trefi_matches(
-            self, document: Document) -> List[Tuple[ModuleIdentifier, str, List[Range]]]:
+    def _get_possible_trefi_matches_or_mark_as_defi(
+            self, document: Document) -> List[Tuple[bool, List[Range], str, Optional[ModuleIdentifier]]]:
         """ Looks at the tags for a document and returns possibly matching symbols with the
             source location of the matching tokens.
-            :returns List of tuples of (module of match, symbol name of match, List of source tokens in the file) """
+            And if no symbol matches yields that it might be a defi
+            :returns List of tuples of (is_defi, token ranges, symbol name/text, module of trefi or None) """
         matches = []
         tags = self.tags.get(document.file)
         if tags:
@@ -519,9 +525,15 @@ class Linter:
                         Position(token_ranges[i][1][0], token_ranges[i][1][1])
                     ) for i in indices
                 ]
-                name = '-'.join(tokens[i] for i in indices)
+                name = '-'.join(tokens[i] for i in indices if tokens[i] != '-' and tokens[i] != '<math>')
+                if not name:
+                    continue # prevent empty names
+                report_defi = True
                 for similarity, symi in self._find_similarly_named_symbols(name, 0):
-                    matches.append((symi.module, symi.symbol_name, ranges))
+                    report_defi = False
+                    matches.append((False, ranges, symi.symbol_name, symi.module))
+                if report_defi:
+                    matches.append((True, ranges, name, None))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
@@ -661,7 +673,8 @@ class Linter:
             if self.tagger and document.binding.lang in ('en', 'lang'):
                 try:
                     self.tags[document.file] = self.tagger.predict(document.file)
-                except:
+                except Exception as e:
+                    print(str(e), file=sys.stderr)
                     if document.file in self.tags:
                         del self.tags[document.file]
         elif document.module:
@@ -797,12 +810,16 @@ class ReportEntry:
         return ReportEntry(location.range, 'missing_import', module=str(missing_module))
 
     @staticmethod
-    def tag_match(
+    def tag_trefi(
             ranges: List[Range],
             module_name: str,
             symbol_name: Union[ModuleIdentifier, Symbol, str]):
         return ReportEntry(Range.reduce_union(ranges),
-                           'match', module=module_name, name=str(symbol_name), tokens=ranges)
+                           'trefi', module=module_name, name=str(symbol_name), ranges=ranges)
+
+    @staticmethod
+    def tag_defi(token_ranges: List[Range], text: str):
+        return ReportEntry(Range.reduce_union(token_ranges), 'defi', ranges=token_ranges, text=text)
 
     @staticmethod
     def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):

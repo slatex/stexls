@@ -101,7 +101,7 @@ class Linter:
         try:
             if self.tagger and document.binding.lang in ('en', 'lang'):
                 if not silent:
-                    print(f'TAGGING {os.path.basename(document.file)}')
+                    print(f'TAGGING {os.path.basename(document.file)}', file=sys.stderr, flush=True)
                 self.tags[document.file] = self.tagger.predict(document.file)
                 self.changed = True
         except Exception as e:

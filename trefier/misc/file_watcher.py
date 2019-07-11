@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Set
 import os.path as path
 from glob import glob
 
@@ -18,7 +18,7 @@ class FileWatcher:
     def __setstate__(self, state):
         self._files, self._extensions = state
     
-    def update(self):
+    def update(self) -> Tuple[Set[str], Set[str]]:
         """ Removes deleted files from index then returns two lists for deleted and modified files """
         deleted = set(filter(lambda x: not path.isfile(x), self._files))
         modified = set(f for f, time in self._files.items() if path.isfile(f) and time < path.getmtime(f))

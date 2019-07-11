@@ -1,5 +1,5 @@
 from __future__  import annotations
-from typing import List, Optional
+from typing import List, Optional, Callable
 from argh import arg, aliases, dispatch_command
 import argparse
 from glob import glob
@@ -12,6 +12,7 @@ import argh
 import traceback
 import functools
 import json
+import time
 
 from trefier.misc.location import Location, Range, Position
 from trefier.linting.identifiers import ModuleIdentifier
@@ -22,20 +23,24 @@ from trefier.app.cli import CLI
 __all__ = ['LinterCLI']
 
 
-def ignore_exceptions(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except:
-            traceback.print_exc()
+class Timer:
+    def __init__(self):
+        self.begin = None
+        self.delta = None
 
-    return wrapper
+    def __enter__(self):
+        self.begin = time.time()
+        return self
+    
+    def __exit__(self, *args, **kwargs):
+        self.delta = time.time() - self.begin
 
 
 class ShowErrors:
-    """ Signals the wrapping extension that stderr should be interpreted as important information and should be
-        somehow displayed for a better user experience. """
+    """ By writing "showErrors" to stderr it signals the wrapping extension
+        that stderr should be interpreted as important information and should be
+        somehow displayed for a better user experience.
+        "hideErrors" signals that the anything after that can be ignored. """
     def __enter__(self):
         print('showErrors', file=sys.stderr)
 
@@ -44,6 +49,63 @@ class ShowErrors:
 
 
 class LinterCLI(CLI):
+    def __init__(self):
+        super().__init__()
+        self.logger = None
+        self._setup_called = False
+        self.linter = Linter()
+
+    def __setstate__(self, state):
+        self.logger = None
+        self._setup_called = False
+        self.linter = state
+
+    def __getstate__(self):
+        return self.linter
+
+    def return_result(self, command: Callable, status: int, encoder: Optional[json.JSONEncoder] = None, **kwargs):
+        """ Returns the result to stdout by parsing it with json. Every result is a json object on a single line
+            with the guaranteed attributes "command" and "status". "command" is the name of the command and "status"
+            is an integer indicating success with a value of 0. """
+        try:
+            self.logger.info(f"Returning {command.__name__} with status {status}")
+            return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
+        except Exception as e:
+            self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
+            super().return_result(command, 1, message=str(e))
+
+    def setup(self):
+        """ Initializes the linter. Must first be called before doing anything. """
+        try:
+            if self._setup_called:
+                self.return_result(self.setup, 1, message="setup already called")
+            else:
+                self.logger = logger.bind(name="linter_cli")
+                self.logger.add(expanduser('~/.trefier/linter.log'), enqueue=True)
+                self.logger.info("Session start")
+                self._setup_called = True
+                self.return_result(self.setup, 0)
+        except Exception as e:
+            self.return_result(self.setup, 1, message=str(e))
+
+    def run(self, *extra_commands):
+        if not self._setup_called:
+            raise Exception("linter_cli.setup() must be called before running")
+        self.logger.info(f"linter_cli.run with {len(extra_commands)} extra commands")
+        super().run([
+            self.add,
+            self.update,
+            self.goto_definition,
+            self.goto_implementation,
+            self.find_references,
+            self.load_tagger,
+            self.complete,
+            self.draw_graph,
+            self.return_error_message,
+            self.raise_exception,
+            *extra_commands
+        ])
+
     @arg('directories',
          nargs=argparse.REMAINDER,
          type=str,
@@ -76,28 +138,18 @@ class LinterCLI(CLI):
         """ Updates the linter """
         self.logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
-            with ShowErrors():
+            with ShowErrors(), Timer() as timer:
                 report = self.linter.update(
                     n_jobs=jobs,
                     use_multiprocessing=use_multiprocessing,
                     debug=debug,
                     silent=not progress)
+            self.logger.info(f'Update done in {round(timer.delta, 2) if timer.delta else "<undefined>"} seconds')
             self.logger.info(f"{len(report)} files updated")
             self.return_result(self.update, 0, report=report)
         except Exception as e:
             self.logger.exception("Exception thrown during update")
             self.return_result(self.update, 1, message=str(e))
-
-    def make_report(self):
-        """ Gathers all information and makes a report """
-        self.logger.info("making report for all files")
-        try:
-            report = dict(self.linter.make_report())
-            self.logger.info(f"{len(report)} files in report")
-            self.return_result(self.make_report, 0, report=report)
-        except Exception as e:
-            self.logger.exception("Exception thrown during make_report")
-            self.return_result(self.make_report, 1, message=str(e))
 
     @arg('path', help="Path to a tagger model")
     def load_tagger(self, path: str):
@@ -177,142 +229,14 @@ class LinterCLI(CLI):
         except Exception as e:
             self.logger.exception("Exception during complete")
             self.return_result(self.complete, 1, message=str(e))
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def transitive(self, module: ModuleIdentifier):
-        yield from self.linter.import_graph.transitive.get(str(module), ())
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def references(self, module: ModuleIdentifier):
-        yield from self.linter.import_graph.references.get(str(module), ())
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def parents(self, module: ModuleIdentifier):
-        yield from self.linter.import_graph.parents_of(str(module), ())
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def ls(self, module: ModuleIdentifier):
-        yield from [
-            d.file
-            for d in self.linter._documents_in_module(str(module))
-        ]
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def exceptions(self, module: ModuleIdentifier):
-        return {
-            d.file: d.exceptions
-            for d in self.linter._documents_in_module(str(module))
-        }
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def modules(self, module: ModuleIdentifier):
-        return self.linter.import_graph.modules.get(str(module))
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def imports(self, module: ModuleIdentifier):
-        return self.linter.import_graph.graph.get(str(module))
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def symbols(self, module: ModuleIdentifier):
-        document = self.linter._map_module_identifier_to_module.get(str(module))
-        if document:
-            return document.module
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def bindings(self, module: ModuleIdentifier):
-        return [
-            binding.binding
-            for lang, binding
-            in self.linter._map_module_identifier_to_bindings.get(str(module), {}).items()
-        ]
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def defis(self, module: ModuleIdentifier):
-        for binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).values():
-            yield from binding.defis
-
-    @arg('module', type=ModuleIdentifier.from_id_string)
-    @ignore_exceptions
-    def trefis(self, module: ModuleIdentifier):
-        for binding in self.linter._map_module_identifier_to_bindings.get(str(module), {}).values():
-            yield from binding.trefis
-
-    def setup(self):
-        self._setup_called = True
-        self.logger = logger.bind(name="linter_cli")
-        self.logger.add(expanduser('~/.trefier/linter.log'), enqueue=True)
-        self.logger.info("Session start")
-        self.return_result(self.setup, 0)
     
-    def status(self):
-        return self.linter.tagger_path, self.linter.tagger, len(self.linter.tags)
-
     def raise_exception(self):
+        """ Raises an exception. """
         raise Exception("raise_exception raised an exception!")
 
     def return_error_message(self):
+        """ calls return_result with status 1 and a message. """
         self.return_result(self.return_error_message, 1, message="Error message returned!")
-
-    def run(self, *extra_commands):
-        if not self._setup_called:
-            raise Exception("linter_cli.setup() must be called before running")
-        self.logger.info(f"linter_cli.run with {len(extra_commands)} extra commands")
-        super().run([
-            self.add,
-            self.update,
-            self.goto_definition,
-            self.goto_implementation,
-            self.find_references,
-            self.load_tagger,
-            self.complete,
-            self.draw_graph,
-            self.transitive,
-            self.references,
-            self.ls,
-            self.exceptions,
-            self.modules,
-            self.imports,
-            self.symbols,
-            self.bindings,
-            self.trefis,
-            self.defis,
-            self.status,
-            self.return_error_message,
-            self.raise_exception,
-            *extra_commands
-        ])
-
-    def return_result(self, command, status, encoder=None, **kwargs):
-        try:
-            self.logger.info(f"Returning {command.__name__} with status {status}")
-            return super().return_result(command, status, encoder=encoder or LinterJSONEncoder(), **kwargs)
-        except Exception as e:
-            self.logger.exception(f"Exception thrown during return_result of {command.__name__}")
-            super().return_result(command, 1, message=str(e))
-
-    def __init__(self):
-        super().__init__()
-        self.logger = None
-        self._setup_called = False
-        self.linter = Linter()
-
-    def __setstate__(self, state):
-        self.logger = None
-        self._setup_called = False
-        self.linter = state
-
-    def __getstate__(self):
-        return self.linter
 
 
 class LinterJSONEncoder(json.JSONEncoder):
@@ -337,9 +261,9 @@ if __name__ == '__main__':
             try:
                 cache.data.setup()
                 if cache.path:
-                    cache.data.logger.info(f'using cachefile at {abspath(cache.path)}')
+                    cache.data.logger.info(f'Using cachefile at {abspath(cache.path)}')
                 else:
-                    cache.data.logger.info('no cachefile specified: No cache will be saved')
+                    cache.data.logger.info('No cachefile specified: No cache will be saved')
                 if tagger:
                     assert os.path.isfile(tagger)
                     cache.data.load_tagger(tagger)
@@ -349,11 +273,17 @@ if __name__ == '__main__':
                 cache.data.run(cache.write)
             except:
                 cache.data.logger.exception("Exception during top-level run()")
-                raise
+                # disable write on any exception
+                cache.write_on_exit = False
             finally:
-                try:
+                if cache.data and cache.data.linter:
+                    # only save if data.linter exists and linter is marked as changed
                     cache.write_on_exit = cache.write_on_exit and cache.data.linter.changed
-                except:
-                    cache.data.logger.exception('Exception during determining write_on_exit')
+                else:
+                    # else do not save
                     cache.write_on_exit = False
+            if cache.write_on_exit:
+                cache.data.logger.info(f'Ending session: Writing cache to "{cache.path}"')
+            else:
+                cache.data.logger.info('Ending session: Without writing cache')
     argh.dispatch_command(_main)

@@ -80,33 +80,40 @@ class Linter:
          self.tags,
          self._last_tagger_path) = state
 
-    def load_tagger_model(self, path: str):
+    def load_tagger_model(self, path: str, show_progress: bool = True):
         path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
-            tagger = seq2seq.Seq2SeqModel.load(path)
+            self.tagger = seq2seq.Seq2SeqModel.load(path)
             print(f'loading tagger from {path}: previous {self._last_tagger_path}', file=sys.stderr)
             # update tags if the loaded tagger is new,
             # or if the new tagger is different from the old tagger
             if not self._last_tagger_path or self._last_tagger_path != path:
                 # update tags only if a new tagger was adder or the tagger is different from last time
                 self.tags = dict()
-                self.changed = True
-                for binding in self.bindings():
-                    if binding.lang in ('en', 'lang'):
-                        print(f'TAGGING {os.path.basename(binding.file)}', file=sys.stderr)
-                        try:
-                            self.tags[binding.file] = tagger.predict(binding.file)
-                        except Exception as e:
-                            print(str(e), file=sys.stderr)
+                for binding in self.bindings:
+                    self._tag_document(binding, silent=not show_progress)
             self._last_tagger_path = path
             self.tagger_path = path
-            self.tagger = tagger
         else:
             raise LinterInternalException.create(f'Failed to load tagger from {path}')
+    
+    def _tag_document(self, document: Document, silent: bool = False):
+        try:
+            if self.tagger and document.binding.lang in ('en', 'lang'):
+                if not silent:
+                    print(f'TAGGING {os.path.basename(document.file)}')
+                self.tags[document.file] = self.tagger.predict(document.file)
+                self.changed = True
+        except Exception as e:
+            print(str(e), file=sys.stderr)
+            if document and document.file in self.tags:
+                del self.tags[document.file]
 
+    @property
     def ls(self) -> List[str]:
         return list(self._map_file_to_document)
 
+    @property
     def modules(self) -> List[ModuleDefinitonSymbol]:
         return [
             document.module
@@ -114,6 +121,7 @@ class Linter:
             in self._map_module_identifier_to_module.items()
         ]
 
+    @property
     def bindings(self) -> List[ModuleBindingDefinitionSymbol]:
         return [
             document.binding
@@ -122,6 +130,7 @@ class Linter:
             for lang, document in bindings.items()
         ]
 
+    @property
     def defis(self) -> List[DefiSymbol]:
         return [
             defi
@@ -131,6 +140,7 @@ class Linter:
             for defi in document.defis
         ]
 
+    @property
     def trefis(self) -> List[TrefiSymbol]:
         return [
             trefi
@@ -140,6 +150,7 @@ class Linter:
             for trefi in document.trefis
         ]
 
+    @property
     def symbols(self) -> List[SymiSymbol]:
         return [
             symi
@@ -203,7 +214,9 @@ class Linter:
                 return True
         return False
 
-    def _update_watched_directories(self):
+    def _update_watched_directories(self) -> Tuple[List[str], List[str]]:
+        """ Adds all files inside the watched directories added with "add()" to the index of watched files
+            and returns a tuple of deleted and modified files. """
         for dirname in list(self._watched_directories):
             if not os.path.isdir(dirname):
                 # remove if no longer valid directory
@@ -227,13 +240,11 @@ class Linter:
             self.changed = True
 
         show_progress = not silent
+        use_multiprocessing &= not debug
 
         if not (deleted or modified):
-            return dict(self.make_report(
-                list(self._map_file_to_document.values()),
-                n_jobs=n_jobs,
-                use_multiprocessing=use_multiprocessing,
-                show_progress=show_progress))
+            return dict(self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
+        
         self.changed = True
 
         # remove changed files
@@ -244,15 +255,16 @@ class Linter:
 
         # Parse all files in parallel or sequential
         documents = []
-        if use_multiprocessing and len(modified) > (n_jobs or multiprocessing.cpu_count()) and not debug:
+        if use_multiprocessing and len(modified) > (n_jobs or multiprocessing.cpu_count()):
             with multiprocessing.Pool(n_jobs) as pool:
-                for document in pool.imap_unordered(Document, modified, chunksize=multiprocessing.cpu_count() << 2):
+                chunksize = multiprocessing.cpu_count() << 2 + 1
+                for document in pool.imap_unordered(Document, modified, chunksize=chunksize):
                     if not silent: print(f'PARSED {os.path.basename(document.file)}', file=sys.stderr, flush=True)
                     documents.append(document)
         else:
-            for document in map(partial(Document, ignore_exceptions=not debug), modified):
-                if not silent: print(f'PARSEDseq {os.path.basename(document.file)}', file=sys.stderr, flush=True)
-                documents.append(document)
+            for file in modified:
+                if not silent: print(f'PARSEDING {os.path.basename(file)}', file=sys.stderr, flush=True)
+                documents.append(Document(file, ignore_exceptions=not debug))
 
         # link successfully compiled documents
         if not silent: print(f'LINKING {len(list(filter(lambda doc: doc.success, documents)))}', file=sys.stderr, flush=True)
@@ -262,18 +274,10 @@ class Linter:
         self.import_graph.update()
 
         report: Dict[str, Optional[List[ReportEntry]]] = dict(
-            self.make_report(
-                list(self._map_file_to_document.values()),
-                n_jobs=n_jobs,
-                use_multiprocessing=use_multiprocessing,
-                show_progress=show_progress))
+            self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
 
         # add reports for documents that failed to parse this time
-        report.update(dict(self.make_report(
-            list(filter(lambda doc: not doc.success, documents)),
-            n_jobs=n_jobs,
-            use_multiprocessing=use_multiprocessing,
-            show_progress=show_progress)))
+        report.update(dict(self.make_report(list(filter(lambda doc: not doc.success, documents)), show_progress=show_progress)))
 
         # set all other unhandled files to None in order to mark them as deleted
         for unhandled in itertools.chain(deleted, modified):
@@ -315,26 +319,13 @@ class Linter:
         """ A wrapper for _make_document_report as pools can't handle iterator return types """
         return document, list(self._make_document_report(document))
 
-    def make_report(
-        self,
-        documents: List[Document],
-        n_jobs: int,
-        use_multiprocessing: bool,
-        show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
+    def make_report(self, documents: List[Document], show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
         """ Iterates through the given documents and creates a a tuple of (file path, file report)
             for every file. """
-        if use_multiprocessing and len(documents) > (n_jobs or multiprocessing.cpu_count()):
-            with multiprocessing.Pool(n_jobs) as pool:
-                for document, report in pool.imap_unordered(
-                        self._make_report_document_parallel,
-                        documents,
-                        chunksize=len(documents)//(multiprocessing.cpu_count() << 2)):
-                    if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
-                    yield document.file, report
-        else:
-            for document in documents:
-                if show_progress: print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
-                yield (document.file, list(self._make_document_report(document)))
+        for document in documents:
+            if show_progress:
+                print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+            yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
         """ Returns an iterator for all files assigned to that module """
@@ -398,7 +389,7 @@ class Linter:
                                 symbol.target_symbol_location or symbol,
                                 str(target_module) + '/' + symbol.symbol_name,
                                 'symbol')
-                            for sym in self.symbols():
+                            for sym in self.symbols:
                                 if sym.symbol_name == symbol.symbol_name and str(sym.module) not in child_modules:
                                     yield ReportEntry.missing_import(symbol, sym.module)
                     else:
@@ -651,6 +642,8 @@ class Linter:
                     del self._symbol_index[sym.symbol_name]
             self.import_graph.remove(document.module_identifier)
             del self._map_module_identifier_to_module[module_id]
+        elif not silent:
+            print(f'-?DOCUMENT {os.path.basename(file)}', file=sys.stderr)
 
         del self._map_file_to_document[file]
         if not silent:
@@ -667,16 +660,10 @@ class Linter:
                     ReportEntry.duplicate(document.binding, symbol=document.binding))
                 return
             if not silent:
-                print("+BINDING", module, document.binding.lang, os.path.basename(document.file), file=sys.stderr)
+                print("+BINDING", module, document.binding.lang, file=sys.stderr)
             self._map_module_identifier_to_bindings.setdefault(module, {})
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
-            if self.tagger and document.binding.lang in ('en', 'lang'):
-                try:
-                    self.tags[document.file] = self.tagger.predict(document.file)
-                except Exception as e:
-                    print(str(e), file=sys.stderr)
-                    if document.file in self.tags:
-                        del self.tags[document.file]
+            self._tag_document(document)
         elif document.module:
             if module in self._map_module_identifier_to_module:
                 self._duplicate_definition_report.setdefault(document.file, [])
@@ -684,12 +671,14 @@ class Linter:
                     ReportEntry.duplicate(document.module, symbol=document.module))
                 return
             if not silent:
-                print("+MODULE", module, os.path.basename(document.file), file=sys.stderr)
+                print("+MODULE", module, file=sys.stderr)
             for sym in document.symis:
                 self._symbol_index.setdefault(sym.symbol_name, [])
                 self._symbol_index[sym.symbol_name].append(sym)
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
+        elif not silent:
+            print(f'+?DOCUMENT {os.path.basename(document.file)}', file=sys.stderr)
 
         self._map_file_to_document[document.file] = document
         if not silent:

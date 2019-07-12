@@ -415,8 +415,8 @@ class Linter:
                 yield ReportEntry.tag_trefi(ranges, module_name=module.module_name, symbol_name=symbol_name_or_text)
 
     def _check_module_unused(self, document: Document, module: ModuleIdentifier) -> bool:
-        """ Returns True if the given module identifier is not used in any trefi import of the document. """
-        for symbol in document.trefis:
+        """ Returns True if the given module identifier is not used in any trefi/defi import of the document. """
+        for symbol in itertools.chain(document.trefis, document.defis):
             if self._resolve_target_module_identifier(symbol) == module:
                 return False
         return True

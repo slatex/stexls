@@ -7,6 +7,7 @@ import difflib
 import re
 import sys
 from functools import partial
+from loguru import logger
 
 from trefier.misc.location import Position, Range, Location
 from trefier.misc.file_watcher import FileWatcher
@@ -19,6 +20,11 @@ from trefier.linting.document import *
 from trefier.linting.imports import ImportGraph
 
 __all__ = ['Linter']
+
+logger.add(os.path.expanduser('~/.trefier/trefier.log'), enqueue=True, filter=__name__)
+
+def _file_not_tracked(file: str):
+    raise LinterException(f'File "{file}" not tracked')
 
 
 class Linter:
@@ -84,6 +90,7 @@ class Linter:
         path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
             self.tagger = seq2seq.Seq2SeqModel.load(path)
+            logger.info(f'loading tagger from {path}: previous {self._last_tagger_path}')
             print(f'loading tagger from {path}: previous {self._last_tagger_path}', file=sys.stderr)
             # update tags if the loaded tagger is new,
             # or if the new tagger is different from the old tagger
@@ -95,7 +102,7 @@ class Linter:
             self._last_tagger_path = path
             self.tagger_path = path
         else:
-            raise LinterInternalException.create(f'Failed to load tagger from {path}')
+            raise LinterInternalException.create(f'Failed to load tagger from "{path}"')
     
     def _tag_document(self, document: Document, silent: bool = False):
         try:
@@ -105,6 +112,7 @@ class Linter:
                 self.tags[document.file] = self.tagger.predict(document.file)
                 self.changed = True
         except Exception as e:
+            logger.exception('Exception in linter._tag_document()')
             print(str(e), file=sys.stderr)
             if document and document.file in self.tags:
                 del self.tags[document.file]
@@ -162,7 +170,7 @@ class Linter:
     def goto_definition(self, file: str, line: int, column: int) -> Optional[Union[ModuleDefinitonSymbol, SymiSymbol]]:
         doc = self._map_file_to_document.get(file)
         if doc is None:
-            raise LinterException("File not tracked")
+            _file_not_tracked(file)
         return (self._module_at_position(file, line, column)
                 or self._named_symbol_at_position(file, line, column))
 
@@ -220,6 +228,7 @@ class Linter:
         for dirname in list(self._watched_directories):
             if not os.path.isdir(dirname):
                 # remove if no longer valid directory
+                logger.info(f'Removing watched directory "{dirname}"')
                 self._watched_directories.remove(dirname)
             else:
                 # else add all direct files inside it
@@ -263,7 +272,7 @@ class Linter:
                     documents.append(document)
         else:
             for file in modified:
-                if not silent: print(f'PARSEDING {os.path.basename(file)}', file=sys.stderr, flush=True)
+                if not silent: print(f'PARSING {os.path.basename(file)}', file=sys.stderr, flush=True)
                 documents.append(Document(file, ignore_exceptions=not debug))
 
         # link successfully compiled documents
@@ -289,7 +298,7 @@ class Linter:
             or None if no object is under the cursor. """
         document = self._map_file_to_document.get(file)
         if not document:
-            raise Exception("File not tracked")
+            _file_not_tracked(file)
 
         position = Position(line, column)
 
@@ -351,7 +360,7 @@ class Linter:
         elif isinstance(symbol, GimportSymbol):
             return symbol.imported_module
         else:
-            raise Exception(f'Target module for {type(symbol)} is undefined')
+            raise LinterException(f'Target module for {type(symbol)} is undefined')
 
     def _make_document_binding_report(self, document: Document) -> Iterator[ReportEntry]:
         """ Makes the report for a binding """
@@ -554,7 +563,7 @@ class Linter:
     def _module_at_position(self, file: str, line: int, column: int) -> Optional[ModuleDefinitonSymbol]:
         doc = self._map_file_to_document.get(file)
         if doc is None:
-            raise Exception("File not tracked")
+            _file_not_tracked(file)
 
         position = Position(line, column)
 
@@ -595,7 +604,7 @@ class Linter:
         """ Returns the module and symbol name of a sym, def or tref at the given position """
         doc = self._map_file_to_document.get(file)
         if doc is None:
-            raise Exception("File not tracked")
+            _file_not_tracked(file)
         position = Position(line, column)
 
         if doc.module:
@@ -692,7 +701,7 @@ class Linter:
         document = self._map_file_to_document.get(file)
 
         if not document:
-            raise Exception("File not tracked")
+            _file_not_tracked(file)
 
         yielded_values: Set[str] = set()
 

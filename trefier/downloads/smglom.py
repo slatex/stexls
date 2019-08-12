@@ -3,16 +3,46 @@ from . import download
 
 __all__ = ['maybe_download']
 
+all_repositories = (
+    "smglom/physics",
+    "smglom/cs",
+    "smglom/lmfdb",
+    "smglom/probability",
+    "smglom/measure-theory",
+    "smglom/tannakian",
+    "smglom/categories",
+    "smglom/theresas-playground",
+    "smglom/complexity",
+    "smglom/arithmetics",
+    "smglom/elliptic-curves",
+    "smglom/manifolds",
+    "smglom/numthy",
+    "smglom/identities",
+    "smglom/numthyfun",
+    "smglom/constants",
+    "smglom/analysis",
+    "smglom/trigonometry",
+    "smglom/numbers",
+    "smglom/primes",
+    "smglom/linear-algebra",
+    "smglom/magic",
+    "smglom/functional-analysis",
+    "smglom/geometry",
+    "smglom/topology",
+    "smglom/calculus",
+    "smglom/algebra",
+    "smglom/graphs",
+    "smglom/sets",
+    "smglom/mv",
+    "smglom/chevahir",
+    "smglom/SMGloM"
+)
+
 def maybe_download(
     save_dir='./data',
     silent=True,
     base_url="https://gl.mathhub.info/",
-    repositories=["smglom/SMGloM","smglom/chevahir","smglom/mv","smglom/sets","smglom/graphs", "smglom/algebra","smglom/calculus",
-    "smglom/topology","smglom/geometry","smglom/functional-analysis","smglom/magic","smglom/linear-algebra",
-    "smglom/primes","smglom/numbers","smglom/trigonometry","smglom/analysis","smglom/constants","smglom/numthyfun",
-    "smglom/identities","smglom/numthy","smglom/manifolds","smglom/elliptic-curves",
-    "smglom/arithmetics","smglom/complexity","smglom/theresas-playground","smglom/categories",
-    "smglom/tannakian","smglom/measure-theory","smglom/stats"]):
+    repositories=all_repositories):
     """Downloads the repositories to the specified folder and returns the paths to all downloaded repositories.
     
     Keyword Arguments:

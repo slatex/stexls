@@ -82,16 +82,16 @@ def parse_dataset(
                 lower(
                     math_token
                     if math_token
-                    and '$' in envs
-                    else lexeme
+                    and '$' in token.envs
+                    else token.lexeme
                 ),
                 _envs2label(
-                    envs,
+                    token.envs,
                     binary_labels
                 )
             )
-            for lexeme, envs
-            in (doc.subtoken_stream_en if lang == 'en' else doc.subtoken_stream)
+            for token
+            in doc.subtoken_stream(lang)
         ]
         for doc in documents
     ]

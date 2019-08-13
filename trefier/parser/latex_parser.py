@@ -352,38 +352,44 @@ class LatexParser(SmglomLatexParserListener):
         finally:
             del self._stack
 
-    @property
-    def subtoken_stream(self) -> Iterator[Tuple[str, Tuple[str, ...]]]:
+    def subtoken_stream(
+        self,
+        lang: str = 'en',
+        stopwords: str = r'''[\w\d]+\s*\-\s*[\w\d]+|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''',
+        token_filter: str = r'''\s+|\!|\@|\#|\^|\*|\_|\+|\=|\-|\[|\]|\\|\.|\/|\?|\>|\<|\{|\}''') -> Iterator[Token]:
         """ Splits the tokens of this parser into subtokens by splitting at
         special characters and returns the splitted string interlaced with the special characters as
         new tokens. Additionally, each subtoken inherits the environments of the originally splitted token.
         Returns an iterator of (lexeme, environemnts)
         """
-        delims = re.compile(r'''\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''')
-        delim_blacklist = re.compile(r'''\s+''')
-        for tok in self.root.tokens:
-            if tok.envs and '$' is tok.envs[-1]:
-                yield tok.text, tok.envs
+        extra = ''
+        if lang in ('en', 'english'):
+            extra = r''''s|n't|'''
+        elif lang in ('de', 'deutsch'):
+            extra = r'''[\w\-]*\\?"(a|A|o|O|u|U|s|S)+[\w\-]*|{\\ss}|\\ss'''
+        split_regexp = re.compile(extra + stopwords)
+        filter_regexp = re.compile(token_filter)
+        for token in self.root.tokens:
+            if token.envs and '$' is token.envs[-1]:
+                yield token
             else:
-                tok_text = tok.text.strip()
-                for a, b in itertools.zip_longest(delims.split(tok_text), delims.findall(tok_text)):
-                    if a:
-                        yield a, tok.envs
-                    if b and not delim_blacklist.match(b):
-                        yield b, tok.envs
-    
-    @property
-    def subtoken_stream_en(self) -> Iterator[Tuple[str, Tuple[str, ...]]]:
-        """ Splits parsed tokens into subtokens assuming they are in english.
-        Each subtoken also inherits the environments from the originally split token.
-        Returns an iterator of pairs of (lexeme: str, environments: tuple)"""
-        from nltk.tokenize import word_tokenize
-        for tok in self.root.tokens:
-            if tok.envs and '$' is tok.envs[-1]:
-                yield tok.text, tok.envs
-            else:
-                for subtok in word_tokenize(tok.text):
-                    yield subtok, tok.envs
+                begin = 0
+                for split in split_regexp.finditer(token.lexeme):
+                    split_spans = (
+                        (begin, split.span()[0]),
+                        split.span())
+                    for span in split_spans:
+                        span_text = token.lexeme[span[0]:span[-1]]
+                        if span_text and not filter_regexp.fullmatch(span_text):
+                            yield Token(span_text, begin+span[0], begin+span[1], token.parser)
+                    begin = split.span()[-1]
+                end = len(token.lexeme.rstrip())
+                if begin != end:
+                    rest_text = token.lexeme[begin:end]
+                    if rest_text and not filter_regexp.fullmatch(rest_text):
+                        new_token = Token(rest_text, token.begin+begin, token.end+end, token.parser)
+                        new_token.parent = token.parent
+                        yield new_token
 
 
 class MyErrorListener(ErrorListener):

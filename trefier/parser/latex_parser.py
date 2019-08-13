@@ -357,6 +357,7 @@ class LatexParser(SmglomLatexParserListener):
         """ Splits the tokens of this parser into subtokens by splitting at
         special characters and returns the splitted string interlaced with the special characters as
         new tokens. Additionally, each subtoken inherits the environments of the originally splitted token.
+        Returns an iterator of (lexeme, environemnts)
         """
         delims = re.compile(r'''\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''')
         delim_blacklist = re.compile(r'''\s+''')
@@ -370,6 +371,19 @@ class LatexParser(SmglomLatexParserListener):
                         yield a, tok.envs
                     if b and not delim_blacklist.match(b):
                         yield b, tok.envs
+    
+    @property
+    def subtoken_stream_en(self) -> Iterator[Tuple[str, Tuple[str, ...]]]:
+        """ Splits parsed tokens into subtokens assuming they are in english.
+        Each subtoken also inherits the environments from the originally split token.
+        Returns an iterator of pairs of (lexeme: str, environments: tuple)"""
+        from nltk.tokenize import word_tokenize
+        for tok in self.root.tokens:
+            if '$' is tok.envs[-1]:
+                yield tok.text, tok.envs
+            else:
+                for subtok in word_tokenize(tok.text):
+                    yield subtok, tok.envs
 
 
 class MyErrorListener(ErrorListener):

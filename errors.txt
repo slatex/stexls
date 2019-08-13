@@ -28,3 +28,5 @@ line 10
 Math $ wrong
 $\setst{x}{\text{$\inset{x}{\livar{S}i}$ for some $\inset{i}I$}}$.
 
+cgroup.de.tex
+Rechtschreibfehler "grruppe"

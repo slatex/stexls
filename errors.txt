@@ -33,3 +33,7 @@ Rechtschreibfehler "grruppe"
 
 cat-pushout.de.tex
 Rechtschreibfehler "bez"ublich"
+
+turing-machine-language.de.tex
+line 9
+Rechtschreibfehler "kodiet"

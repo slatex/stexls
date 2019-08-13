@@ -1,9 +1,8 @@
-[]????
-In: /home/marian/projects/trefier-backend/data/smglom/algebra/source/bounded-lattice.de.tex
+bounded-lattice.de.tex
 Error: da"s
 
 
-/home/marian/projects/trefier-backend/data/smglom/arithmetics/source/ceilingfloor.tex
+ceilingfloor.tex
 []
 
 
@@ -20,7 +19,7 @@ Stray }
 automorphism-group.de.tex
 Stray ]
 
-data/smglom/sets/source/intersection.en.tex
+intersection.en.tex
 line 11
 Math $ wrong
 

@@ -1,4 +1,5 @@
-
+from __future__ import annotations
+from typing import Union, Tuple, List, Optional
 from glob import glob
 from os import path
 from multiprocessing.pool import Pool
@@ -6,8 +7,8 @@ from enum import IntEnum
 import re
 from tqdm import tqdm
 
-from ..downloads import smglom as download_smglom
-from ..tokenization import TexDocument, TexTokenizer
+from trefier.downloads import smglom as download_smglom
+from trefier.parser.latex_parser import LatexParser
 
 __all__ = ['Label', 'parse_files', 'parse_dataset']
 
@@ -17,7 +18,11 @@ class Label(IntEnum):
     TREFI=1
     DEFI=2
 
-def parse_files(lang='en', save_dir='data/', n_jobs=4, silent=False):
+def parse_files(
+    lang: str = 'en',
+    save_dir: str = 'data/',
+    n_jobs: int = 4,
+    silent: bool = False) -> List[LatexParser]:
     """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
 
     Keyword Arguments:
@@ -41,36 +46,52 @@ def parse_files(lang='en', save_dir='data/', n_jobs=4, silent=False):
 
     with Pool(n_jobs) as pool:
         if not silent:
-            documents = [doc for doc in tqdm(pool.imap_unordered(TexDocument, files))]
+            documents = [doc for doc in tqdm(pool.imap_unordered(LatexParser, files))]
         else:
-            documents = pool.map(TexDocument, files)
+            documents = pool.map(LatexParser, files)
     
     return list(filter(lambda doc: doc.success, documents))
 
-def parse_dataset(documents, binary_labels=False, return_X_y=True, math_token='<math>', lower=True):
-    """ Parses tex documents for labels and tokens.
-    
-    Arguments:
-        :param documents: List of TexDocuments.
-    
-    Keyword Arguments:
-        :param binary_labels: Replaces DEFI label with TREFI label if set to true.
-        :param return_X_y: Returns a tuple of X (tokens) and y (labels) if set to true.
-        :param math_token: The token that replaces math. If None, nothing is replaced.
-        :param lower: calls str.lower on all tokens if set to True.
+def parse_dataset(
+    documents: Optional[List[LatexParser]] = None,
+    binary_labels: bool = False,
+    math_token: str = '<math>',
+    lower: bool = True,
+    lang: Optional[str] = None) -> Tuple[List[List[str]], List[List[Label]]]:
+    """ Parses tex documents for labels and tokens assuming they are annotated
+    with trefi and defi tags.
 
+    Keyword Arguments:
+        :param documents: List of documents to use for dataset creation. Downloads and parses smglom files, if None.
+        :param binary_labels: If True, aliases TREFI and DEFI tags as a single KEYWORD tag with the ordinal value 1.    
+        :param math_token: String to use instead of math tokens.
+        :param lower: Enables lowercase transform of all tokens.
+        :param lang: Language the files got parsed for. Changes the tokenization process depending on the value.
     Returns:
-        List of documents with (token, label) pairs or a tuple of all tokens X and all labels y
-        depending on the return_X_y argument.
+        Tuple of list of lists of tokens and list of lists of labels.
     """
-    lower = str.lower if lower else lambda str: str
+    if documents is None:
+        lang = lang or 'en'
+        documents = parse_files(lang=lang)
+
+    lower = str.lower if lower else lambda s: s
 
     labeled_tokens = [
         [
-            (lower(math_token if math_token and '$' in envs else lexeme), _envs2label(envs, binary_labels))
-            for (lexeme, begin, end, envs)
-            in doc.tokens
-            if not _is_ignore(doc, begin, end, envs)
+            (
+                lower(
+                    math_token
+                    if math_token
+                    and '$' in envs
+                    else lexeme
+                ),
+                _envs2label(
+                    envs,
+                    binary_labels
+                )
+            )
+            for lexeme, envs
+            in (doc.subtoken_stream_en if lang == 'en' else doc.subtoken_stream)
         ]
         for doc in documents
     ]
@@ -79,9 +100,6 @@ def parse_dataset(documents, binary_labels=False, return_X_y=True, math_token='<
         list(zip(*labeled))
         for labeled in labeled_tokens
     ]
-
-    if not return_X_y:
-        return list_of_X_y_pairs
 
     X, y = list(zip(*list_of_X_y_pairs))
 
@@ -98,22 +116,3 @@ def _envs2label(envs, binary_labels):
         return Label.TREFI if binary_labels else Label.DEFI
     return Label.TEXT
 
-def _is_ignore(doc, begin, end, envs):
-    """ Determines if the token between begin, end from the tex document doc should be ignored.
-    Arguments:
-        :param doc: TexDocument for reference.
-        :param begin: Begin offset of the token to be ignored.
-        :param end: End offset of the token to be ignored.
-        :param envs: Environments of the token.
-    Return:
-        Returns True if the token between begin and end is to be ignored.
-    """
-    # Ignore all OArgs
-    if 'OArg' in envs:
-        return True
-    # Ignore first argument of an 'a*' environment (e.g.: atrefii or madefis)
-    for alt in doc.find_all('m?am?(tr|d)efi+s?', pattern=True):
-        for _, alt_begin, alt_end, envs in alt:
-            if 'RArg' in envs: 
-                return alt_begin <= begin and end <= alt_end
-    return False

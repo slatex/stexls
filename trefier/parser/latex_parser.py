@@ -355,8 +355,9 @@ class LatexParser(SmglomLatexParserListener):
     def subtoken_stream(
         self,
         lang: str = 'en',
-        stopwords: str = r'''[\w\d]+\s*\-\s*[\w\d]+|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''',
-        token_filter: str = r'''\s+|\!|\@|\#|\^|\*|\_|\+|\=|\-|\[|\]|\\|\.|\/|\?|\>|\<|\{|\}''') -> Iterator[Token]:
+        stopwords: str = r'''[\w\d]+\s*\-\s*[\w\d]+|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|;|\"|\||\{|\}|\s+''',
+        token_filter: str = r'''\s+|\!|\@|\#|\^|\*|\_|\+|\=|\-|\[|\]|\\|\.|\/|\?|\>|\<|\{|\}''',
+        perform_character_replacements: bool = False) -> Iterator[Token]:
         """ Splits the tokens of this parser into subtokens by splitting at
         special characters and returns the splitted string interlaced with the special characters as
         new tokens. Additionally, each subtoken inherits the environments of the originally splitted token.
@@ -366,7 +367,7 @@ class LatexParser(SmglomLatexParserListener):
         if lang in ('en', 'english'):
             extra = r''''s|n't|'''
         elif lang in ('de', 'deutsch'):
-            extra = r'''[\w\-]*\\?"(a|A|o|O|u|U|s|S)+[\w\-]*|{\\ss}|\\ss'''
+            extra = r'''[\w\-]*(\{\\ss\}|\\ss|\\?"(a|A|o|O|u|U|s|S))+[\w\-]*|'''
         split_regexp = re.compile(extra + stopwords)
         filter_regexp = re.compile(token_filter)
         for token in self.root.tokens:
@@ -381,6 +382,24 @@ class LatexParser(SmglomLatexParserListener):
                     for span in split_spans:
                         span_text = token.lexeme[span[0]:span[-1]]
                         if span_text and not filter_regexp.fullmatch(span_text):
+                            if perform_character_replacements and lang in ('de', 'deutsch'):
+                                span_text = (
+                                    span_text.
+                                    replace('\\ss', 'ß').
+                                    replace('\"s', 'ß').
+                                    replace('"s', 'ß').
+                                    replace('\\"a', 'ä').
+                                    replace('"a', 'ä').
+                                    replace('\\"A', 'ä').
+                                    replace('"A', 'ä').
+                                    replace('\\"u', 'ü').
+                                    replace('"u', 'ü').
+                                    replace('\\"U', 'Ü').
+                                    replace('"U', 'Ü').
+                                    replace('\\"o', 'ö').
+                                    replace('"o', 'ö').
+                                    replace('\\"O', 'Ö').
+                                    replace('"O', 'Ö'))
                             yield Token(span_text, begin+span[0], begin+span[1], token.parser)
                     begin = split.span()[-1]
                 end = len(token.lexeme.rstrip())

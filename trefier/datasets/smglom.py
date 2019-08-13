@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union, Tuple, List, Optional
+from typing import Union, Tuple, List, Optional, Iterable
 from glob import glob
 from os import path
 from multiprocessing.pool import Pool
@@ -8,7 +8,7 @@ import re
 from tqdm import tqdm
 
 from trefier.downloads import smglom as download_smglom
-from trefier.parser.latex_parser import LatexParser
+from trefier.parser.latex_parser import LatexParser, Token
 
 __all__ = ['Label', 'parse_files', 'parse_dataset']
 
@@ -49,7 +49,7 @@ def parse_files(
             documents = [doc for doc in tqdm(pool.imap_unordered(LatexParser, files))]
         else:
             documents = pool.map(LatexParser, files)
-    
+
     return list(filter(lambda doc: doc.success, documents))
 
 def parse_dataset(
@@ -76,6 +76,17 @@ def parse_dataset(
 
     lower = str.lower if lower else lambda s: s
 
+    def alt_edge_detector(tokens: Iterable[Token]) -> List[bool]:
+        """ Transforms an iterable of tokens to a list of bools that are True on the first token of an adefi or atrefi. """
+        tokens = tuple(tokens)
+        matcher = re.compile(r'a(tr|d)efi+s?').fullmatch
+        alt_token_envs = tuple(any(map(matcher, token.envs)) for token in tokens)
+        f = [alt_token_envs[0]] + [
+            (not p) and n
+            for p, n in zip(alt_token_envs, alt_token_envs[1:])
+        ]
+        return f
+
     labeled_tokens = [
         [
             (
@@ -91,7 +102,7 @@ def parse_dataset(
                 )
             )
             for token
-            in doc.subtoken_stream(lang)
+            in doc.subtoken_stream(lang=lang, token_filter_fn=alt_edge_detector)
         ]
         for doc in documents
     ]

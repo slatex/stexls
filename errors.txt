@@ -30,3 +30,6 @@ $\setst{x}{\text{$\inset{x}{\livar{S}i}$ for some $\inset{i}I$}}$.
 
 cgroup.de.tex
 Rechtschreibfehler "grruppe"
+
+cat-pushout.de.tex
+Rechtschreibfehler "bez"ublich"

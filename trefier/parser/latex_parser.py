@@ -125,7 +125,7 @@ class Node:
     @property
     def envs(self) -> List[Environment]:
         """ :returns List of the environments this node has as parents including itself. """
-        env = [self.env_name] if self.env_name else []
+        env = (self.env_name,) if self.env_name else ()
         if not self.parent:
             return env
         return self.parent.envs + env
@@ -160,7 +160,7 @@ class Token(Node):
 
     @property
     def tokens(self):
-        return [self]
+        yield self
 
     def add(self, child):
         """ Tokens can't have children. """
@@ -351,6 +351,25 @@ class LatexParser(SmglomLatexParserListener):
                 raise
         finally:
             del self._stack
+
+    @property
+    def subtoken_stream(self) -> Iterator[Tuple[str, Tuple[str, ...]]]:
+        """ Splits the tokens of this parser into subtokens by splitting at
+        special characters and returns the splitted string interlaced with the special characters as
+        new tokens. Additionally, each subtoken inherits the environments of the originally splitted token.
+        """
+        delims = re.compile(r'''\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''')
+        delim_blacklist = re.compile(r'''\s+''')
+        for tok in self.root.tokens:
+            if '$' is tok.envs[-1]:
+                yield tok.text, tok.envs
+            else:
+                tok_text = tok.text.strip()
+                for a, b in itertools.zip_longest(delims.split(tok_text), delims.findall(tok_text)):
+                    if a:
+                        yield a, tok.envs
+                    if b and not delim_blacklist.match(b):
+                        yield b, tok.envs
 
 
 class MyErrorListener(ErrorListener):

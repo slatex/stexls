@@ -23,3 +23,9 @@ Stray ]
 data/smglom/sets/source/intersection.en.tex
 line 11
 Math $ wrong
+
+union.en.tex
+line 10
+Math $ wrong
+$\setst{x}{\text{$\inset{x}{\livar{S}i}$ for some $\inset{i}I$}}$.
+

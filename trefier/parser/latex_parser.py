@@ -362,7 +362,7 @@ class LatexParser(SmglomLatexParserListener):
         delims = re.compile(r'''\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|\"|\||\{|\}|\s+''')
         delim_blacklist = re.compile(r'''\s+''')
         for tok in self.root.tokens:
-            if '$' is tok.envs[-1]:
+            if tok.envs and '$' is tok.envs[-1]:
                 yield tok.text, tok.envs
             else:
                 tok_text = tok.text.strip()
@@ -379,7 +379,7 @@ class LatexParser(SmglomLatexParserListener):
         Returns an iterator of pairs of (lexeme: str, environments: tuple)"""
         from nltk.tokenize import word_tokenize
         for tok in self.root.tokens:
-            if '$' is tok.envs[-1]:
+            if tok.envs and '$' is tok.envs[-1]:
                 yield tok.text, tok.envs
             else:
                 for subtok in word_tokenize(tok.text):

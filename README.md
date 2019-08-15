@@ -7,7 +7,7 @@ This is an command line interface for the smglom glossary linter.
 ## Python 3.7
 
 Python 3.7 is required because the application is large and
-I needed the type annotation
+I needed the type annotations.
 
 ## Dependencies
 

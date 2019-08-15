@@ -128,7 +128,7 @@ class ImportGraph:
         module = str(module)
         if module not in self.modules:
             raise LinterInternalException.create(
-                module, f'Can\'t remove module from import graph: Module not tracked')
+                f'Can\'t remove module from import graph: Module not tracked')
 
         for imported_module in self.graph[module]:
             if imported_module in self.references:

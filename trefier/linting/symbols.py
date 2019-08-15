@@ -2,11 +2,10 @@ from __future__ import annotations
 from typing import Tuple, List, Union, Optional
 import re
 
-from ..misc.location import *
-from ..parser.latex_parser import Environment, Node
-
-from .exceptions import *
-from .identifiers import *
+from trefier.misc.location import *
+from trefier.tokenization.latex import Environment, Node
+from trefier.linting.exceptions import *
+from trefier.linting.identifiers import *
 
 __all__ = ['Symbol',
            'ModuleDefinitonSymbol',

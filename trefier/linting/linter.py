@@ -18,10 +18,15 @@ from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
 from trefier.linting.document import *
 from trefier.linting.imports import ImportGraph
+from trefier.models.tags import Tag
 
 __all__ = ['Linter']
 
-logger.add(os.path.expanduser('~/.trefier/trefier.log'), enqueue=True, filter=__name__)
+if __name__ == '__main__':
+    raise Exception("This module is not executable!")
+
+# make default logger
+logger = logger.bind(file=True, stream=True)
 
 def _file_not_tracked(file: str):
     raise LinterException(f'File "{file}" not tracked')
@@ -47,7 +52,7 @@ class Linter:
         # loaded tagger instance
         self.tagger: Optional[seq2seq.Model] = None
         # tags of the current tagger: Delete if None
-        self.tags: Dict[str, object] = dict()
+        self.tags: Dict[str, List[Tuple[Tag, ...]]] = dict()
 
         self._last_update_report = None
 
@@ -75,30 +80,33 @@ class Linter:
         self.changed = False
 
         # load state
-        (self._file_watcher,
-         self._watched_directories,
-         self._map_file_to_document,
-         self._map_module_identifier_to_bindings,
-         self._map_module_identifier_to_module,
-         self._symbol_index,
-         self.import_graph,
-         self._duplicate_definition_report,
-         self.tags,
-         self._last_tagger_path) = state
+        (
+            self._file_watcher,
+            self._watched_directories,
+            self._map_file_to_document,
+            self._map_module_identifier_to_bindings,
+            self._map_module_identifier_to_module,
+            self._symbol_index,
+            self.import_graph,
+            self._duplicate_definition_report,
+            self.tags,
+            self._last_tagger_path
+        ) = state
 
     def load_tagger_model(self, path: str, show_progress: bool = True):
         path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
             self.tagger = seq2seq.Seq2SeqModel.load(path)
             logger.info(f'loading tagger from {path}: previous {self._last_tagger_path}')
-            print(f'loading tagger from {path}: previous {self._last_tagger_path}', file=sys.stderr)
             # update tags if the loaded tagger is new,
             # or if the new tagger is different from the old tagger
             if not self._last_tagger_path or self._last_tagger_path != path:
                 # update tags only if a new tagger was adder or the tagger is different from last time
                 self.tags = dict()
-                for binding in self.bindings:
-                    self._tag_document(binding, silent=not show_progress)
+                for binding_documents in self._map_module_identifier_to_bindings.values():
+                    for binding_document in binding_documents:
+                        assert isinstance(binding_document, Document)
+                        self._tag_document(binding_document, silent=not show_progress)
             self._last_tagger_path = path
             self.tagger_path = path
         else:
@@ -107,13 +115,20 @@ class Linter:
     def _tag_document(self, document: Document, silent: bool = False):
         try:
             if self.tagger and document.binding.lang in ('en', 'lang'):
-                if not silent:
-                    print(f'TAGGING {os.path.basename(document.file)}', file=sys.stderr, flush=True)
-                self.tags[document.file] = self.tagger.predict(document.file)
+                logger.bind(file=True, stream=not silent).info(f'TAGGING {os.path.basename(document.file)}')
+                tags = self.tagger.predict(document.parser or document.file)
+                self.tags[document.file] = [
+                    tuple(items)
+                    for key, items
+                    in filter(
+                        lambda g: g[0] > 0.5,
+                        itertools.groupby(tags, key=lambda tag: tag.label.round())
+                    )
+                ]
                 self.changed = True
         except Exception as e:
-            logger.exception('Exception in linter._tag_document()')
-            print(str(e), file=sys.stderr)
+            logger.bind(file=True, stream=False).exception(f'Exception in linter._tag_document("{document.file if document else "<undefined>"}")')
+            logger.bind(file=False, stream=not silent).error(str(e))
             if document and document.file in self.tags:
                 del self.tags[document.file]
 
@@ -256,8 +271,10 @@ class Linter:
         
         self.changed = True
 
+        progress_fn = logger.bind(file=True, stream=True).info if show_progress else (lambda *args: None)
+
         # remove changed files
-        if not silent: print(f'UNLINKING {len(list(itertools.chain(deleted, modified)))}', file=sys.stderr, flush=True)
+        progress_fn(f'UNLINKING {len(list(itertools.chain(deleted, modified)))}')
         for file in itertools.chain(deleted, modified):
             if self._is_linked(file):
                 self._unlink(file, silent=False if debug else silent)
@@ -268,15 +285,15 @@ class Linter:
             with multiprocessing.Pool(n_jobs) as pool:
                 chunksize = multiprocessing.cpu_count() << 2 + 1
                 for document in pool.imap_unordered(Document, modified, chunksize=chunksize):
-                    if not silent: print(f'PARSED {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+                    progress_fn(f'PARSED {os.path.basename(document.file)}')
                     documents.append(document)
         else:
             for file in modified:
-                if not silent: print(f'PARSING {os.path.basename(file)}', file=sys.stderr, flush=True)
                 documents.append(Document(file, ignore_exceptions=not debug))
+                progress_fn(f'PARSED {os.path.basename(file)}')
 
         # link successfully compiled documents
-        if not silent: print(f'LINKING {len(list(filter(lambda doc: doc.success, documents)))}', file=sys.stderr, flush=True)
+        progress_fn(f'LINKING {len(list(filter(lambda doc: doc.success, documents)))}')
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)
 
@@ -324,16 +341,12 @@ class Linter:
                 return symbol.range
         return None
     
-    def _make_report_document_parallel(self, document: Document) -> Tuple[Document, List[ReportEntry]]:
-        """ A wrapper for _make_document_report as pools can't handle iterator return types """
-        return document, list(self._make_document_report(document))
-
     def make_report(self, documents: List[Document], show_progress: bool = True) -> Iterator[Tuple[str, List[ReportEntry]]]:
         """ Iterates through the given documents and creates a a tuple of (file path, file report)
             for every file. """
+        progress = logger.bind(file=False, stream=True).info if show_progress else (lambda *args: None)
         for document in documents:
-            if show_progress:
-                print(f'REPORT {os.path.basename(document.file)}', file=sys.stderr, flush=True)
+            progress(f'REPORT {os.path.basename(document.file)}')
             yield (document.file, list(self._make_document_report(document)))
 
     def _documents_in_module(self, module: Union[ModuleIdentifier, str]) -> Iterator[Document]:
@@ -443,17 +456,20 @@ class Linter:
                 return self._resolve_symbol_name_in_module(symbol.symbol_name, target_module)
     
     def _report_unresolved_or_unused_imports(self, gimports: Iterable[GimportSymbol]) -> Iterable[ReportEntry]:
+        """ Yield unresolved reports for all unresolved gimports and yield
+            unused import reports for every gimport that is resolved but no binding
+            of the module in which the gimport is written in uses the improted module. """
         # check gimports resolveable
         for gimport in gimports:
             if not self._resolve_symbol(gimport):
                 yield ReportEntry.unresolved(gimport, gimport.imported_module, 'module')
             else:
                 module = str(gimport.module)
-                for binding in self._map_module_identifier_to_bindings.get(
-                        module, {}).values():
-                    if self._check_module_unused(binding, gimport.imported_module):
-                        break
-                else:
+                if all(
+                    self._check_module_unused(binding, gimport.imported_module)
+                    for binding
+                    in self._map_module_identifier_to_bindings.get(module, {}).values()
+                ):
                     yield ReportEntry.unused_import(
                         gimport, unused_module=gimport.imported_module)
     
@@ -512,28 +528,17 @@ class Linter:
             And if no symbol matches yields that it might be a defi
             :returns List of tuples of (is_defi, token ranges, symbol name/text, module of trefi or None) """
         matches = []
-        tags = self.tags.get(document.file)
-        if tags:
-            pred, token_ranges, tokens, envs = tags
-            for is_keyword, group in itertools.groupby(enumerate(pred > 0.5), key=lambda x: x[1]):
-                if not is_keyword:
-                    continue
-                indices, values = zip(*group)
-                ranges = [
-                    Range(
-                        Position(token_ranges[i][0][0], token_ranges[i][0][1]),
-                        Position(token_ranges[i][1][0], token_ranges[i][1][1])
-                    ) for i in indices
-                ]
-                name = '-'.join(tokens[i] for i in indices if tokens[i] != '-' and tokens[i] != '<math>')
-                if not name:
-                    continue # prevent empty names
-                report_defi = True
-                for similarity, symi in self._find_similarly_named_symbols(name, 0):
-                    report_defi = False
-                    matches.append((False, ranges, symi.symbol_name, symi.module))
-                if report_defi:
-                    matches.append((True, ranges, name, None))
+        for group in self.tags.get(document.file, ()):
+            ranges = [ tag.token_range for tag in group ]
+            name = '-'.join(tag.lexeme for tag in group if tag.lexeme != '-')
+            if not name:
+                continue # prevent empty names
+            is_defi = True
+            for similarity, symi in self._find_similarly_named_symbols(name, 0):
+                is_defi = False
+                matches.append((False, ranges, symi.symbol_name, symi.module))
+            if is_defi:
+                matches.append((True, ranges, name, None))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
@@ -634,42 +639,39 @@ class Linter:
 
         module_id = str(document.module_identifier)
 
+        progress = (lambda *args: None) if silent else logger.bind(stream=True, file=True).info
+
         if document.binding:
-            if not silent:
-                print('-BINDING', document.binding.lang, module_id, file=sys.stderr)
+            progress(f'-BINDING {document.binding.lang} {module_id}')
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
             if not self._map_module_identifier_to_bindings[module_id]:
                 del self._map_module_identifier_to_bindings[module_id]
             if document.file in self.tags:
                 del self.tags[document.file]
         elif document.module:
-            if not silent:
-                print('-MODULE', module_id, file=sys.stderr)
+            progress(f'-MODULE {module_id}')
             for sym in document.symis:
                 self._symbol_index[sym.symbol_name].remove(sym)
                 if not self._symbol_index[sym.symbol_name]:
                     del self._symbol_index[sym.symbol_name]
             self.import_graph.remove(document.module_identifier)
             del self._map_module_identifier_to_module[module_id]
-        elif not silent:
-            print(f'-?DOCUMENT {os.path.basename(file)}', file=sys.stderr)
 
         del self._map_file_to_document[file]
-        if not silent:
-            print('-FILE', file, file=sys.stderr)
+        progress(f'-FILE {file}')
 
     def _link(self, document: Document, silent: bool = False):
         """ Starts tracking a document. Indexes links and symbols provided by it. """
         assert not self._is_linked(document.file), "Duplicate link"
         module = str(document.module_identifier)
+        progress = (lambda *args: None) if silent else logger.bind(stream=True, file=True).info
         if document.binding:
             if document.binding.lang in self._map_module_identifier_to_bindings.get(module, ()):
                 self._duplicate_definition_report.setdefault(document.file, [])
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.binding, symbol=document.binding))
                 return
-            if not silent:
-                print("+BINDING", module, document.binding.lang, file=sys.stderr)
+            progress(f'+BINDING {module} {document.binding.lang}')
             self._map_module_identifier_to_bindings.setdefault(module, {})
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
             self._tag_document(document)
@@ -679,19 +681,15 @@ class Linter:
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.module, symbol=document.module))
                 return
-            if not silent:
-                print("+MODULE", module, file=sys.stderr)
+            progress(f'+MODULE {module}')
             for sym in document.symis:
                 self._symbol_index.setdefault(sym.symbol_name, [])
                 self._symbol_index[sym.symbol_name].append(sym)
             self._map_module_identifier_to_module[module] = document
             self.import_graph.add(document)
-        elif not silent:
-            print(f'+?DOCUMENT {os.path.basename(document.file)}', file=sys.stderr)
 
         self._map_file_to_document[document.file] = document
-        if not silent:
-            print('+FILE', document.file, file=sys.stderr)
+        progress(f'+FILE {document.file}')
 
     def auto_complete(self, file: str, context: str) -> Iterator[dict]:
         """ Yields a named tuple of type {type: str, value: str} for each possible autocomplete item
@@ -711,9 +709,10 @@ class Linter:
             sub_context = context[match.span()[0]:]
             for trefi_module in re.finditer(r'\\[ma]*trefi+s?\s*\[\s*([\w\-]*)$', sub_context):
                 for module in self.import_graph.reachable_modules_of(document.module_identifier):
-                    if (self._map_module_identifier_to_module[module]
-                            .module_identifier
-                            .module_name).startswith(trefi_module.group(1)):
+                    reachable_module_document = self._map_module_identifier_to_module.get(module)
+                    if (reachable_module_document is not None
+                        and reachable_module_document.module_identifier.module_name.startswith(
+                            trefi_module.group(1))):
                         value = self._map_module_identifier_to_module[module].module_identifier.module_name
                         if value not in yielded_values:
                             yield {
@@ -744,6 +743,7 @@ class Linter:
             # remove irrelevant matches from context
             sub_context = context[match.span()[0]:]
             for defi in re.finditer(
+                    # matches ".... \\madefis[..., name="
                     r'\\[ma]*defi+s?\s*\[(?:\s*[\w\-]+\s*=\s*[\w\-]+,)*\s*name\s*=\s*([\w\-]*)$', sub_context):
                 defi_name = defi.group(1)
                 for symi in self._map_module_identifier_to_module[str(document.module_identifier)].symis:

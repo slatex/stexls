@@ -23,11 +23,21 @@ from trefier.app.cli import CLI
 __all__ = ['LinterCLI']
 
 # set up logger by removing the default stderr sink
-logger.remove(0)
-# log to the file
-logger.add(expanduser('~/.trefier/trefier.log'), enqueue=True, filter=__name__)
-# also log to stderr, but only from this module
-logger.add(sys.stderr, enqueue=True, filter=__name__)
+logger.remove()
+# create log to file sink
+logger.add(
+    expanduser('~/.trefier/trefier.log'),
+    enqueue=True,
+    filter=lambda r: r['extra'].get('file', False))
+# create log to stderr sink
+logger.add(
+    sys.stderr,
+    enqueue=True,
+    filter=lambda r: r['extra'].get('stream', False),
+    format="{message}")
+
+# make default logger for this module
+logger = logger.bind(file=True, stream=False)
 
 class Timer:
     def __init__(self):
@@ -48,10 +58,10 @@ class ShowErrors:
         somehow displayed for a better user experience.
         "hideErrors" signals that the anything after that can be ignored. """
     def __enter__(self):
-        print('showErrors', file=sys.stderr)
+        print('showErrors', file=sys.stderr, flush=True)
 
     def __exit__(self, *args, **kwargs):
-        print('hideErrors', file=sys.stderr)
+        print('hideErrors', file=sys.stderr, flush=True)
 
 
 class LinterCLI(CLI):
@@ -258,24 +268,21 @@ if __name__ == '__main__':
                 else:
                     logger.info('No cachefile specified: No cache will be saved')
                 if tagger:
-                    assert os.path.isfile(tagger)
+                    if not os.path.isfile(tagger):
+                        raise Exception(f'Specified tagger "{tagger}" is not a file')
                     cache.data.load_tagger(tagger)
                 if root:
-                    assert os.path.isdir(root)
+                    if not os.path.isdir(root):
+                        raise Exception(f'Specified root directory "{root}" is not a directory')
                     cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
                 cache.data.run(cache.write)
             except:
-                logger.exception("Exception during top-level run()")
+                logger.exception("top-level exception in run()")
                 # disable write on any exception
                 cache.write_on_exit = False
             finally:
-                if cache.data and cache.data.linter:
-                    # only save if data.linter exists and linter is marked as changed
-                    cache.write_on_exit = cache.write_on_exit and cache.data.linter.changed
-                else:
-                    # else do not save
-                    cache.write_on_exit = False
-            if cache.write_on_exit:
+                cache.write_on_exit = cache.write_on_exit and cache.data and cache.data.linter and cache.data.linter.changed
+            if cache.write_on_exit and cache.path is not None:
                 logger.info(f'Ending session: Writing cache to "{cache.path}"')
             else:
                 logger.info('Ending session: Without writing cache')

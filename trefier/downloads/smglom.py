@@ -40,14 +40,14 @@ all_repositories = (
 
 def maybe_download(
     save_dir='./data',
-    silent=True,
+    show_progress=True,
     base_url="https://gl.mathhub.info/",
     repositories=all_repositories):
     """Downloads the repositories to the specified folder and returns the paths to all downloaded repositories.
     
     Keyword Arguments:
         :param save_dir: Directory to save downloaded repos to.
-        :param silent: Wether debug output should be made or not.
+        :param show_progress: Wether debug output should be made or not.
         :param base_url: Base url where all repositories are located at.
         :param repositories: List of git repositories to download from base_url.
     Returns:
@@ -56,7 +56,7 @@ def maybe_download(
     return [
         download.maybe_download_git(
             repo_url=path.join(base_url, repo),
-            silent=silent,
+            silent=not show_progress,
             save_dir=path.join(save_dir, '/'.join(repo.split('/')[:-1])))
         for repo in repositories
     ]

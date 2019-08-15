@@ -1,8 +1,7 @@
-import scipy.stats
-import collections
+from __future__ import annotations
 import numpy as np
-
-__all__ = ['ChiSquareModel']
+import collections
+from scipy import stats
 
 class ChiSquareModel:
     def __init__(self, X=None, norm_order=1):

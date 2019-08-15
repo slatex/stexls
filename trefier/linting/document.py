@@ -5,7 +5,8 @@ from functools import partial
 import sys
 
 from trefier.misc.location import *
-from trefier.parser.latex_parser import LatexParser
+from trefier.tokenization.latex import LatexParser
+from trefier.tokenization.streams import LatexTokenStream
 from trefier.linting.exceptions import *
 from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
@@ -15,60 +16,6 @@ __all__ = ['Document']
 
 
 class Document:
-    def get_import_location(self, module: Union[ModuleIdentifier, str]) -> Optional[GimportSymbol]:
-        """ Find gimport by module name or return None """
-        for gimport in self.gimports:
-            if str(gimport.imported_module) == str(module):
-                return gimport
-        return None
-
-    @property
-    def module_identifier(self):
-        if self.module:
-            return self.module.module
-        elif self.binding:
-            return self.binding.module
-    
-    @property
-    def exception_summary(self) -> Iterator[Tuple[Range, str]]:
-        yield from self.exceptions
-        for trefi in self.trefis or ():
-            yield from map((lambda x: (trefi.range, x)), trefi.errors)
-        for defi in self.defis or ():
-            yield from map((lambda x: (defi.range, x)), defi.errors)
-        for symi in self.symis or ():
-            yield from map((lambda x: (symi.range, x)), symi.errors)
-        if self.module:
-            yield from map((lambda x: (self.module.range, x)), self.module.errors)
-        if self.binding:
-            yield from map((lambda x: (self.binding.range, x)), self.binding.errors)
-    
-    def __getstate__(self):
-        return (
-            self.file,
-            self.exceptions,
-            self.module,
-            self.binding,
-            self.syntax_errors,
-            self.success,
-            self.symis,
-            self.gimports,
-            self.trefis,
-            self.defis)
-    
-    def __setstate__(self, state):
-        self.parser = None
-        (self.file,
-         self.exceptions,
-         self.module,
-         self.binding,
-         self.syntax_errors,
-         self.success,
-         self.symis,
-         self.gimports,
-         self.trefis,
-         self.defis) = state
-
     def __init__(self, file: str, ignore_exceptions: bool = True):
         self.file = file
         self.exceptions: List[Tuple[Range, Exception]] = []
@@ -133,3 +80,60 @@ class Document:
 
         except Exception as e:
             self.exceptions.append((Range(Position()), e))
+
+    def get_import_location(self, module: Union[ModuleIdentifier, str]) -> Optional[GimportSymbol]:
+        """ Find gimport by module name or return None """
+        for gimport in self.gimports:
+            if str(gimport.imported_module) == str(module):
+                return gimport
+        return None
+
+    @property
+    def module_identifier(self):
+        if self.module:
+            return self.module.module
+        elif self.binding:
+            return self.binding.module
+    
+    @property
+    def exception_summary(self) -> Iterator[Tuple[Range, str]]:
+        yield from self.exceptions
+        for trefi in self.trefis or ():
+            yield from map((lambda x: (trefi.range, x)), trefi.errors)
+        for defi in self.defis or ():
+            yield from map((lambda x: (defi.range, x)), defi.errors)
+        for symi in self.symis or ():
+            yield from map((lambda x: (symi.range, x)), symi.errors)
+        if self.module:
+            yield from map((lambda x: (self.module.range, x)), self.module.errors)
+        if self.binding:
+            yield from map((lambda x: (self.binding.range, x)), self.binding.errors)
+    
+    def __getstate__(self):
+        return (
+            self.file,
+            self.exceptions,
+            self.module,
+            self.binding,
+            self.syntax_errors,
+            self.success,
+            self.symis,
+            self.gimports,
+            self.trefis,
+            self.defis,
+        )
+    
+    def __setstate__(self, state):
+        self.parser = None
+        (
+            self.file,
+            self.exceptions,
+            self.module,
+            self.binding,
+            self.syntax_errors,
+            self.success,
+            self.symis,
+            self.gimports,
+            self.trefis,
+            self.defis,
+        ) = state

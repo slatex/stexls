@@ -1,5 +1,4 @@
 import collections
-
 __all__ = ['KeyphrasenessModel']
 
 class KeyphrasenessModel:

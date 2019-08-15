@@ -1,5 +1,9 @@
+from __future__ import annotations
+from typing import List
 import pickle
 from zipfile import ZipFile
+
+from trefier.models.tags import Tag
 
 __all__ = ['Model']
 
@@ -22,10 +26,10 @@ class Model:
         }
 
     def train(self):
-        pass
+        raise NotImplementedError()
 
-    def predict(self, path_or_tex_document):
-        pass
+    def predict(self, file: str) -> List[Tag]:
+        raise NotImplementedError()
 
     @classmethod
     def verify_loadable(self, path):

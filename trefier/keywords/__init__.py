@@ -1,4 +1,5 @@
-
-from .ChiSquareModel import *
-from .KeyphrasenessModel import *
-from .TfIdfModel import *
+__all__ = ['chisquare', 'keyphraseness', 'pos', 'tfidf']
+from . import chisquare
+from . import keyphraseness
+from . import pos
+from . import tfidf

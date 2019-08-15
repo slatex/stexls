@@ -1,7 +1,7 @@
+from __future__ import annotations
 import numpy as np
 import collections
 
-__all__ = ['TfIdfModel']
 
 class TfIdfModel:
     def __init__(self, X=None, norm_order=1):
@@ -44,7 +44,7 @@ class TfIdfModel:
 
         def fit_transform(X):
             for doc in X:
-                fit(X\doc)
+                fit(X\\doc)
                 yield transform(doc)
             fit(X)
         

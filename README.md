@@ -13,7 +13,7 @@ I needed the type annotation
 
 Install the pip dependencies by running
 
-> pip -r requirements.txt
+`pip -r requirements.txt`
 
 That's it.
 
@@ -21,33 +21,33 @@ That's it.
 
 ## Start the linter by running:
 
-> python -m trefier.app.linter
+`python -m trefier.app.linter`
 
 ## For more information use:
 
-> python -m trefier.app.linter --help
+`python -m trefier.app.linter --help`
 
 You can also get help on any command at any time during execution:
 
-> help update
+`help update`
 
 ## Most important are
 
 ### Add watched files with:
 
-> --root PATH
+`--root PATH`
 
 Path to a root folder from which recursively ALL \*\*/source/\*.tex files will be added to the internal file watcher.
 
 ### Enable tagging with:
 
-> --tagger PATH
+`--tagger PATH`
 
 Allows to specify the path to a *.model and enables automated tagging. Tensorflow will automaticall use the Memory of your whole GPU if it can.
 
 ### Enable fast restarts with:
 
-> --cache PATH
+`--cache PATH`
 
 Automatically writes a cache binary file to the specified file on exit and loads on restart.
 
@@ -68,7 +68,7 @@ files by simply printing a JSON object to stdout.
 
 To run in just type
 
-> update
+`update`
 
 # Other features:
 
@@ -80,7 +80,7 @@ Use for example complete FILE CONTEXT in order to generate autocompletions
 using FILE as root. The printed JSON output are a list of strings that
 would complete CONTEXT. For example:
 
-> complete path/to/sets.en.tex "\trefi[?"
+`complete path/to/sets.en.tex "\trefi[?"`
 
 Will return something indicating that the symbol "set" would complete
 this context.
@@ -88,7 +88,7 @@ this context.
 ## Definitions
 
 Use:
-> find-definitions FILE LINE COLUMN
+`find-definitions FILE LINE COLUMN`
 
 To query the definitions of the symbol in given file
 at the given line and column.

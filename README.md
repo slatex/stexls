@@ -27,16 +27,29 @@ That's it.
 
 > python -m trefier.app.linter --help
 
+You can also get help on any command at any time during execution:
+
+> help update
+
 ## Most important are
 
 ### Add watched files with:
-> --root PATH: Path to a root folder from which recursively ALL **/source/*.tex files will be added to the internal file watcher.
+
+> --root PATH
+
+Path to a root folder from which recursively ALL \*\*/source/\*.tex files will be added to the internal file watcher.
 
 ### Enable tagging with:
-> --tagger PATH: Allows to specify the path to a *.model and enables automated tagging. Tensorflow will automaticall use the Memory of your whole GPU if it can.
+
+> --tagger PATH
+
+Allows to specify the path to a *.model and enables automated tagging. Tensorflow will automaticall use the Memory of your whole GPU if it can.
 
 ### Enable fast restarts with:
-> --cache PATH: Automatically writes a cache binary file to the specified file on exit and loads on restart.
+
+> --cache PATH
+
+Automatically writes a cache binary file to the specified file on exit and loads on restart.
 
 ## Interact with the linter
 
@@ -52,6 +65,10 @@ The most important command while the linter is running.
 Run it anytime a file was changed.
 The linter will update all the files and generate a report of the added
 files by simply printing a JSON object to stdout.
+
+To run in just type
+
+> update
 
 # Other features:
 

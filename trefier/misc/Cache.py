@@ -71,6 +71,7 @@ class Cache:
             :param path: Explicit path to cache file.
         """
         path = path or self.path
+        assert path is None or isinstance(path, str)
         # Always create data if no path is selected and there is no data yet
         if path is None and self.factory is not None:
             self.data = self.factory()
@@ -86,6 +87,12 @@ class Cache:
         if self.path is None:
             self.path = path
         return self.data
+
+    def delete(self):
+        """ Deletes the cache file if present. """
+        if self.path is None or not os.path.isfile(self.path):
+            return
+        os.remove(self.path)
     
     def __enter__(self):
         self.load()

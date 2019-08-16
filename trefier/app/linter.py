@@ -18,7 +18,7 @@ from trefier.misc.location import Location, Range, Position
 from trefier.linting.identifiers import ModuleIdentifier
 from trefier.misc.Cache import Cache
 from trefier.linting.linter import Linter
-from trefier.app.cli import CLI
+from trefier.app.cli import CLI, CLIRestartException
 
 __all__ = ['LinterCLI']
 
@@ -101,6 +101,7 @@ class LinterCLI(CLI):
             self.raise_exception,
             self.catch_exception,
             self.execute,
+            self.exit,
             *extra_commands
         ])
 
@@ -270,29 +271,44 @@ if __name__ == '__main__':
     @argh.arg('--tagger', type=str, help="Path to tagger model")
     @argh.arg('--root', type=str, help="Root dir")
     def _main(cache: str = None, tagger: str = None, root: str = None):
-        with Cache(cache, LinterCLI) as cache:
-            try:
-                if cache.path:
-                    logger.info(f'Using cachefile at {abspath(cache.path)}')
+        while True:
+            with Cache(cache, LinterCLI) as c:
+
+                @arg('--clear', help="If True, deletes the cache file before restarting the cli.")
+                def restart(clear: bool = False):
+                    """ Restarts the cli and optionally clears the cache before restart. """
+                    logger.bind(stream=False, file=True).info("Restarting" + (' with clearing cache' if clear else ''))
+                    if clear:
+                        c.write_on_exit = False
+                        c.delete()
+                    c.data.restart()
+
+                try:
+                    if c.path:
+                        logger.info(f'Using cachefile at {abspath(c.path)}')
+                    else:
+                        logger.info('No cachefile specified: No cache will be saved')
+                    if tagger:
+                        if not os.path.isfile(tagger):
+                            raise Exception(f'Specified tagger "{tagger}" is not a file')
+                        c.data.load_tagger(tagger)
+                    if root:
+                        if not os.path.isdir(root):
+                            raise Exception(f'Specified root directory "{root}" is not a directory')
+                        c.data.add(glob(os.path.join(root, '**/source'), recursive=True))
+                    c.data.run(c.write, restart)
+                except CLIRestartException:
+                    logger.bind(file=True, stream=False).info("CLIRestartException received: continue execution...")
+                    continue # restart by looping while(True) again
+                except:
+                    logger.exception("top-level exception in run()")
+                    # disable write on any exception
+                    c.write_on_exit = False
+                finally:
+                    c.write_on_exit = c.write_on_exit and c.data and c.data.linter and c.data.linter.changed
+                if c.write_on_exit and c.path is not None:
+                    logger.info(f'Ending session: Writing cache to "{c.path}"')
                 else:
-                    logger.info('No cachefile specified: No cache will be saved')
-                if tagger:
-                    if not os.path.isfile(tagger):
-                        raise Exception(f'Specified tagger "{tagger}" is not a file')
-                    cache.data.load_tagger(tagger)
-                if root:
-                    if not os.path.isdir(root):
-                        raise Exception(f'Specified root directory "{root}" is not a directory')
-                    cache.data.add(glob(os.path.join(root, '**/source'), recursive=True))
-                cache.data.run(cache.write)
-            except:
-                logger.exception("top-level exception in run()")
-                # disable write on any exception
-                cache.write_on_exit = False
-            finally:
-                cache.write_on_exit = cache.write_on_exit and cache.data and cache.data.linter and cache.data.linter.changed
-            if cache.write_on_exit and cache.path is not None:
-                logger.info(f'Ending session: Writing cache to "{cache.path}"')
-            else:
-                logger.info('Ending session: Without writing cache')
+                    logger.info('Ending session: Without writing cache')
+            break # break while(True)
     argh.dispatch_command(_main)

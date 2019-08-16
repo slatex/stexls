@@ -103,8 +103,8 @@ class Linter:
     def load_tagger_model(self, path: str, show_progress: bool = True):
         path = os.path.abspath(path)
         if seq2seq.Seq2SeqModel.verify_loadable(path):
-            self.tagger = seq2seq.Seq2SeqModel.load(path)
             logger.info(f'loading tagger from {path}: previous {self._last_tagger_path}')
+            self.tagger = seq2seq.Seq2SeqModel.load(path)
             # update tags if the loaded tagger is new,
             # or if the new tagger is different from the old tagger
             if not self._last_tagger_path or self._last_tagger_path != path:

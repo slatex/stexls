@@ -1,15 +1,17 @@
 from __future__ import annotations
-from typing import List, Dict, Tuple, Optional, Set, Iterator
+from typing import List, Dict, Tuple, Optional, Set, Iterator, Union
 import numpy as np
 import subprocess
 import sys
 import tempfile
 
-from .exceptions import *
-from .identifiers import *
-from .document import Document
+from trefier.misc.location import Location
 
-__all__ = ['ImportGraph']
+from trefier.linting.exceptions import LinterInternalException
+from trefier.linting.identifiers import ModuleIdentifier
+from trefier.linting.document import Document
+
+__all__ = ['ImportGraph', 'DependencyGraph']
 
 
 class ImportGraph:
@@ -83,7 +85,6 @@ class ImportGraph:
         document_module = str(document.module_identifier)
         if document_module in self.modules:
             raise LinterInternalException.create(
-                document.module,
                 f'Attempted to add duplicate definition of module "{document_module}" to import graph:'
                 f' Previous definition in "{self.modules[document_module]}"')
         
@@ -304,3 +305,114 @@ class ImportGraph:
             module: Union[ModuleIdentifier, str]) -> bool:
         """ Tests if imported_module is reachable from module. """
         return str(imported_module) in self.reachable_modules_of(module)
+
+
+class DependencyGraphSymbol:
+    def __init__(self, identifier: str, graph: DependencyGraph):
+        # some arbitrary identifier
+        self.identifier = identifier
+        # graph this symbol belongs to
+        self.graph = graph
+        # sets of required and provided symbols
+        self.required: Set[str] = set()
+        self.provided: Set[str] = set()
+        # is destroyed flag
+        self.destroyed = False
+    
+    def provide(self, identifier: str):
+        assert identifier is not None
+        self.provided.add(identifier)
+        self.graph.provide(self, identifier)
+        self.graph.mark_changed(identifier)
+    
+    def require(self, identifier: str):
+        assert identifier is not None
+        self.required.add(identifier)
+        self.graph.require(self, identifier)
+    
+    def destroy(self):
+        self.graph.destroy(self)
+        self.destroyed = True
+    
+    def mark_changed(self):
+        if self.destroyed:
+            raise Exception(f'Dependency symbol {self.identifier} already destroyed.')
+        for s in self.provided:
+            self.graph.mark_changed(s)
+    
+    def __repr__(self):
+        return f'DependencyGraphSymbol:{self.identifier}'
+
+
+class DependencyGraph:
+    def __init__(self):
+        # keeps track of which symbols are active
+        self._created_symbols: Set[str] = set()
+        # keeps track of which identifiers are provided by which symbols
+        self._provided_symbols: Dict[str, Set[DependencyGraphSymbol]] = dict()
+        # Keeps track of which identifiers are required by which symbols
+        self._dependencies: Dict[str, Set[DependencyGraphSymbol]] = dict()
+        # buffer of changed identifiers
+        self._changed_buffer: Set[str] = set()
+    
+    def create_symbol(self, identifier: str) -> DependencyGraphSymbol:
+        """ Creates a symbol provider. """
+        if identifier in self._created_symbols:
+            raise Exception(f'Dependency symbol "{identifier}" already created')
+        self._created_symbols.add(identifier)
+        return DependencyGraphSymbol(identifier, self)
+    
+    def provide(self, source_symbol: DependencyGraphSymbol, provided_symbol: str):
+        """ Enables reversing of changed symbol to source symbol. """
+        self._provided_symbols.setdefault(provided_symbol, set())
+        self._provided_symbols[provided_symbol].add(source_symbol)
+
+    def require(self, source_symbol: DependencyGraphSymbol, required_symbol: str):
+        """ Enables source symbol to be marked as changed as soon as required symbol is changed. """
+        self._dependencies.setdefault(required_symbol, set())
+        self._dependencies[required_symbol].add(source_symbol)
+    
+    def destroy(self, symbol: DependencyGraphSymbol):
+        """ Removes provided and required dependencies from the graph and marks symbol as destroyed. """
+        if symbol.identifier not in self._created_symbols:
+            raise Exception(f'Dependency symbol {symbol.identifier} not in this graph.')
+        symbol.mark_changed()
+        # clear required identifier index
+        for ID in symbol.required:
+            deps = self._dependencies.get(ID)
+            deps.remove(symbol)
+            if not deps:
+                del self._dependencies[ID]
+        # clear provided identifier index
+        for ID in symbol.provided:
+            prov = self._provided_symbols.get(ID)
+            prov.remove(symbol)
+            if not prov:
+                del self._provided_symbols[ID]
+        self._created_symbols.remove(symbol.identifier)
+
+    
+    def mark_changed(self, identifier: str):
+        """ Buffer identifier as changed. """
+        self._changed_buffer.add(identifier)
+
+    def poll_changed(self) -> Set[DependencyGraphSymbol]:
+        """ Recursively finds all dependency graph symbols which require something that was changed
+        directly or by a required identifier. """
+        # gather all dependency symbols that require one of the changed identifiers
+        # and recursively mark thise provided identifiers's dependants as changed as well
+        changed: Set[str] = set()
+        while self._changed_buffer:
+            current = self._changed_buffer.pop()
+            changed.add(current)
+            for symbol in self._dependencies.get(current, ()):
+                for provided_identifier in symbol.provided:
+                    if provided_identifier not in changed:
+                        self._changed_buffer.add(provided_identifier)
+        return set(
+            symbol
+            for ID
+            in changed
+            for symbol
+            in self._dependencies.get(ID, ())
+        )

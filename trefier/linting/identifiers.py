@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .exceptions import *
+from trefier.linting.exceptions import LinterModuleFromFilenameException
 
 __all__ = ['ModuleIdentifier', 'SymbolIdentifier']
 

@@ -100,6 +100,7 @@ class LinterCLI(CLI):
             self.return_error_message,
             self.raise_exception,
             self.catch_exception,
+            self.execute,
             *extra_commands
         ])
 
@@ -241,6 +242,14 @@ class LinterCLI(CLI):
     def return_error_message(self):
         """ calls return_result with status 1 and a message. """
         self.return_result(self.return_error_message, 1, message="Error message returned!")
+    
+    @arg('source', help="Python source code to execute")
+    def execute(self, source: str):
+        logger.info(source)
+        try:
+            exec(source, globals(), locals())
+        except:
+            logger.exception('Exception in execute()')
 
 
 class LinterJSONEncoder(json.JSONEncoder):

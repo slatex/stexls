@@ -17,7 +17,7 @@ from trefier.linting.exceptions import LinterException, LinterInternalException
 from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
 from trefier.linting.document import *
-from trefier.linting.imports import ImportGraph
+from trefier.linting.dependencies import ImportGraph, DependencyGraph, DependencyGraphSymbol
 from trefier.models.tags import Tag
 
 __all__ = ['Linter']
@@ -58,6 +58,9 @@ class Linter:
 
         self.changed = False
 
+        self.dependency_graph = DependencyGraph()
+        self._map_file_to_dep_graph_symbol: Dict[str, DependencyGraphSymbol] = dict()
+
     def __getstate__(self):
         return (
             self._file_watcher,
@@ -69,7 +72,9 @@ class Linter:
             self.import_graph,
             self._duplicate_definition_report,
             self.tags,
-            self.tagger_path
+            self.tagger_path,
+            self.dependency_graph,
+            self._map_file_to_dep_graph_symbol,
         )
 
     def __setstate__(self, state):
@@ -90,7 +95,9 @@ class Linter:
             self.import_graph,
             self._duplicate_definition_report,
             self.tags,
-            self._last_tagger_path
+            self._last_tagger_path,
+            self.dependency_graph,
+            self._map_file_to_dep_graph_symbol,
         ) = state
 
     def load_tagger_model(self, path: str, show_progress: bool = True):
@@ -267,7 +274,7 @@ class Linter:
         use_multiprocessing &= not debug
 
         if not (deleted or modified):
-            return dict(self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
+            return {}#dict(self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
         
         self.changed = True
 
@@ -297,10 +304,34 @@ class Linter:
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)
 
-        self.import_graph.update()
+        changed_module_identifiers = self.import_graph.update()
+
+        #changed_documents: List[Document] = list(self._map_file_to_document.values())
+
+        changed_documents: Set[Document] = {
+            self._map_file_to_document[changed_symbol.identifier]
+            for changed_symbol
+            in self.dependency_graph.poll_changed()
+        } | {
+            changed_document
+            for changed_document
+            in documents
+            if changed_document.success }# | {
+        #     changed_document
+        #     for changed_module_identifier
+        #     in changed_module_identifiers
+        #     for changed_document
+        #     in filter(
+        #         None,
+        #         itertools.chain(
+        #             (self._map_module_identifier_to_module.get(changed_module_identifier),),
+        #             self._map_module_identifier_to_bindings.get(changed_module_identifier, {}).values()
+        #         )
+        #     )
+        # }
 
         report: Dict[str, Optional[List[ReportEntry]]] = dict(
-            self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
+            self.make_report(changed_documents, show_progress=show_progress))
 
         # add reports for documents that failed to parse this time
         report.update(dict(self.make_report(list(filter(lambda doc: not doc.success, documents)), show_progress=show_progress)))
@@ -641,6 +672,11 @@ class Linter:
 
         progress = (lambda *args: None) if silent else logger.bind(stream=True, file=True).info
 
+        # remove file from dependency graph
+        dependencies = self._map_file_to_dep_graph_symbol[file]
+        del self._map_file_to_dep_graph_symbol[file]
+        dependencies.destroy()
+
         if document.binding:
             progress(f'-BINDING {document.binding.lang} {module_id}')
             del self._map_module_identifier_to_bindings[module_id][document.binding.lang]
@@ -665,29 +701,63 @@ class Linter:
         assert not self._is_linked(document.file), "Duplicate link"
         module = str(document.module_identifier)
         progress = (lambda *args: None) if silent else logger.bind(stream=True, file=True).info
+
+        # create dependency graph symbol and register dependencies at file
+        assert document.file not in self._map_file_to_dep_graph_symbol
+        dependencies = self.dependency_graph.create_symbol(document.file)
+        self._map_file_to_dep_graph_symbol[document.file] = dependencies
+
         if document.binding:
+            # check for duplicate
             if document.binding.lang in self._map_module_identifier_to_bindings.get(module, ()):
                 self._duplicate_definition_report.setdefault(document.file, [])
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.binding, symbol=document.binding))
                 return
             progress(f'+BINDING {module} {document.binding.lang}')
+            # register binding at module
             self._map_module_identifier_to_bindings.setdefault(module, {})
             self._map_module_identifier_to_bindings[module][document.binding.lang] = document
+            # create tags for binding
             self._tag_document(document)
+            # build dependency graph
+            dependencies.require(document.binding.bound_module_name)
+            #logger.info(f'REQUIRE MODULE {document.binding.bound_module_name}')
+            for symbol in document.trefis or ():
+                #logger.info(f'REQUIRE {document.binding.bound_module_name} {document.binding.lang}, TREFI {symbol.symbol_name}')
+                dependencies.require(symbol.symbol_name)
+                if symbol.target_module:
+                    dependencies.require(symbol.target_module)
+                    #logger.info(f'REQUIRE {document.binding.bound_module_name} {document.binding.lang}, MODULE {symbol.target_module}')
+            for symbol in document.defis or ():
+                #logger.info(f'REQUIRE {document.binding.bound_module_name} {document.binding.lang}, DEFI {symbol.symbol_name}')
+                dependencies.require(symbol.symbol_name)
         elif document.module:
+            # check for duplicate
             if module in self._map_module_identifier_to_module:
                 self._duplicate_definition_report.setdefault(document.file, [])
                 self._duplicate_definition_report[document.file].append(
                     ReportEntry.duplicate(document.module, symbol=document.module))
                 return
             progress(f'+MODULE {module}')
+            # index symbols
             for sym in document.symis:
                 self._symbol_index.setdefault(sym.symbol_name, [])
                 self._symbol_index[sym.symbol_name].append(sym)
+            # register document to module
             self._map_module_identifier_to_module[module] = document
+            # add to import graph
             self.import_graph.add(document)
-
+            # build dependency graph
+            dependencies.provide(document.module.module_name)
+            #logger.info(f'PROVIDE MODULE {document.module.module_name}')
+            for symbol in document.gimports or ():
+                #logger.info(f'REQUIRE {document.module_identifier}, GIMPORT {symbol.imported_module.module_name}')
+                dependencies.require(symbol.imported_module.module_name)
+            for symbol in document.symis or ():
+                #logger.info(f'PROVIDE {document.module_identifier}, SYMI {symbol.symbol_name}')
+                dependencies.provide(symbol.symbol_name)
+        # register file
         self._map_file_to_document[document.file] = document
         progress(f'+FILE {document.file}')
 

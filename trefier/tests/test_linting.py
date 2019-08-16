@@ -6,7 +6,7 @@ from trefier.linting.document import Document
 from trefier.linting.identifiers import *
 from trefier.linting.symbols import *
 from trefier.linting.linter import Linter
-from trefier.linting.imports import ImportGraph
+from trefier.linting.dependencies import ImportGraph
 
 
 class LinterDocumentTestCase(unittest.TestCase):

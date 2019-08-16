@@ -24,10 +24,10 @@ class Document:
         self.binding: Optional[ModuleBindingDefinitionSymbol] = None
         self.syntax_errors: Optional[Dict[Location, Dict[str, object]]] = None
         self.success = False
-        self.symis = None
-        self.gimports = None
-        self.trefis = None
-        self.defis = None
+        self.symis: Optional[List[SymiSymbol]] = None
+        self.gimports: Optional[List[GimportSymbol]] = None
+        self.trefis: Optional[List[TrefiSymbol]] = None
+        self.defis: Optional[List[DefiSymbol]] = None
         try:
             self.parser = LatexParser(self.file, ignore_exceptions=False)
             self.syntax_errors = self.parser.syntax_errors
@@ -43,19 +43,19 @@ class Document:
                             self.exceptions.append((_node_to_location(node).range, e))
                     return wrapper
 
-                self.symis: List[SymiSymbol] = list(
+                self.symis = list(
                     filter(None, map(catcher(SymiSymbol.from_node),
                                      self.parser.root.finditer(SymiSymbol.SYM_PATTERN))))
 
-                self.gimports: List[GimportSymbol] = list(
+                self.gimports = list(
                     filter(None, map(catcher(GimportSymbol.from_node),
                                      self.parser.root.finditer(GimportSymbol.GIMPORT_PATTERN))))
 
-                self.trefis: List[TrefiSymbol] = list(
+                self.trefis = list(
                     filter(None, map(catcher(TrefiSymbol.from_node),
                                      self.parser.root.finditer(TrefiSymbol.TREFI_PATTERN))))
 
-                self.defis: List[DefiSymbol] = list(
+                self.defis = list(
                     filter(None, map(catcher(DefiSymbol.from_node),
                                      self.parser.root.finditer(DefiSymbol.DEFI_PATTERN))))
 

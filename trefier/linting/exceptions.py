@@ -1,6 +1,13 @@
 from __future__ import annotations
 from typing import Union
-from ..misc.location import Location
+from trefier.misc.location import Location
+
+__all__ = [
+    'LinterException',
+    'LinterArgumentCountException',
+    'LinterModuleFromFilenameException',
+    'LinterInternalException'
+]
 
 
 class LinterException(Exception):

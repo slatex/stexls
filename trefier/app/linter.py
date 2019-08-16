@@ -125,20 +125,24 @@ class LinterCLI(CLI):
             logger.exception("Exception during add_directory")
             self.return_result(self.add, 1, message=str(e))
 
+    @arg('-a', '--force_report_all', help="If set, generates reports on all documents, even if unchanged.")
     @arg('-j', '--jobs', type=int, help="Number of jobs to help parsing tex files.")
     @arg('-m', '--use_multiprocessing', help="Enables multiprocessing")
     @arg('-d', '--debug', help="Enables debug mode")
     @arg('-p', '--progress', help="Enables some progress hints during update")
-    def update(self,
-               jobs: int = None,
-               use_multiprocessing: bool = True,
-               progress: bool = True,
-               debug: bool = False,):
+    def update(
+        self,
+        force_report_all: bool = False,
+        jobs: int = None,
+        use_multiprocessing: bool = True,
+        progress: bool = True,
+        debug: bool = False,):
         """ Updates the linter """
         logger.info(f"Updating linter jobs={jobs} use_multiprocessing={use_multiprocessing} debug={debug}")
         try:
             with ShowErrors(), Timer() as timer:
                 report = self.linter.update(
+                    force_report_all=force_report_all,
                     n_jobs=jobs,
                     use_multiprocessing=use_multiprocessing,
                     debug=debug,
@@ -265,6 +269,7 @@ class LinterJSONEncoder(json.JSONEncoder):
             return str(obj)
         return obj.__dict__
 
+return_restart_result: Optional[Callable[[], None]] = None
 
 if __name__ == '__main__':
     @argh.arg('--cache', help="Name of the file used as cache")
@@ -277,10 +282,17 @@ if __name__ == '__main__':
                 @arg('--clear', help="If True, deletes the cache file before restarting the cli.")
                 def restart(clear: bool = False):
                     """ Restarts the cli and optionally clears the cache before restart. """
-                    logger.bind(stream=False, file=True).info("Restarting" + (' with clearing cache' if clear else ''))
-                    if clear:
-                        c.write_on_exit = False
-                        c.delete()
+                    try:
+                        logger.bind(stream=False, file=True).info("Restarting" + (' with clearing cache' if clear else ''))
+                        if clear:
+                            c.write_on_exit = False
+                            c.delete()
+                        global return_restart_result
+                        return_restart_result = lambda: c.data.return_result(restart, 0)
+                    except Exception as e:
+                        logger.bind(stream=True, file=False).error(str(e))
+                        logger.bind(stream=False, file=True).exception("Exception before restart could be executed")
+                        c.data.return_result(restart, 1)
                     c.data.restart()
 
                 try:
@@ -296,6 +308,10 @@ if __name__ == '__main__':
                         if not os.path.isdir(root):
                             raise Exception(f'Specified root directory "{root}" is not a directory')
                         c.data.add(glob(os.path.join(root, '**/source'), recursive=True))
+                    global return_restart_result
+                    if return_restart_result is not None and callable(return_restart_result):
+                        return_restart_result()
+                        return_restart_result = None
                     c.data.run(c.write, restart)
                 except CLIRestartException:
                     logger.bind(file=True, stream=False).info("CLIRestartException received: continue execution...")

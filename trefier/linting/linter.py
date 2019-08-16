@@ -257,11 +257,13 @@ class Linter:
                 self._file_watcher.add(os.path.join(dirname, '*'))
         return self._file_watcher.update()
 
-    def update(self,
-               n_jobs: Optional[int] = None,
-               use_multiprocessing: bool = True,
-               silent: bool = True,
-               debug: bool = False):
+    def update(
+        self,
+        force_report_all: bool = False,
+        n_jobs: Optional[int] = None,
+        use_multiprocessing: bool = True,
+        silent: bool = True,
+        debug: bool = False):
         deleted, modified = self._update_watched_directories()
 
         # remove tags if no tagger specified
@@ -274,7 +276,9 @@ class Linter:
         use_multiprocessing &= not debug
 
         if not (deleted or modified):
-            return {}#dict(self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
+            if force_report_all:
+                return dict(self.make_report(list(self._map_file_to_document.values()), show_progress=show_progress))
+            return {}
         
         self.changed = True
 
@@ -304,31 +308,23 @@ class Linter:
         for document in filter(lambda doc: doc.success, documents):
             self._link(document, silent=False if debug else silent)
 
-        changed_module_identifiers = self.import_graph.update()
+        self.import_graph.update()
 
-        #changed_documents: List[Document] = list(self._map_file_to_document.values())
+        dependency_graph_changes = self.dependency_graph.poll_changed() # always poll to not congest the buffer
 
-        changed_documents: Set[Document] = {
-            self._map_file_to_document[changed_symbol.identifier]
-            for changed_symbol
-            in self.dependency_graph.poll_changed()
-        } | {
-            changed_document
-            for changed_document
-            in documents
-            if changed_document.success }# | {
-        #     changed_document
-        #     for changed_module_identifier
-        #     in changed_module_identifiers
-        #     for changed_document
-        #     in filter(
-        #         None,
-        #         itertools.chain(
-        #             (self._map_module_identifier_to_module.get(changed_module_identifier),),
-        #             self._map_module_identifier_to_bindings.get(changed_module_identifier, {}).values()
-        #         )
-        #     )
-        # }
+        if force_report_all:
+            changed_documents: List[Document] = list(self._map_file_to_document.values())
+        else:
+            changed_documents: Set[Document] = {
+                self._map_file_to_document[changed_symbol.identifier]
+                for changed_symbol
+                in dependency_graph_changes
+            } | {
+                changed_document
+                for changed_document
+                in documents
+                if changed_document.success
+            }
 
         report: Dict[str, Optional[List[ReportEntry]]] = dict(
             self.make_report(changed_documents, show_progress=show_progress))

@@ -43,9 +43,11 @@ class Seq2SeqModel(Model):
     @argh.arg('--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
     @argh.arg('--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
     @argh.arg('--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
+    @argh.arg('--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
     @argh.arg('--save_dir', type=str, help="Directory to which required training data will be downloaded.")
     @argh.arg('--oov_token', type=str, help="Special token used for all tokens not in glove.")
     @argh.arg('--math_token', type=str, help="Special token to use for math environments.")
+    @argh.arg('--enable_pos_tags', help="Enables pos tag feature.")
     @argh.arg('--n_jobs', type=int, help="Number of processes parsing of files may use.")
     def train(
         self,
@@ -54,10 +56,15 @@ class Seq2SeqModel(Model):
         glove_word_count: Optional[int] = 200000,
         oov_embedding_dim: int = 4,
         early_stopping_patience: int = 5,
+        capacity: int = 3,
         save_dir: str = 'data/',
         oov_token: str = '<oov>',
         math_token: str = '<math>',
+        enable_pos_tags: bool = False,
         n_jobs: int = 6,):
+
+        assert capacity > 0, "Capacity must be at least 1"
+
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',
             lambda: list(datasets.smglom.parse_files(lang='en', save_dir=save_dir, n_jobs=n_jobs, show_progress=True))
@@ -72,7 +79,7 @@ class Seq2SeqModel(Model):
             oov_token=oov_token,
             num_words=min(glove_word_count, 400000) if glove_word_count else None,
             make_keras_layer=True,
-            perform_pca=glove_ncomponents < 50,
+            perform_pca=0 < glove_ncomponents < 50,
             n_components=glove_ncomponents
         )
 
@@ -98,7 +105,9 @@ class Seq2SeqModel(Model):
 
         self.tfidf_model = keywords.tfidf.TfIdfModel()
         self.keyphraseness_model = keywords.keyphraseness.KeyphrasenessModel()
-        self.pos_tag_model = keywords.pos.PosTagModel()
+
+        if enable_pos_tags:
+            self.pos_tag_model = keywords.pos.PosTagModel()
         
         trainable_embedding_layer = Embedding(
             input_dim=len(self.oov_tokenizer.word_index) + 1,
@@ -109,22 +118,25 @@ class Seq2SeqModel(Model):
         tokens_oov_input = Input((None,), name='tokens_oov', dtype=np.int32)
         tfidf_input = Input((None,), name='tfidf', dtype=np.float32)
         keyphraseness_input = Input((None,), name='keyphraseness', dtype=np.float32)
-        pos_tag_input = Input((None, self.pos_tag_model.num_categories), name='pos_tags', dtype=np.float32)
+
+        if enable_pos_tags:
+            pos_tag_input = Input((None, self.pos_tag_model.num_categories), name='pos_tags', dtype=np.float32)
+            print("Enabling pos_tag input")
 
         net = Concatenate()([
             embedding_layer(tokens_glove_input),
             trainable_embedding_layer(tokens_oov_input),
             Reshape((-1, 1))(tfidf_input),
             Reshape((-1, 1))(keyphraseness_input),
-            pos_tag_input,
-        ])
+        ] + ([pos_tag_input] if enable_pos_tags else []))
+
         net = GaussianNoise(0.1)(net)
-        net = Bidirectional(GRU(48, activation='tanh', dropout=0.1, return_sequences=True))(net)
-        net = Bidirectional(GRU(48, activation='tanh', dropout=0.1, return_sequences=True))(net)
-        net = Bidirectional(GRU(48, activation='tanh', dropout=0.1, return_sequences=True))(net)
-        net = Dense(128, activation='sigmoid')(net)
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
+        net = Dense(32*capacity, activation='sigmoid')(net)
         net = Dropout(0.5)(net)
-        net = Dense(128, activation='sigmoid')(net)
+        net = Dense(32*capacity, activation='sigmoid')(net)
         net = Dropout(0.5)(net)
         prediction_layer = Dense(1, activation='sigmoid')(net)
 
@@ -133,9 +145,8 @@ class Seq2SeqModel(Model):
                 tokens_glove_input,
                 tokens_oov_input,
                 tfidf_input,
-                keyphraseness_input,
-                pos_tag_input
-            ],
+                keyphraseness_input
+            ] + ([pos_tag_input] if enable_pos_tags else []),
             outputs=prediction_layer
         )
         self.model.compile(
@@ -147,16 +158,32 @@ class Seq2SeqModel(Model):
 
         train_indices, test_indices = train_test_split(np.arange(len(y)))
 
-        class_counts = np.array(list(dict(sorted(Counter(y_ for y_ in y for y_ in y_).items(), key=lambda x: x[0])).values()))
+        class_counts = np.array(list(dict(sorted(Counter(y_ for y_ in [y[ti] for ti in train_indices] for y_ in y_).items(), key=lambda x: x[0])).values()))
         class_weights = -np.log(class_counts / np.sum(class_counts))
+        print("training set class counts", class_counts)
+        print("training class weights", class_weights)
+
         sample_weights = [[class_weights[int(y_)] for y_ in y[i]] for i in train_indices]
         sample_weights = pad_sequences(sample_weights, maxlen=max(map(len, x)), dtype=np.float32)
 
+        x_train = {}
+        x_test = {}
         x_glove = pad_sequences(self.glove_tokenizer.transform(x))
+        x_train['tokens_glove'] = x_glove[train_indices]
+        x_test['tokens_glove'] = x_glove[test_indices]
         x_oov = pad_sequences(self.oov_tokenizer.transform(x))
+        x_train['tokens_oov'] = x_oov[train_indices]
+        x_test['tokens_oov'] = x_oov[test_indices]
         x_tfidf = pad_sequences(self.tfidf_model.fit_transform(x), dtype=np.float32)
+        x_train['tfidf'] = x_tfidf[train_indices]
+        x_test['tfidf'] = x_tfidf[test_indices]
         x_keyphraseness = pad_sequences(self.keyphraseness_model.fit_transform(x, y), dtype=np.float32)
-        x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
+        x_train['keyphraseness'] = x_keyphraseness[train_indices]
+        x_test['keyphraseness'] = x_keyphraseness[test_indices]
+        if enable_pos_tags:
+            x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
+            x_train['pos_tags'] = x_pos_tags[train_indices]
+            x_test['pos_tags'] = x_pos_tags[test_indices]
         
         y = np.expand_dims(pad_sequences(y), axis=-1)
         
@@ -166,34 +193,18 @@ class Seq2SeqModel(Model):
             sample_weight=sample_weights,
             epochs=epochs,
             callbacks=callbacks,
-            x={
-                'tokens_glove': x_glove[train_indices],
-                'tokens_oov': x_oov[train_indices],
-                'tfidf': x_tfidf[train_indices],
-                'keyphraseness': x_keyphraseness[train_indices],
-                'pos_tags': x_pos_tags[train_indices]
-            },
+            x=x_train,
             y=y[train_indices],
             validation_data=(
-                {
-                    'tokens_glove': x_glove[test_indices],
-                    'tokens_oov': x_oov[test_indices],
-                    'tfidf': x_tfidf[test_indices],
-                    'keyphraseness': x_keyphraseness[test_indices],
-                    'pos_tags': x_pos_tags[test_indices]
-                },
+                x_test,
                 y[test_indices],
             ),
         )
 
         # evaluation stuff
-        eval_y_pred_raw = self.model.predict({
-            'tokens_glove': x_glove[test_indices],
-            'tokens_oov': x_oov[test_indices],
-            'tfidf': x_tfidf[test_indices],
-            'keyphraseness': x_keyphraseness[test_indices],
-            'pos_tags': x_pos_tags[test_indices]
-        }).squeeze(axis=-1)
+        eval_y_pred_raw = self.model.predict(
+            x_test
+        ).squeeze(axis=-1)
         
         eval_y_true, eval_y_pred = zip(*[
             (true_, pred_)
@@ -207,6 +218,8 @@ class Seq2SeqModel(Model):
         self.evaluation = Evaluation.Evaluation(fit_result.history)
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0: 'text', 1: 'keyword'})
     
+    @argh.arg('file', type=str, help="Path to file for which you want to make predictions for.")
+    @argh.arg('--ignore_tagged_tokens', default=False, help="Disables already tagged token outputs")
     def predict(
         self,
         file: Union[str, LatexParser, LatexTokenStream],
@@ -280,27 +293,27 @@ class Seq2SeqModel(Model):
             try:
                 package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
             except:
-                print('Warning: Failed to dump "glove_tokenizer".', flush=True, file=sys.stderr)
+                print('Warning: Failed to save "glove_tokenizer".', flush=True, file=sys.stderr)
 
             try:
                 package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
             except:
-                print('Warning: Failed to dump "oov_tokenizer".', flush=True, file=sys.stderr)
+                print('Warning: Failed to save "oov_tokenizer".', flush=True, file=sys.stderr)
 
             try:
                 package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
             except:
-                print('Warning: Failed to dump "pos_tag_model".', flush=True, file=sys.stderr)
+                print('Warning: Failed to save "pos_tag_model".', flush=True, file=sys.stderr)
 
             try:
                 package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
             except:
-                print('Warning: Failed to dump "tfidf_model".', flush=True, file=sys.stderr)
+                print('Warning: Failed to save "tfidf_model".', flush=True, file=sys.stderr)
 
             try:
                 package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
             except:
-                print('Warning: Failed to dump "keyphraseness_model".', flush=True, file=sys.stderr)
+                print('Warning: Failed to save "keyphraseness_model".', flush=True, file=sys.stderr)
     
     @staticmethod
     def load(path, append_extension=False):
@@ -314,26 +327,31 @@ class Seq2SeqModel(Model):
             try:
                 self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
             except:
+                print('Warning: Failed to load "glove_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.glove_tokenizer = None
             
             try:
                 self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
             except:
+                print('Warning: Failed to load "oov_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.oov_tokenizer = None
 
             try:
                 self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
             except:
+                print('Warning: Failed to load "pos_tag_model", setting it to None.', flush=True, file=sys.stderr)
                 self.pos_tag_model = None
 
             try:
                 self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
             except:
+                print('Warning: Failed to load "tfidf_model", setting it to None.', flush=True, file=sys.stderr)
                 self.tfidf_model = None
 
             try:
                 self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
             except:
+                print('Warning: Failed to load "keyphraseness_model", setting it to None.', flush=True, file=sys.stderr)
                 self.keyphraseness_model = None
 
             self.evaluation = pickle.loads(package.read('evaluation.bin'))
@@ -373,19 +391,34 @@ if __name__ == '__main__':
         global model
         model = Seq2SeqModel()
         return "> Model reset"
+    
+    def show_keras_model_summary():
+        """ Prints the model summary to stdout. """
+        try:
+            model.model.summary()
+        except Exception as e:
+            print("Error: %s" % str(e), file=sys.stderr, flush=True)
 
     def main():
         import shlex
         while True:
             try:
                 for line in sys.stdin:
-                        argh.dispatch_commands([load, model.train, model.save, show_evaluation, reset, exit], shlex.split(line))
+                        argh.dispatch_commands([
+                            load,
+                            model.train,
+                            model.save,
+                            model.predict,
+                            show_evaluation,
+                            show_keras_model_summary,
+                            reset,
+                            exit], shlex.split(line))
             except KeyboardInterrupt:
                 print("> Exiting by user input")
                 break
             except ExitException:
                 return
-            except:
-                pass
+            except Exception as e:
+                print("Error: %s" % str(e), file=sys.stderr, flush=True)
     
     main()

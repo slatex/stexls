@@ -6,6 +6,8 @@ from keras.layers import *
 from keras.preprocessing.sequence import pad_sequences
 from keras.callbacks import EarlyStopping
 
+import argh
+import sys
 from sklearn.model_selection import train_test_split
 from collections import Counter
 from zipfile import ZipFile
@@ -36,6 +38,15 @@ class Seq2SeqModel(Model):
         self.keyphraseness_model = None
         self.model = None
 
+    @argh.arg('--epochs', type=int, help="Number of epochs to train the model for.")
+    @argh.arg('--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
+    @argh.arg('--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
+    @argh.arg('--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
+    @argh.arg('--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
+    @argh.arg('--save_dir', type=str, help="Directory to which required training data will be downloaded.")
+    @argh.arg('--oov_token', type=str, help="Special token used for all tokens not in glove.")
+    @argh.arg('--math_token', type=str, help="Special token to use for math environments.")
+    @argh.arg('--n_jobs', type=int, help="Number of processes parsing of files may use.")
     def train(
         self,
         epochs: int = 1,
@@ -45,7 +56,7 @@ class Seq2SeqModel(Model):
         early_stopping_patience: int = 5,
         save_dir: str = 'data/',
         oov_token: str = '<oov>',
-        math_token:str = '<math>',
+        math_token: str = '<math>',
         n_jobs: int = 6,):
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',
@@ -223,19 +234,29 @@ class Seq2SeqModel(Model):
             in parsed_file
         ]]
 
-        x_glove = pad_sequences(self.glove_tokenizer.transform(x))
-        x_oov = pad_sequences(self.oov_tokenizer.transform(x))
-        x_tfidf = pad_sequences(self.tfidf_model.transform(x), dtype=np.float32)
-        x_keyphraseness = pad_sequences(self.keyphraseness_model.transform(x), dtype=np.float32)
-        x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
+        X = {}
 
-        y = self.model.predict({
-            'tokens_glove': x_glove,
-            'tokens_oov': x_oov,
-            'tfidf': x_tfidf,
-            'keyphraseness': x_keyphraseness,
-            'pos_tags': x_pos_tags
-        }).squeeze(0).squeeze(-1)
+        if hasattr(self, 'glove_tokenizer') and self.glove_tokenizer is not None:
+            x_glove = pad_sequences(self.glove_tokenizer.transform(x))
+            X['tokens_glove'] = x_glove
+        
+        if hasattr(self, 'oov_tokenizer') and self.oov_tokenizer is not None:
+            x_oov = pad_sequences(self.oov_tokenizer.transform(x))
+            X['tokens_oov'] = x_oov
+
+        if hasattr(self, 'tfidf_model') and self.tfidf_model is not None:
+            x_tfidf = pad_sequences(self.tfidf_model.transform(x), dtype=np.float32)
+            X['tfidf'] = x_tfidf
+
+        if hasattr(self, 'keyphraseness_model') and self.keyphraseness_model is not None:
+            x_keyphraseness = pad_sequences(self.keyphraseness_model.transform(x), dtype=np.float32)
+            X['keyphraseness'] = x_keyphraseness
+        
+        if hasattr(self, 'pos_tag_model') and self.pos_tag_model is not None:
+            x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
+            X['pos_tags'] = x_pos_tags
+
+        y = self.model.predict(X).squeeze(0).squeeze(-1)
 
         is_tagged = re.compile(r'[ma]*(tr|d)efi+s?').fullmatch
         
@@ -254,14 +275,32 @@ class Seq2SeqModel(Model):
                 models.save_model(self.model, ref.name)
                 ref.flush()
                 package.write(ref.name, 'model.hdf5')
-            package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
-            package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
-            package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
-            package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
-            package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
             package.writestr('evaluation.bin', pickle.dumps(self.evaluation))
             package.writestr('settings.bin', pickle.dumps(self.settings))
+            try:
+                package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
+            except:
+                print('Warning: Failed to dump "glove_tokenizer".', flush=True, file=sys.stderr)
 
+            try:
+                package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
+            except:
+                print('Warning: Failed to dump "oov_tokenizer".', flush=True, file=sys.stderr)
+
+            try:
+                package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
+            except:
+                print('Warning: Failed to dump "pos_tag_model".', flush=True, file=sys.stderr)
+
+            try:
+                package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+            except:
+                print('Warning: Failed to dump "tfidf_model".', flush=True, file=sys.stderr)
+
+            try:
+                package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+            except:
+                print('Warning: Failed to dump "keyphraseness_model".', flush=True, file=sys.stderr)
     
     @staticmethod
     def load(path, append_extension=False):
@@ -272,11 +311,81 @@ class Seq2SeqModel(Model):
                 ref.write(package.read('model.hdf5'))
                 ref.flush()
                 self.model = models.load_model(ref.name)
-            self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
-            self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
-            self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
-            self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
-            self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+            try:
+                self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
+            except:
+                self.glove_tokenizer = None
+            
+            try:
+                self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
+            except:
+                self.oov_tokenizer = None
+
+            try:
+                self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
+            except:
+                self.pos_tag_model = None
+
+            try:
+                self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
+            except:
+                self.tfidf_model = None
+
+            try:
+                self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+            except:
+                self.keyphraseness_model = None
+
             self.evaluation = pickle.loads(package.read('evaluation.bin'))
             self.settings = pickle.loads(package.read('settings.bin'))
         return self
+
+if __name__ == '__main__':
+    global model
+    model = Seq2SeqModel()
+    
+    @argh.arg("path", type=str, help="Path to a saved model file.")
+    def load(path: str):
+        """ Load a specific Seq2SeqModel from file. """
+        global model
+        model = Seq2SeqModel.load(path)
+        if model is None:
+            return "> Failed to load model from path %s" % path
+        return "> Model loaded from %s" % path
+    
+    def show_evaluation():
+        """ Plot evaluation of currently trained model. """
+        try:
+            model.evaluation.plot()
+            return "> Showing evaluation"
+        except:
+            print("> Failed to plot model evaluation: Maybe the model didn't load or isn't trained yet.", file=sys.stderr, flush=True)
+
+    class ExitException(Exception):
+        pass
+    
+    def exit():
+        """ Exits the cli. """
+        raise ExitException()
+    
+    def reset():
+        """ Resets the currently loaded model. """
+        global model
+        model = Seq2SeqModel()
+        return "> Model reset"
+
+    def main():
+        import shlex
+        while True:
+            try:
+                for line in sys.stdin:
+                        argh.dispatch_commands([load, model.train, model.save, show_evaluation, reset, exit], shlex.split(line))
+            except KeyboardInterrupt:
+                print("> Exiting by user input")
+                break
+            except ExitException:
+                return
+            except:
+                pass
+    
+    main()

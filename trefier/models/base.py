@@ -9,6 +9,9 @@ __all__ = ['Model']
 
 
 class Model:
+    MAJOR_VERSION = 2
+    MINOR_VERSION = 1
+
     def __init__(self, predicts_probabilities, class_names):
         """ Model base
         Arguments:
@@ -18,6 +21,11 @@ class Model:
         assert isinstance(class_names, dict)
         assert all(isinstance(x, int) for x in class_names)
         assert all(isinstance(y, str) for y in class_names.values())
+
+        self.version = {
+            'major': Model.MAJOR_VERSION,
+            'minor': Model.MINOR_VERSION,
+        }
 
         self.settings = {
             'model_class': type(self).__name__,
@@ -30,7 +38,7 @@ class Model:
 
     def predict(self, file: str) -> List[Tag]:
         raise NotImplementedError()
-
+    
     @classmethod
     def verify_loadable(self, path):
         try:

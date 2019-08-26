@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Dict
 import sys
 import shlex
 import argh
@@ -25,17 +25,39 @@ class CLIRestartException(CLIException):
 
 class CLI:
     """ Contains basic pattern of argh.dispatch_commands in a for line in stdin loop and error handling. """
+    def __init__(self):
+        self._serialize_output = False
+    
+    def set_output_serialization(self, value: bool):
+        """ Enables or disables the serialization of the value returned through return_result(). """
+        self._serialize_output = value
 
-    def return_result(self, command: Callable, status: int, encoder: Optional[json.JSONEncoder] = None, **kwargs):
-        """ Returns the result of a command over stdout in json format. """
+    def return_result(self, command: Callable, status: int, encoder: Optional[json.JSONEncoder] = None, formatter: Optional[Callable[[Dict], str]] = None, **kwargs):
+        """ Returns the result of a command over stdout in json format if serialization was enabled by calling set_output_serialization().
+        This function defines a unified way to properly return something to the command line in a way, that does not infere with argh or the cli.
+
+        Arguments:
+            :param command: The command function from which to return. 
+            :param status: A command status indicator value.
+        
+        Keyword Arguments:
+            :param encoder: An optional specific JSON encoder. Requires set_output_serialization(True) called. The default json encoder will be used if None is set.
+            :param formatter: Formatter for the return result as a string. Requires set_output_serialization(False) or nothing as serialization is False by default.
+            :param kwargs: The dictionary that should be returned.
+        """
         kwargs.update({
                 "command": command.__name__,
                 "status": status
         })
-        if encoder is None:
-            print(json.dumps(kwargs, default=lambda obj: obj.__dict__), flush=True)
+        if self._serialize_output:
+            if encoder is None:
+                print(json.dumps(kwargs, default=lambda obj: obj.__dict__), flush=True)
+            else:
+                print(encoder.encode(kwargs), flush=True)
+        elif formatter is not None:
+            print(formatter(kwargs))
         else:
-            print(encoder.encode(kwargs), flush=True)
+            print(kwargs, flush=True)
 
     def run(self, commands: List[Callable]):
         """ Runs the cli.

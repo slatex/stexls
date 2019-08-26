@@ -272,12 +272,15 @@ class LinterJSONEncoder(json.JSONEncoder):
 return_restart_result: Optional[Callable[[], None]] = None
 
 if __name__ == '__main__':
-    @argh.arg('--cache', help="Name of the file used as cache")
-    @argh.arg('--tagger', type=str, help="Path to tagger model")
-    @argh.arg('--root', type=str, help="Root dir")
-    def _main(cache: str = None, tagger: str = None, root: str = None):
+    @argh.arg('--cache', help="Name of the file used as cache.")
+    @argh.arg('--tagger', type=str, help="Path to tagger model. Use None to disable tagging.")
+    @argh.arg('--root', type=str, help="Path to initial root directory from which all **/source folders will be added to the workspace.")
+    @argh.arg('-s', '--serialize', help="Enables output serialization in JSON format.")
+    @argh.arg('-r', '--single_run', help="Launches in single run mode. Session will not be kept alive after loading the tagger, loading the cache, adding the root and then printing the diagnostic report.")
+    def _main(cache: str = None, tagger: str = None, root: str = None, serialize: bool = False, single_run: bool = False):
         while True:
             with Cache(cache, LinterCLI) as c:
+                c.data.set_output_serialization(serialize)
 
                 @arg('--clear', help="If True, deletes the cache file before restarting the cli.")
                 def restart(clear: bool = False):
@@ -312,7 +315,12 @@ if __name__ == '__main__':
                     if return_restart_result is not None and callable(return_restart_result):
                         return_restart_result()
                         return_restart_result = None
-                    c.data.run(c.write, restart)
+                    if single_run:
+                        logger.info('Running single-run update')
+                        c.data.update(force_report_all=True)
+                        return
+                    else:
+                        c.data.run(c.write, restart)
                 except CLIRestartException:
                     logger.bind(file=True, stream=False).info("CLIRestartException received: continue execution...")
                     continue # restart by looping while(True) again

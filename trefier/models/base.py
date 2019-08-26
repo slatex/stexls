@@ -9,8 +9,8 @@ __all__ = ['Model']
 
 
 class Model:
-    MAJOR_VERSION = 2
-    MINOR_VERSION = 1
+    MAJOR_VERSION = 1
+    MINOR_VERSION = 0
 
     def __init__(self, predicts_probabilities, class_names):
         """ Model base

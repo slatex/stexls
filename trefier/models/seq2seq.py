@@ -44,7 +44,7 @@ class Seq2SeqModel(Model):
     @argh.arg('--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
     @argh.arg('--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
     @argh.arg('--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
-    @argh.arg('--save_dir', type=str, help="Directory to which required training data will be downloaded.")
+    @argh.arg('--download_dir', type=str, help="Directory to which required training data will be downloaded.")
     @argh.arg('--oov_token', type=str, help="Special token used for all tokens not in glove.")
     @argh.arg('--math_token', type=str, help="Special token to use for math environments.")
     @argh.arg('--enable_pos_tags', help="Enables pos tag feature.")
@@ -57,7 +57,7 @@ class Seq2SeqModel(Model):
         oov_embedding_dim: int = 4,
         early_stopping_patience: int = 5,
         capacity: int = 3,
-        save_dir: str = 'data/',
+        download_dir: str = 'data/',
         oov_token: str = '<oov>',
         math_token: str = '<math>',
         enable_pos_tags: bool = False,
@@ -67,7 +67,7 @@ class Seq2SeqModel(Model):
 
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',
-            lambda: list(datasets.smglom.parse_files(lang='en', save_dir=save_dir, n_jobs=n_jobs, show_progress=True))
+            lambda: list(datasets.smglom.parse_files(lang='en', download_dir=download_dir, n_jobs=n_jobs, show_progress=True))
         ) as cache:
             token_streams = cache.data
         assert token_streams is not None

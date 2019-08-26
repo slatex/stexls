@@ -58,7 +58,7 @@ def _envs2label(envs: Tuple[str, ...], binary_labels: bool) -> Label:
 def parse_files(
     lang: str = 'en',
     lower: bool = True,
-    save_dir: str = 'data/',
+    download_dir: str = 'data/',
     n_jobs: int = 4,
     show_progress: bool = False) -> Iterator[LatexTokenStream]:
     """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
@@ -66,7 +66,7 @@ def parse_files(
     Keyword Arguments:
         :param lang: Language of files to load. Uses the pattern: "filename.lang.tex".
         :param lower: Enables token to lowercase transform.
-        :param save_dir: Directory to where the git repositories are downloaded.
+        :param download_dir: Directory to where the git repositories are downloaded.
         :param n_jobs: Number of processes to use to parse tex files.
         :param show_progress: Uses tqdm to display loading progress.
     
@@ -78,7 +78,7 @@ def parse_files(
     files = [
         file
         for folder
-        in download_smglom.maybe_download(save_dir=save_dir, show_progress=show_progress)
+        in download_smglom.maybe_download(download_dir=download_dir, show_progress=show_progress)
         for file
         in glob(path.join(folder, f'**/*.{lang}.tex'))
     ]

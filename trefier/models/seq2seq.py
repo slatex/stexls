@@ -288,74 +288,136 @@ class Seq2SeqModel(Model):
                 models.save_model(self.model, ref.name)
                 ref.flush()
                 package.write(ref.name, 'model.hdf5')
-            package.writestr('evaluation.bin', pickle.dumps(self.evaluation))
-            package.writestr('settings.bin', pickle.dumps(self.settings))
+            h = hash(package.read('model.hdf5'))
             try:
-                package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
+                s = pickle.dumps(self.glove_tokenizer)
+                h = hash(s ^ h)
+                package.writestr('glove_tokenizer.bin', s)
             except:
                 print('Warning: Failed to save "glove_tokenizer".', flush=True, file=sys.stderr)
 
             try:
-                package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
+                s = pickle.dumps(self.oov_tokenizer)
+                h = hash(s ^ h)
+                package.writestr('oov_tokenizer.bin', s)
             except:
                 print('Warning: Failed to save "oov_tokenizer".', flush=True, file=sys.stderr)
 
             try:
-                package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
+                s = pickle.dumps(self.pos_tag_model)
+                h = hash(s ^ h)
+                package.writestr('pos_tag_model.bin', s)
             except:
                 print('Warning: Failed to save "pos_tag_model".', flush=True, file=sys.stderr)
 
             try:
-                package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+                s = pickle.dumps(self.tfidf_model)
+                h = hash(s ^ h)
+                package.writestr('tfidf_model.bin', s)
             except:
                 print('Warning: Failed to save "tfidf_model".', flush=True, file=sys.stderr)
 
             try:
-                package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+                s = pickle.dumps(self.keyphraseness_model)
+                h = hash(s ^ h)
+                package.writestr('keyphraseness_model.bin', s)
             except:
                 print('Warning: Failed to save "keyphraseness_model".', flush=True, file=sys.stderr)
-    
+            
+            s = pickle.dumps(self.evaluation)
+            h = hash(s ^ h)
+            package.writestr('evaluation.bin', s)
+            
+            s = pickle.dumps(self.settings)
+            h = hash(s ^ h)
+            package.writestr('settings.bin', s)
+            
+            s = pickle.dumps(self.version)
+            h = hash(s ^ h)
+            package.writestr('version.bin', s)
+            
+            try:
+                package.writestr('hash', h)
+            except:
+                raise Exception("Failed to create model hash.")
+
     @staticmethod
     def load(path, append_extension=False):
         self = Seq2SeqModel()
         """ Loads the model from file """
         with ZipFile(path) as package:
+            h = None
             with NamedTemporaryFile() as ref:
-                ref.write(package.read('model.hdf5'))
+                s = package.read('model.hdf5')
+                h = hash(s)
+                ref.write(s)
                 ref.flush()
                 self.model = models.load_model(ref.name)
+
             try:
-                self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
+                s = package.read('glove_tokenizer.bin')
+                h = hash(s ^ h)
+                self.glove_tokenizer = pickle.loads(s)
             except:
                 print('Warning: Failed to load "glove_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.glove_tokenizer = None
             
             try:
-                self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
+                s = package.read('oov_tokenizer.bin')
+                h = hash(s ^ h)
+                self.oov_tokenizer = pickle.loads(s)
             except:
                 print('Warning: Failed to load "oov_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.oov_tokenizer = None
 
             try:
-                self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
+                s = package.read('pos_tag_model.bin')
+                h = hash(s ^ h)
+                self.pos_tag_model = pickle.loads(s)
             except:
                 print('Warning: Failed to load "pos_tag_model", setting it to None.', flush=True, file=sys.stderr)
                 self.pos_tag_model = None
 
             try:
-                self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
+                s = package.read('tfidf_model.bin')
+                h = hash(s ^ h)
+                self.tfidf_model = pickle.loads(s)
             except:
                 print('Warning: Failed to load "tfidf_model", setting it to None.', flush=True, file=sys.stderr)
                 self.tfidf_model = None
 
             try:
-                self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+                s = package.read('keyphraseness_model.bin')
+                h = hash(s ^ h)
+                self.keyphraseness_model = pickle.loads(s)
             except:
                 print('Warning: Failed to load "keyphraseness_model", setting it to None.', flush=True, file=sys.stderr)
                 self.keyphraseness_model = None
 
-            self.evaluation = pickle.loads(package.read('evaluation.bin'))
-            self.settings = pickle.loads(package.read('settings.bin'))
+            s = package.read('evaluation.bin')
+            h = hash(s ^ h)
+            self.evaluation = pickle.loads(s)
+            
+            s = package.read('settings.bin')
+            h = hash(s ^ h)
+            self.settings = pickle.loads(s)
+            
+            s = package.read('version.bin')
+            h = hash(s ^ h)
+            self.version = pickle.loads(s)
+
+            if h != package.read('hash'):
+                raise Exception(
+                    'Hash of the tagger model could not be verified: '
+                    f'Stored hash is {package.read("hash")}, '
+                    f'loaded hash is {h}.')
+            
+            if self.version['major'] != Model.MAJOR_VERSION or self.version['minor'] < Model.MINOR_VERSION:
+                raise Exception(
+                    'Loaded model minor version mismatch: '
+                    f'Loaded {self.version["major"]}.{self.version["minor"]}, '
+                    f'but current version is {Model.MAJOR_VERSION}.{Model.MINOR_VERSION}.')
+
         return self
 
 if __name__ == '__main__':

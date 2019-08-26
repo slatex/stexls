@@ -6,6 +6,7 @@ from keras.layers import *
 from keras.preprocessing.sequence import pad_sequences
 from keras.callbacks import EarlyStopping
 
+import json
 import argh
 import sys
 from sklearn.model_selection import train_test_split
@@ -301,129 +302,94 @@ class Seq2SeqModel(Model):
                 models.save_model(self.model, ref.name)
                 ref.flush()
                 package.write(ref.name, 'model.hdf5')
-            h = hash(package.read('model.hdf5'))
+            
             try:
-                s = pickle.dumps(self.glove_tokenizer)
-                h = hash(s ^ h)
-                package.writestr('glove_tokenizer.bin', s)
-            except:
+                package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to save "glove_tokenizer".', flush=True, file=sys.stderr)
 
             try:
-                s = pickle.dumps(self.oov_tokenizer)
-                h = hash(s ^ h)
-                package.writestr('oov_tokenizer.bin', s)
-            except:
+                package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to save "oov_tokenizer".', flush=True, file=sys.stderr)
 
             try:
-                s = pickle.dumps(self.pos_tag_model)
-                h = hash(s ^ h)
-                package.writestr('pos_tag_model.bin', s)
-            except:
+                package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to save "pos_tag_model".', flush=True, file=sys.stderr)
 
             try:
-                s = pickle.dumps(self.tfidf_model)
-                h = hash(s ^ h)
-                package.writestr('tfidf_model.bin', s)
-            except:
+                package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to save "tfidf_model".', flush=True, file=sys.stderr)
 
             try:
-                s = pickle.dumps(self.keyphraseness_model)
-                h = hash(s ^ h)
-                package.writestr('keyphraseness_model.bin', s)
-            except:
+                package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to save "keyphraseness_model".', flush=True, file=sys.stderr)
             
-            s = pickle.dumps(self.evaluation)
-            h = hash(s ^ h)
-            package.writestr('evaluation.bin', s)
+            package.writestr('evaluation.bin', pickle.dumps(self.evaluation))
             
-            s = pickle.dumps(self.settings)
-            h = hash(s ^ h)
-            package.writestr('settings.bin', s)
+            package.writestr('settings.json', json.dumps(self.settings, default=lambda x: x.__dict__).encode('utf-8'))
             
-            s = pickle.dumps(self.version)
-            h = hash(s ^ h)
-            package.writestr('version.bin', s)
-            
-            try:
-                package.writestr('hash', h)
-            except:
-                raise Exception("Failed to create model hash.")
+            package.writestr('version', f'{self.version["major"]}.{self.version["minor"]}'.encode('utf-8'))
 
     @staticmethod
     def load(path, append_extension=False):
         self = Seq2SeqModel()
         """ Loads the model from file """
         with ZipFile(path) as package:
-            h = None
             with NamedTemporaryFile() as ref:
-                s = package.read('model.hdf5')
-                h = hash(s)
-                ref.write(s)
+                ref.write(package.read('model.hdf5'))
                 ref.flush()
                 self.model = models.load_model(ref.name)
 
             try:
-                s = package.read('glove_tokenizer.bin')
-                h = hash(s ^ h)
-                self.glove_tokenizer = pickle.loads(s)
-            except:
+                self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to load "glove_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.glove_tokenizer = None
             
             try:
-                s = package.read('oov_tokenizer.bin')
-                h = hash(s ^ h)
-                self.oov_tokenizer = pickle.loads(s)
-            except:
+                self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to load "oov_tokenizer", setting it to None.', flush=True, file=sys.stderr)
                 self.oov_tokenizer = None
 
             try:
-                s = package.read('pos_tag_model.bin')
-                h = hash(s ^ h)
-                self.pos_tag_model = pickle.loads(s)
-            except:
+                self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to load "pos_tag_model", setting it to None.', flush=True, file=sys.stderr)
                 self.pos_tag_model = None
 
             try:
-                s = package.read('tfidf_model.bin')
-                h = hash(s ^ h)
-                self.tfidf_model = pickle.loads(s)
-            except:
+                self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to load "tfidf_model", setting it to None.', flush=True, file=sys.stderr)
                 self.tfidf_model = None
 
             try:
-                s = package.read('keyphraseness_model.bin')
-                h = hash(s ^ h)
-                self.keyphraseness_model = pickle.loads(s)
-            except:
+                self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+            except Exception as e:
+                print(str(e), flush=True, file=sys.stderr)
                 print('Warning: Failed to load "keyphraseness_model", setting it to None.', flush=True, file=sys.stderr)
                 self.keyphraseness_model = None
 
-            s = package.read('evaluation.bin')
-            h = hash(s ^ h)
-            self.evaluation = pickle.loads(s)
+            self.evaluation = pickle.loads(package.read('evaluation.bin'))
             
-            s = package.read('settings.bin')
-            h = hash(s ^ h)
-            self.settings = pickle.loads(s)
+            self.settings = json.loads(package.read('settings.json').decode('utf-8'))
             
-            s = package.read('version.bin')
-            h = hash(s ^ h)
-            self.version = pickle.loads(s)
-
-            if h != package.read('hash'):
-                raise Exception(
-                    'Hash of the tagger model could not be verified: '
-                    f'Stored hash is {package.read("hash")}, '
-                    f'loaded hash is {h}.')
+            self.version = {}
+            self.version['major'], self.version['minor'] = map(int, package.read('version').decode('utf-8').split('.'))
             
             if self.version['major'] != Model.MAJOR_VERSION or self.version['minor'] < Model.MINOR_VERSION:
                 raise Exception(
@@ -434,66 +400,52 @@ class Seq2SeqModel(Model):
         return self
 
 if __name__ == '__main__':
+ 
     global model
+ 
     model = Seq2SeqModel()
-    
-    @argh.arg("path", type=str, help="Path to a saved model file.")
-    def load(path: str):
-        """ Load a specific Seq2SeqModel from file. """
-        global model
-        model = Seq2SeqModel.load(path)
-        if model is None:
-            return "> Failed to load model from path %s" % path
-        return "> Model loaded from %s" % path
-    
-    def show_evaluation():
-        """ Plot evaluation of currently trained model. """
-        try:
-            model.evaluation.plot()
-            return "> Showing evaluation"
-        except:
-            print("> Failed to plot model evaluation: Maybe the model didn't load or isn't trained yet.", file=sys.stderr, flush=True)
+ 
+    from trefier.app.cli import CLI, CLIRestartException, CLIExitException
 
-    class ExitException(Exception):
-        pass
-    
-    def exit():
-        """ Exits the cli. """
-        raise ExitException()
-    
-    def reset():
-        """ Resets the currently loaded model. """
-        global model
-        model = Seq2SeqModel()
-        return "> Model reset"
-    
-    def show_keras_model_summary():
-        """ Prints the model summary to stdout. """
-        try:
-            model.model.summary()
-        except Exception as e:
-            print("Error: %s" % str(e), file=sys.stderr, flush=True)
-
-    def main():
-        import shlex
-        while True:
+    class Seq2SeqCli(CLI):
+        def run(self, *extra_commands):
+            super().run([
+                self.load,
+                self.show_evaluation,
+                self.reset,
+                self.show_keras_model_summary,
+                super().exit,
+                *extra_commands
+            ])
+        
+        @argh.arg("path", type=str, help="Path to a saved model file.")
+        def load(self, path: str):
+            """ Load a specific Seq2SeqModel from file. """
+            global model
+            model = Seq2SeqModel.load(path)
+            if model is None:
+                return "> Failed to load model from path %s" % path
+            return "> Model loaded from %s" % path
+        
+        def show_evaluation(self):
+            """ Plot evaluation of currently trained model. """
             try:
-                for line in sys.stdin:
-                        argh.dispatch_commands([
-                            load,
-                            model.train,
-                            model.save,
-                            model.predict,
-                            show_evaluation,
-                            show_keras_model_summary,
-                            reset,
-                            exit], shlex.split(line))
-            except KeyboardInterrupt:
-                print("> Exiting by user input")
-                break
-            except ExitException:
-                return
+                model.evaluation.plot()
+                return "> Showing evaluation"
+            except:
+                print("> Failed to plot model evaluation: Maybe the model didn't load or isn't trained yet.", file=sys.stderr, flush=True)
+
+        def reset(self):
+            """ Resets the currently loaded model. """
+            global model
+            model = Seq2SeqModel()
+            return "> Model reset"
+        
+        def show_keras_model_summary(self):
+            """ Prints the model summary to stdout. """
+            try:
+                model.model.summary()
             except Exception as e:
                 print("Error: %s" % str(e), file=sys.stderr, flush=True)
-    
-    main()
+
+    Seq2SeqCli().run(model.train, model.save, model.predict)

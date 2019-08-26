@@ -64,6 +64,19 @@ class Seq2SeqModel(Model):
         n_jobs: int = 6,):
 
         assert capacity > 0, "Capacity must be at least 1"
+    
+        assert 'seq2seq' not in self.settings
+        self.settings['seq2seq'] = {
+            'epochs': epochs,
+            'glove_ncomponents': glove_ncomponents,
+            'glove_word_count': glove_word_count,
+            'oov_embedding_dim': oov_embedding_dim,
+            'early_stopping_patience': early_stopping_patience,
+            'capacity': capacity,
+            'oov_token': oov_token,
+            'math_token': math_token,
+            'enable_pos_tags': enable_pos_tags,
+        }
 
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',

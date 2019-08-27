@@ -9,10 +9,7 @@ __all__ = ['Model']
 
 
 class Model:
-    MAJOR_VERSION = 1
-    MINOR_VERSION = 0
-
-    def __init__(self, predicts_probabilities, class_names):
+    def __init__(self, predicts_probabilities, class_names, major_version: int = None, minor_version: int = None):
         """ Model base
         Arguments:
             predicts_probabilities: True if model predicts probabilities, False if class labels.
@@ -23,8 +20,8 @@ class Model:
         assert all(isinstance(y, str) for y in class_names.values())
 
         self.version = {
-            'major': Model.MAJOR_VERSION,
-            'minor': Model.MINOR_VERSION,
+            'major': major_version,
+            'minor': minor_version,
         }
 
         self.settings = {

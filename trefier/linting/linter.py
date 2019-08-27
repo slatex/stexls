@@ -909,8 +909,8 @@ class ReportEntry:
         return ReportEntry(location.range, 'unused', module=str(unused_module))
     
     @staticmethod
-    def unused_symbol(location: Location, unused_symbol: Union[Symbol, str]):
-        return ReportEntry(location.range, 'unused_symbol', name=str(unused_symbol))
+    def unused_symbol(location: Location, unused_symbol: SymiSymbol):
+        return ReportEntry(location.range, 'unused_symbol', name=unused_symbol.symbol_name)
 
     @staticmethod
     def no_bindings(module: ModuleDefinitonSymbol):

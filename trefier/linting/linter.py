@@ -513,6 +513,8 @@ class Linter:
 
         yield from self._report_unresolved_or_unused_imports(document.gimports)
 
+        yield from self._report_unused_declared_symbols(document.module_identifier, document.symis)
+
         # report that this module has no language bindings
         if str(document.module_identifier) not in self._map_module_identifier_to_bindings:
             yield ReportEntry.no_bindings(document.module)
@@ -530,6 +532,22 @@ class Linter:
             location = document.get_import_location(cycle_causing_module)
             if location:
                 yield ReportEntry.cycle(location, cycle_causing_module, others=others)
+    
+    def _report_unused_declared_symbols(self, module: ModuleIdentifier, symbols: List[SymiSymbol]) -> Iterator[ReportEntry]:
+        """ Returns iterator for report entries about symi symbols that are not defined using a \\defi tag. """
+        bindings: List[Document] = list(self._map_module_identifier_to_bindings.get(str(module), {}).values())
+        for symi in symbols:
+            is_unused = not any(
+                any(
+                    defi.symbol_name == symi.symbol_name
+                    for defi
+                    in binding.defis
+                )
+                for binding
+                in bindings
+            )
+            if is_unused:
+                yield ReportEntry.unused_symbol(symi, symi)
 
     def _make_document_report(self, document: Document) -> Iterator[ReportEntry]:
         # report exceptions of the document
@@ -889,6 +907,10 @@ class ReportEntry:
     @staticmethod
     def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):
         return ReportEntry(location.range, 'unused', module=str(unused_module))
+    
+    @staticmethod
+    def unused_symbol(location: Location, unused_symbol: Union[Symbol, str]):
+        return ReportEntry(location.range, 'unused_symbol', name=str(unused_symbol))
 
     @staticmethod
     def no_bindings(module: ModuleDefinitonSymbol):

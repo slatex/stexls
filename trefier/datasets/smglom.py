@@ -7,6 +7,7 @@ from enum import IntEnum
 import re
 from tqdm import tqdm
 import functools
+import itertools
 
 from trefier.downloads import smglom as download_smglom
 from trefier.tokenization.latex import LatexParser, Token
@@ -32,17 +33,23 @@ def _alt_edge_detector(tokens: Iterable[Token]) -> List[bool]:
     ]
     return f
 
-def _make_stream(file: str, lang: str, lower: bool):
-    """ Makes a filetered token stream from a file path """
+def _make_stream(file: str, lang: str, lower: bool) -> List[LatexTokenStream]:
+    """ Makes a filetered token stream from a file path for each 'definition' environment in it. """
     parser = LatexParser(file)
     if parser is None or not parser.success:
         return None
-    return LatexTokenStream(
-        root=parser.root,
-        lang=lang,
-        lower=lower,
-        perform_character_replacements=False,
-        token_filter_fn=_alt_edge_detector)
+    return [
+        LatexTokenStream(
+            root=d,
+            lang=lang,
+            lower=lower,
+            perform_character_replacements=False,
+            token_filter_fn=_alt_edge_detector
+        )
+        for d
+        in parser.root.finditer('definition')
+        # finditer definition in order to filter out tokens outside of definitions
+    ]
 
 _TREFI_PATTERN = re.compile(r"""[ma]*trefi+s?""")
 _DEFI_PATTERN = re.compile(r"""[ma]*defi+s?""")
@@ -58,14 +65,16 @@ def _envs2label(envs: Tuple[str, ...], binary_labels: bool) -> Label:
 def parse_files(
     lang: str = 'en',
     lower: bool = True,
+    split_into_definitions: bool = False,
     download_dir: str = 'data/',
     n_jobs: int = 4,
-    show_progress: bool = False) -> Iterator[LatexTokenStream]:
+    show_progress: bool = False) -> Iterator[Iterable[LatexToken]]:
     """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
 
     Keyword Arguments:
         :param lang: Language of files to load. Uses the pattern: "filename.lang.tex".
         :param lower: Enables token to lowercase transform.
+        :param split_into_definitions: If true, splits token streams into smaller token streams based on the smglom \\begin{definition}...\\end{definition} environments.
         :param download_dir: Directory to where the git repositories are downloaded.
         :param n_jobs: Number of processes to use to parse tex files.
         :param show_progress: Uses tqdm to display loading progress.
@@ -90,7 +99,12 @@ def parse_files(
             it = tqdm(pool.imap_unordered(make_stream, files))
         else:
             it = pool.map(make_stream, files)
-        yield from filter(None, it)
+
+        for definition_token_streams in filter(None, it):
+            if split_into_definitions:
+                yield from definition_token_streams
+            else:
+                yield itertools.chain(*definition_token_streams)
 
 def parse_dataset(
     document_token_streams: Optional[List[LatexTokenStream]] = None,
@@ -98,6 +112,7 @@ def parse_dataset(
     math_token: str = '<math>',
     lower: bool = True,
     lang: Optional[str] = None,
+    split_into_definitions: bool = False,
     show_progress: bool = False) -> Tuple[List[List[str]], List[List[Label]]]:
     """ Parses tex documents for labels and tokens assuming they are annotated
     with trefi and defi tags.
@@ -108,11 +123,17 @@ def parse_dataset(
         :param math_token: String to use instead of math tokens.
         :param lower: Enables lowercase transform of all tokens.
         :param lang: Language the files got parsed for. Changes the tokenization process depending on the value.
+        :param split_into_definitions: If enabled, splits documents on smglom 'definition' environments.
     Returns:
         Tuple of list of lists of tokens and list of lists of labels.
     """
     if document_token_streams is None:
-        document_token_streams = parse_files(lang=lang or 'en', show_progress=show_progress, lower=lower)
+        document_token_streams = parse_files(
+            lang=lang or 'en',
+            show_progress=show_progress,
+            lower=lower,
+            split_into_definitions=split_into_definitions,
+        )
 
     labeled_tokens = [
         [

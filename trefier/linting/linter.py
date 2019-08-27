@@ -556,16 +556,17 @@ class Linter:
             :returns List of tuples of (is_defi, token ranges, symbol name/text, module of trefi or None) """
         matches = []
         for group in self.tags.get(document.file, ()):
-            ranges = [ tag.token_range for tag in group ]
-            name = '-'.join(tag.lexeme for tag in group if tag.lexeme != '-')
-            if not name:
-                continue # prevent empty names
-            is_defi = True
-            for similarity, symi in self._find_similarly_named_symbols(name, 0):
-                is_defi = False
-                matches.append((False, ranges, symi.symbol_name, symi.module))
-            if is_defi:
-                matches.append((True, ranges, name, None))
+            for subgroup in _sublists(group):
+                ranges = [ tag.token_range for tag in subgroup ]
+                name = '-'.join(tag.lexeme for tag in subgroup if tag.lexeme != '-')
+                if not name:
+                    continue # prevent empty names
+                is_defi = True
+                for similarity, symi in self._find_similarly_named_symbols(name, 0):
+                    is_defi = False
+                    matches.append((False, ranges, symi.symbol_name, symi.module))
+                if is_defi:
+                    matches.append((True, ranges, name, None))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:
@@ -930,3 +931,9 @@ class ReportEntry:
     @staticmethod
     def syntax_error(location: Location, message: str):
         return ReportEntry(location.range, 'syntax_error', message=message)
+
+
+def _sublists(l: List) -> Iterator[List]:
+    for i in range(len(l)): 
+        for j in range(i + 1, len(l) + 1): 
+            yield l[i:j] 

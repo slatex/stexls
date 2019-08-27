@@ -461,7 +461,10 @@ class Linter:
             if is_defi:
                 yield ReportEntry.tag_defi(ranges, symbol_name_or_text)
             else:
-                yield ReportEntry.tag_trefi(ranges, module_name=module.module_name, symbol_name=symbol_name_or_text)
+                yield ReportEntry.tag_trefi(
+                    ranges,
+                    module_name=module.module_name if str(module) != str(document.module_identifier) else None,
+                    symbol_name=symbol_name_or_text)
 
     def _check_module_unused(self, document: Document, module: ModuleIdentifier) -> bool:
         """ Returns True if the given module identifier is not used in any trefi/defi import of the document. """
@@ -895,14 +898,20 @@ class ReportEntry:
     @staticmethod
     def tag_trefi(
             ranges: List[Range],
-            module_name: str,
+            module_name: Optional[str],
             symbol_name: Union[ModuleIdentifier, Symbol, str]):
+        """ Create a trefi report entry.
+        Arguments:
+            :param ranges: Ranges of the trefi parts that need to be surrounded with '{' and '}'.
+            :param module_name: Optional module name in which the trefi is located; None if should not be shown in \\trefi[<module_name>?...].
+            :param symbol_name: Name of the symbol the trefi references
+        """
         return ReportEntry(Range.reduce_union(ranges),
                            'trefi', module=module_name, name=str(symbol_name), ranges=ranges)
 
     @staticmethod
-    def tag_defi(token_ranges: List[Range], text: str):
-        return ReportEntry(Range.reduce_union(token_ranges), 'defi', ranges=token_ranges, text=text)
+    def tag_defi(token_ranges: List[Range], name: str):
+        return ReportEntry(Range.reduce_union(token_ranges), 'defi', ranges=token_ranges, name=name)
 
     @staticmethod
     def unused_import(location: Location, unused_module: Union[ModuleIdentifier, str]):

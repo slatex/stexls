@@ -33,23 +33,36 @@ def _alt_edge_detector(tokens: Iterable[Token]) -> List[bool]:
     ]
     return f
 
-def _make_stream(file: str, lang: str, lower: bool) -> List[LatexTokenStream]:
+def _make_stream(
+    file: str,
+    lang: str,
+    lower: bool,
+    split_into_definitions: bool) -> Union[List[LatexTokenStream], LatexTokenStream]:
     """ Makes a filetered token stream from a file path for each 'definition' environment in it. """
     parser = LatexParser(file)
     if parser is None or not parser.success:
         return None
-    return [
-        LatexTokenStream(
-            root=d,
+    if split_into_definitions:
+        return [
+            LatexTokenStream(
+                root=stream_root,
+                lang=lang,
+                lower=lower,
+                perform_character_replacements=False,
+                token_filter_fn=_alt_edge_detector
+            )
+            for stream_root
+            in parser.root.finditer('definition')
+            # finditer definition in order to filter out tokens outside of definitions
+        ]
+    else:
+        return LatexTokenStream(
+            root=parser.root,
             lang=lang,
             lower=lower,
             perform_character_replacements=False,
             token_filter_fn=_alt_edge_detector
         )
-        for d
-        in parser.root.finditer('definition')
-        # finditer definition in order to filter out tokens outside of definitions
-    ]
 
 _TREFI_PATTERN = re.compile(r"""[ma]*trefi+s?""")
 _DEFI_PATTERN = re.compile(r"""[ma]*defi+s?""")
@@ -92,7 +105,12 @@ def parse_files(
         in glob(path.join(folder, f'**/*.{lang}.tex'))
     ]
 
-    make_stream = functools.partial(_make_stream, lang=lang, lower=lower)
+    make_stream = functools.partial(
+        _make_stream,
+        lang=lang,
+        lower=lower,
+        split_into_definitions=split_into_definitions
+    )
 
     with Pool(n_jobs) as pool:
         if show_progress:
@@ -100,11 +118,13 @@ def parse_files(
         else:
             it = pool.map(make_stream, files)
 
-        for definition_token_streams in filter(None, it):
-            if split_into_definitions:
+        if split_into_definitions:
+            # it contains lists of token streams -> yield recursively
+            for definition_token_streams in filter(None, it):
                 yield from definition_token_streams
-            else:
-                yield itertools.chain(*definition_token_streams)
+        else:
+            # it only contains token strean -> yield all
+            yield from filter(None, it)
 
 def parse_dataset(
     document_token_streams: Optional[List[LatexTokenStream]] = None,

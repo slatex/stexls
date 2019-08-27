@@ -8,3 +8,4 @@ database.bin
 .vscode/
 .idea/
 XDG_CACHE_HOME/
+.logs/

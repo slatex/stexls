@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List
-import pickle
+import json
 from zipfile import ZipFile
 
 from trefier.models.tags import Tag
@@ -40,7 +40,7 @@ class Model:
     def verify_loadable(self, path):
         try:
             with ZipFile(path) as package:
-                settings = pickle.loads(package.read('settings.bin'))
+                settings = json.loads(package.read('settings.json').decode('utf-8'))
             return settings['model_class'] == self.__name__
         except:
             return False

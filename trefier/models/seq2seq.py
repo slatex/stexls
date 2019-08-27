@@ -40,15 +40,18 @@ class Seq2SeqModel(Model):
         self.model = None
 
     @argh.arg('-e', '--epochs', type=int, help="Number of epochs to train the model for.")
-    @argh.arg('-c', '--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
+    @argh.arg('-n', '--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
     @argh.arg('-w', '--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
-    @argh.arg('-d', '--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
+    @argh.arg('-O', '--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
     @argh.arg('-p', '--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
-    @argh.arg('-C', '--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
-    @argh.arg('-D', '--download_dir', type=str, help="Directory to which required training data will be downloaded.")
+    @argh.arg('-c', '--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
+    @argh.arg('-d', '--download_dir', type=str, help="Directory to which required training data will be downloaded.")
     @argh.arg('-o', '--oov_token', type=str, help="Special token used for all tokens not in glove.")
     @argh.arg('-m', '--math_token', type=str, help="Special token to use for math environments.")
     @argh.arg('-P', '--enable_pos_tags', help="Enables pos tag feature.")
+    @argh.arg('-G', '--gaussian_noise', type=float, help="Gausian noise amplitude added to embedding vectors.")
+    @argh.arg('-D', '--dense_dropout_percent', type=float, help="Dropout percentage for the two classifying dense layers.")
+    @argh.arg('-R', '--recurrent_dropout_percent', type=float, help="Dropout percentage added to the recurrent layers.")
     @argh.arg('-j', '--n_jobs', type=int, help="Number of processes parsing of files may use.")
     def train(
         self,
@@ -62,6 +65,9 @@ class Seq2SeqModel(Model):
         oov_token: str = '<oov>',
         math_token: str = '<math>',
         enable_pos_tags: bool = False,
+        gaussian_noise: float = 0.1,
+        dense_dropout_percent: float = 0.5,
+        recurrent_dropout_percent: float = 0.1,
         n_jobs: int = 6,):
 
         assert capacity > 0, "Capacity must be at least 1"
@@ -76,8 +82,14 @@ class Seq2SeqModel(Model):
             'capacity': capacity,
             'oov_token': oov_token,
             'math_token': math_token,
+            'gaussian_noise': gaussian_noise,
+            'dense_dropout_percent': dense_dropout_percent,
+            'recurrent_dropout_percent': recurrent_dropout_percent,
             'enable_pos_tags': enable_pos_tags,
         }
+
+        print("train seq2seq model settings:")
+        print(self.settings['seq2seq'])
 
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',
@@ -143,15 +155,20 @@ class Seq2SeqModel(Model):
             Reshape((-1, 1))(tfidf_input),
             Reshape((-1, 1))(keyphraseness_input),
         ] + ([pos_tag_input] if enable_pos_tags else []))
-
-        net = GaussianNoise(0.1)(net)
-        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
-        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
-        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=0.1, return_sequences=True))(net)
+        
+        if 0 < gaussian_noise < 1:
+            net = GaussianNoise(gaussian_noise)(net)
+        if not (0 < recurrent_dropout_percent < 1):
+            recurrent_dropout_percent = 0
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=recurrent_dropout_percent, return_sequences=True))(net)
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=recurrent_dropout_percent, return_sequences=True))(net)
+        net = Bidirectional(GRU(16*capacity, activation='tanh', dropout=recurrent_dropout_percent, return_sequences=True))(net)
         net = Dense(32*capacity, activation='sigmoid')(net)
-        net = Dropout(0.5)(net)
+        if 0 < dense_dropout_percent < 1:
+            net = Dropout(dense_dropout_percent)(net)
         net = Dense(32*capacity, activation='sigmoid')(net)
-        net = Dropout(0.5)(net)
+        if 0 < dense_dropout_percent < 1:
+            net = Dropout(dense_dropout_percent)(net)
         prediction_layer = Dense(1, activation='sigmoid')(net)
 
         self.model = models.Model(
@@ -163,11 +180,13 @@ class Seq2SeqModel(Model):
             ] + ([pos_tag_input] if enable_pos_tags else []),
             outputs=prediction_layer
         )
+
         self.model.compile(
             optimizer='adam',
             loss='binary_crossentropy',
             metrics=['acc'],
             sample_weight_mode='temporal')
+
         self.model.summary()
 
         train_indices, test_indices = train_test_split(np.arange(len(y)))
@@ -201,7 +220,9 @@ class Seq2SeqModel(Model):
         
         y = np.expand_dims(pad_sequences(y), axis=-1)
         
-        callbacks = [EarlyStopping(patience=early_stopping_patience)]
+        callbacks = [
+            EarlyStopping(patience=early_stopping_patience)
+        ]
 
         fit_result = self.model.fit(
             sample_weight=sample_weights,
@@ -215,7 +236,6 @@ class Seq2SeqModel(Model):
             ),
         )
 
-        # evaluation stuff
         eval_y_pred_raw = self.model.predict(
             x_test
         ).squeeze(axis=-1)
@@ -230,6 +250,7 @@ class Seq2SeqModel(Model):
         ])
 
         self.evaluation = Evaluation.Evaluation(fit_result.history)
+
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0: 'text', 1: 'keyword'})
     
     @argh.arg('file', type=str, help="Path to file for which you want to make predictions for.")

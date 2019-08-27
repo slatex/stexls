@@ -99,3 +99,24 @@ Logs are always written to "~/.trefier/linter.log".
 This file may get big and you should delete it sometimes.
 It and the folder ("~/.trefier") will always be automatically recreated when running the linter.
 
+# Update the tagger model
+
+There is one more executable.
+Use `python -m trefier.models.seq2seq` to train a new seq2seq model.
+The seq2seq application provides a simple interface for training,
+evaluating and saving a new model.
+The training data is directly downloaded and parsed from https://gl.mathhub.info/smglom.
+You simply have to start the application as shown above, then type `train --epochs 100` to train your model.
+After the training is finished, you can save it by typing `save <path>.model`.
+
+Inside the .model file everything necessary is stored.
+To train the new model the same way my model was trained, open the installation
+directory at `~/.vscode/extensions/m-plivelic.trefier.../`.
+Then navigate to `backend/models`. Extract the `seq2seq.model` zip-file and open settings.json.
+Everything necessary to train the same model is written in there.
+After running `python -m trefier.models.seq2seq` type `help`
+to learn all about the arguments the application takes and copy the appropiate ones over from the
+settings.json file.
+
+Test your model by running `predict <path>` to create predictions about the tokens in the given file.
+Or gather some statistical information by entering `show-evaluation`.

@@ -123,7 +123,7 @@ class Linter:
         try:
             if self.tagger and document.binding.lang in ('en', 'lang'):
                 logger.bind(file=True, stream=not silent).info(f'TAGGING {os.path.basename(document.file)}')
-                tags = self.tagger.predict(document.parser or document.file)
+                tags = self.tagger.predict(document.parser or document.file, ignore_tagged_tokens=True)
                 self.tags[document.file] = [
                     tuple(items)
                     for key, items

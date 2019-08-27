@@ -361,11 +361,11 @@ class Seq2SeqModel(Model):
         self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0: 'text', 1: 'keyword'})
     
     @argh.arg('file', type=str, help="Path to file for which you want to make predictions for.")
-    @argh.arg('--ignore_tagged_tokens', default=False, help="Disables already tagged token outputs")
+    @argh.arg('--ignore_tagged_tokens', help="Disables already tagged token outputs")
     def predict(
         self,
         file: Union[str, LatexParser, LatexTokenStream],
-        ignore_tagged_tokens: bool = True) -> List[Tag]:
+        ignore_tagged_tokens: bool = False) -> List[Tag]:
 
         if file is None:
             raise Exception("Input file may not be None")
@@ -607,8 +607,8 @@ if __name__ == '__main__':
     @argh.arg('--ignore_tagged_tokens', help="If enabeld, tokens that already have a tag are not written to the output.")
     def predict(
         path: str,
-        ignore_tagged_tokens: bool = True):
+        ignore_tagged_tokens: bool = False):
         """ Reads the file from the given path and returns predicted tags """
-        return model.predict(path, ignore_tagged_tokens)
+        return model.predict(path, ignore_tagged_tokens=ignore_tagged_tokens)
 
     Seq2SeqCli().run(model.train, model.save, predict)

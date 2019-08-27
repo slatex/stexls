@@ -39,17 +39,17 @@ class Seq2SeqModel(Model):
         self.keyphraseness_model = None
         self.model = None
 
-    @argh.arg('--epochs', type=int, help="Number of epochs to train the model for.")
-    @argh.arg('--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
-    @argh.arg('--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
-    @argh.arg('--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
-    @argh.arg('--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
-    @argh.arg('--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
-    @argh.arg('--download_dir', type=str, help="Directory to which required training data will be downloaded.")
-    @argh.arg('--oov_token', type=str, help="Special token used for all tokens not in glove.")
-    @argh.arg('--math_token', type=str, help="Special token to use for math environments.")
-    @argh.arg('--enable_pos_tags', help="Enables pos tag feature.")
-    @argh.arg('--n_jobs', type=int, help="Number of processes parsing of files may use.")
+    @argh.arg('-e', '--epochs', type=int, help="Number of epochs to train the model for.")
+    @argh.arg('-c', '--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
+    @argh.arg('-w', '--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
+    @argh.arg('-d', '--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
+    @argh.arg('-p', '--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
+    @argh.arg('-C', '--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
+    @argh.arg('-D', '--download_dir', type=str, help="Directory to which required training data will be downloaded.")
+    @argh.arg('-o', '--oov_token', type=str, help="Special token used for all tokens not in glove.")
+    @argh.arg('-m', '--math_token', type=str, help="Special token to use for math environments.")
+    @argh.arg('-P', '--enable_pos_tags', help="Enables pos tag feature.")
+    @argh.arg('-j', '--n_jobs', type=int, help="Number of processes parsing of files may use.")
     def train(
         self,
         epochs: int = 1,

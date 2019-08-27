@@ -24,7 +24,7 @@ class Label(IntEnum):
 def _alt_edge_detector(tokens: Iterable[Token]) -> List[bool]:
     """ Transforms an iterable of tokens to a list of bools that are True on the first token of an adefi or atrefi. """
     tokens = tuple(tokens)
-    matcher = re.compile(r'a(tr|d)efi+s?').fullmatch
+    matcher = re.compile(r'm?am?(tr|d)efi+s?').fullmatch
     alt_token_envs = tuple(any(map(matcher, token.envs)) for token in tokens)
     f = [alt_token_envs[0]] + [
         (not p) and n

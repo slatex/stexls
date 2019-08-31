@@ -203,7 +203,7 @@ class Environment(Node):
     def env_name(self) -> str:
         return self.name.text.strip()
 
-    def finditer(self, env_pattern):
+    def finditer(self, env_pattern) -> Iterator[Node]:
         if re.fullmatch(env_pattern, self.name.lexeme):
             yield self
         else:

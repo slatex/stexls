@@ -792,10 +792,10 @@ class Linter:
         yielded_values: Set[str] = set()
 
         # find trefis, reverse so that first match moves to the front
-        for match in reversed(list(re.finditer(r'\\([ma]*)tref(i+)s?', context))):
+        for match in reversed(list(re.finditer(r'\\([ma]*)tref([ivx]+)s?', context))):
             # remove irrelevant matches from context
             sub_context = context[match.span()[0]:]
-            for trefi_module in re.finditer(r'\\[ma]*trefi+s?\s*\[\s*([\w\-]*)$', sub_context):
+            for trefi_module in re.finditer(r'\\[ma]*tref[ivx]+s?\s*\[\s*([\w\-]*)$', sub_context):
                 for module in self.import_graph.reachable_modules_of(document.module_identifier):
                     reachable_module_document = self._map_module_identifier_to_module.get(module)
                     if (reachable_module_document is not None
@@ -810,7 +810,7 @@ class Linter:
                             yielded_values.add(value)
                 return
 
-            for trefi_symbol in re.finditer(r'\\[ma]*trefi+s?\s*\[(.*?)\?([\w\-]*)$', sub_context):
+            for trefi_symbol in re.finditer(r'\\[ma]*tref[ivx]+s?\s*\[(.*?)\?([\w\-]*)$', sub_context):
                 target_module_name = trefi_symbol.group(1) or document.module_identifier.module_name
                 for target_module in self.import_graph.find_module(
                         target_module_name, document.module_identifier):
@@ -821,18 +821,18 @@ class Linter:
                                 yield {'type': 'symbol', 'value': value}
                                 yielded_values.add(value)
                 return
-            # for trefi_text in re.finditer(r'\\[ma]*trefi+s?(?:\[(.*?)?(?:\?(.*?))?\])?\{(.*?)$', trefi_context):
+            # for trefi_text in re.finditer(r'\\[ma]*tref[ivx]+s?(?:\[(.*?)?(?:\?(.*?))?\])?\{(.*?)$', trefi_context):
             #     is_alt = 'a' in trefi_match.group(1)
             #     arg_count = len(trefi_match.group(2))
             #     return
             return
 
-        for match in reversed(list(re.finditer(r'\\([ma]*)def(i+)s?', context))):
+        for match in reversed(list(re.finditer(r'\\([ma]*)def([ivx]+)s?', context))):
             # remove irrelevant matches from context
             sub_context = context[match.span()[0]:]
             for defi in re.finditer(
                     # matches ".... \\madefis[..., name="
-                    r'\\[ma]*defi+s?\s*\[(?:\s*[\w\-]+\s*=\s*[\w\-]+,)*\s*name\s*=\s*([\w\-]*)$', sub_context):
+                    r'\\[ma]*def[ivx]+s?\s*\[(?:\s*[\w\-]+\s*=\s*[\w\-]+,)*\s*name\s*=\s*([\w\-]*)$', sub_context):
                 defi_name = defi.group(1)
                 for symi in self._map_module_identifier_to_module[str(document.module_identifier)].symis:
                     value = symi.symbol_name

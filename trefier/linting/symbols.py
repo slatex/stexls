@@ -6,6 +6,9 @@ from trefier.misc.location import *
 from trefier.tokenization.latex import Environment, Node
 from trefier.linting.exceptions import *
 from trefier.linting.identifiers import *
+from trefier.linting.environment_parsers import OArgData
+
+from trefier.misc import roman_numerals
 
 __all__ = ['Symbol',
            'ModuleDefinitonSymbol',
@@ -109,7 +112,7 @@ class ModuleBindingDefinitionSymbol(Symbol):
 
 
 class GimportSymbol(Symbol):
-    GIMPORT_PATTERN = re.compile(r'gimport\*?')
+    GIMPORT_PATTERN = re.compile(r'(gimport)|(gstructure)\*?')
 
     def __init__(self,
                  imported_module_location: Location,
@@ -117,7 +120,11 @@ class GimportSymbol(Symbol):
                  repository_range: Optional[Range],
                  file: str,
                  full_range: Range):
-        """ Gimport symbol \\gimport[imported_module.base/imported_module.repository]{imported_module.module_name} """
+        """ Gimport symbol
+            \\gimport[imported_module.base/imported_module.repository]{imported_module.module_name}
+            OR
+            \\begin{gstructure}[imported_module.base/imported_module.repository]{ALIAS}{imported_module.module_name}
+        """
         super().__init__(file, full_range)
         self.imported_module_location = imported_module_location
         self.imported_module = imported_module
@@ -125,53 +132,109 @@ class GimportSymbol(Symbol):
 
     @staticmethod
     def from_node(gimport: Environment, containing_module: ModuleIdentifier = None) -> GimportSymbol:
-        location = _node_to_location(gimport)
+        match = GimportSymbol.GIMPORT_PATTERN.fullmatch(gimport.name.text)
+        if not match:
+            raise RuntimeError('Invalid environment name "%s"' % gimport.name)
+        if match.group(1) is not None:
+            return _make_gimport(gimport, containing_module)
+        elif match.group(2) is not None:
+            return _make_gstructure(gimport, containing_module)
+        else:
+            raise RuntimeError(f'Failed to match import environment "{gimport.name.text}" of module "{gimport.module}"')
 
-        errors = []
 
-        if len(gimport.rargs) < 1:
-            raise LinterArgumentCountException.create("exactly 1 target module name", len(gimport.rargs))
-        elif len(gimport.rargs) > 1:
-            errors.append(_make_argument_count_mismatch_message(1, len(gimport.rargs)))
+def _make_gstructure(gstructure: Environment, containing_module: ModuleIdentifier) -> GimportSymbol:
+    location = _node_to_location(gstructure)
 
-        imported_module_arg: Node = gimport.rargs[0].remove_brackets()
-        imported_module_arg_range: Range = _linter_range_to_Range(imported_module_arg.effective_range)
-        imported_module_name: str = imported_module_arg.text.strip()
+    errors = []
 
-        if len(gimport.oargs) == 1:
-            oarg = gimport.oargs[0]
-            oarg_str: str = oarg.text[1:-1].strip()
-            parts = list(oarg_str.split('/'))
-            if len(parts) != 2 or not all(map(len, parts)):
-                errors.append(f'Invalid gimport argument "{oarg_str}": Expected format is "<base>/<repository>"')
-            else:
-                oarg_effective_range = oarg.effective_range
-                oarg_begin = Position(oarg_effective_range[0][0], oarg_effective_range[0][1])
-                oarg_end = Position(oarg_effective_range[1][0], oarg_effective_range[1][1])
-                return GimportSymbol(
-                    Location(location.file, imported_module_arg_range),
-                    ModuleIdentifier(*parts, imported_module_name),
-                    Range(oarg_begin, oarg_end),
-                    gimport.parser.file,
-                    location.range
-                )
-        elif len(gimport.oargs) > 1:
-            errors.append(_make_argument_count_mismatch_message('0 or 1', len(gimport.oargs)))
+    if len(gstructure.rargs) != 2:
+        raise LinterArgumentCountException.create("exactly an alias followed by the imported module name", len(gstructure.rargs))
 
-        containing_module = containing_module or ModuleIdentifier.from_file(gimport.parser.file)
-        symbol = GimportSymbol(
-            Location(location.file, imported_module_arg_range),
-            ModuleIdentifier(containing_module.base, containing_module.repository_name, imported_module_name),
-            None,
-            gimport.parser.file,
-            location.range
-        )
-        symbol.errors.extend(errors)
-        return symbol
+    imported_module_arg: Node = gstructure.rargs[1].remove_brackets()
+    imported_module_arg_range: Range = _linter_range_to_Range(imported_module_arg.effective_range)
+    imported_module_name: str = imported_module_arg.text.strip()
+
+    if len(gstructure.oargs) == 1:
+        oarg = gstructure.oargs[0]
+        oarg_str: str = oarg.text[1:-1].strip()
+        parts = list(oarg_str.split('/'))
+        if len(parts) != 2 or not all(map(len, parts)):
+            errors.append(f'Invalid gstructure argument "{oarg_str}": Expected format is "<base>/<repository>"')
+        else:
+            oarg_effective_range = oarg.effective_range
+            oarg_begin = Position(oarg_effective_range[0][0], oarg_effective_range[0][1])
+            oarg_end = Position(oarg_effective_range[1][0], oarg_effective_range[1][1])
+            return GimportSymbol(
+                Location(location.file, imported_module_arg_range),
+                ModuleIdentifier(*parts, imported_module_name),
+                Range(oarg_begin, oarg_end),
+                gstructure.parser.file,
+                location.range
+            )
+    elif len(gstructure.oargs) > 1:
+        errors.append(_make_argument_count_mismatch_message('0 or 1', len(gstructure.oargs)))
+
+    containing_module = containing_module or ModuleIdentifier.from_file(gstructure.parser.file)
+    symbol = GimportSymbol(
+        Location(location.file, imported_module_arg_range),
+        ModuleIdentifier(containing_module.base, containing_module.repository_name, imported_module_name),
+        None,
+        gstructure.parser.file,
+        location.range
+    )
+    symbol.errors.extend(errors)
+    return symbol
+
+
+def _make_gimport(gimport: Environment, containing_module: ModuleIdentifier) -> GimportSymbol:
+    location = _node_to_location(gimport)
+
+    errors = []
+
+    if len(gimport.rargs) < 1:
+        raise LinterArgumentCountException.create("exactly 1 target module name", len(gimport.rargs))
+    elif len(gimport.rargs) > 1:
+        errors.append(_make_argument_count_mismatch_message(1, len(gimport.rargs)))
+
+    imported_module_arg: Node = gimport.rargs[0].remove_brackets()
+    imported_module_arg_range: Range = _linter_range_to_Range(imported_module_arg.effective_range)
+    imported_module_name: str = imported_module_arg.text.strip()
+
+    if len(gimport.oargs) == 1:
+        oarg = gimport.oargs[0]
+        oarg_str: str = oarg.text[1:-1].strip()
+        parts = list(oarg_str.split('/'))
+        if len(parts) != 2 or not all(map(len, parts)):
+            errors.append(f'Invalid gimport argument "{oarg_str}": Expected format is "<base>/<repository>"')
+        else:
+            oarg_effective_range = oarg.effective_range
+            oarg_begin = Position(oarg_effective_range[0][0], oarg_effective_range[0][1])
+            oarg_end = Position(oarg_effective_range[1][0], oarg_effective_range[1][1])
+            return GimportSymbol(
+                Location(location.file, imported_module_arg_range),
+                ModuleIdentifier(*parts, imported_module_name),
+                Range(oarg_begin, oarg_end),
+                gimport.parser.file,
+                location.range
+            )
+    elif len(gimport.oargs) > 1:
+        errors.append(_make_argument_count_mismatch_message('0 or 1', len(gimport.oargs)))
+
+    containing_module = containing_module or ModuleIdentifier.from_file(gimport.parser.file)
+    symbol = GimportSymbol(
+        Location(location.file, imported_module_arg_range),
+        ModuleIdentifier(containing_module.base, containing_module.repository_name, imported_module_name),
+        None,
+        gimport.parser.file,
+        location.range
+    )
+    symbol.errors.extend(errors)
+    return symbol
 
 
 class EnvironmentSymbolWithStaticArgumentCount(Symbol):
-    MASTER_PATTERN = re.compile(r'([ma]*)(sym|tref|def)(i+)s?\*?|symdef')
+    MASTER_PATTERN = re.compile(r'([ma]*)(sym|tref|def)([ivx]+)s?\*?|symdef')
 
     def __init__(self,
                  symbol_name: str,
@@ -232,7 +295,10 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
 
         is_alt = 'a' in match.group(1)
 
-        static_argument_count = len(match.group(3)) + int(is_alt)
+        try:
+            static_argument_count = roman_numerals.roman2int(match.group(3)) + int(is_alt)
+        except:
+            raise LinterException(f'Invalid symbol environment "{env.env_name}"')
 
         if not match:
             raise LinterException(f'{location} Invalid environment name encountered: "{env.env_name}"')
@@ -269,14 +335,14 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
         if len(env.oargs) < 1:
             return None
         oarg = env.oargs[0]
-        pattern = re.compile(r'([\[,]\s*name\s*=\s*)(.+?)(?:[$\s,\]]|$)')
+        pattern = re.compile(r'(?<=,|\[)name=([^,\]]*)')
         matches = list(re.finditer(pattern, oarg.text))
         if len(matches) != 1:
             return None
         match = matches[0]
-        symbol_name = match.group(2)
+        symbol_name = match.group(1)
         oarg_begin, oarg_end = list(oarg.split_range(pattern, keep_delimeter=True))[1]
-        oarg_begin += len(match.group(1))
+        oarg_begin += match.span(1)[0] - 1 # offset by begin index of matched name
         oarg_end = oarg_begin + len(symbol_name)
         return symbol_name, Location(env.parser.file, Range(
             Position(*env.parser.offset_to_position(oarg_begin)),
@@ -285,9 +351,10 @@ class EnvironmentSymbolWithStaticArgumentCount(Symbol):
 
 
 class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
-    SYM_PATTERN = re.compile(r'symi+s?\*?|symdef')
+    SYM_PATTERN = re.compile(r'sym[ivx]+s?\*?|symdef')
 
     def __init__(self,
+                 noverb: bool,
                  symbol_name: str,
                  symbol_name_locations: List[Location],
                  search_terms: List[List[str]],
@@ -295,19 +362,22 @@ class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                  file: str,
                  full_range: Range):
         super().__init__(symbol_name, symbol_name_locations, search_terms, env_name, file, full_range)
+        self.noverb = noverb
 
     @staticmethod
     def from_node(symbol: Environment):
+        named_arguments, unnamed_arguments = _split_oargs_into_named_and_unnamed(symbol.oargs)
+
+        noverb = 'noverb' in unnamed_arguments
+
         if symbol.env_name == 'symdef':
             location = _node_to_location(symbol)
-            name_argument = EnvironmentSymbolWithStaticArgumentCount.get_name_argument_and_location(symbol)
-            if name_argument is not None:
+            if named_arguments.get('name') is not None:
                 # first use name= argument as symbol name
-                symbol_name, symbol_name_location = name_argument
+                symbol_name, symbol_name_location = EnvironmentSymbolWithStaticArgumentCount.get_name_argument_and_location(symbol)
                 symbol_name_locations = [symbol_name_location]
             elif len(symbol.rargs) >= 1:
                 # else use first rarg
-                symbol_name_location = None
                 rarg = symbol.rargs[0].remove_brackets()
                 symbol_name_locations = [_node_to_location(rarg)]
                 symbol_name = rarg.text.strip()
@@ -315,8 +385,13 @@ class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
                 # else exception
                 raise LinterInternalException.create(f'Expected "name=" argument in symdef')
             return SymiSymbol(
-                symbol_name, symbol_name_locations,
-                [], 'symdef', symbol.parser.file, location.range
+                noverb=noverb,
+                symbol_name=symbol_name,
+                symbol_name_locations=symbol_name_locations,
+                search_terms=[],
+                env_name='symdef',
+                file=symbol.parser.file,
+                full_range=location.range
             )
         else:
             symbol_name, symbol_name_locations, search_terms, errors = EnvironmentSymbolWithStaticArgumentCount.get_info(symbol)
@@ -324,14 +399,42 @@ class SymiSymbol(EnvironmentSymbolWithStaticArgumentCount):
             location = _node_to_location(symbol)
 
             symbol = SymiSymbol(
-                symbol_name, symbol_name_locations, search_terms,
-                symbol.env_name, symbol.parser.file, location.range)
+                noverb=noverb,
+                symbol_name=symbol_name,
+                symbol_name_locations=symbol_name_locations,
+                search_terms=search_terms,
+                env_name=symbol.env_name,
+                file=symbol.parser.file,
+                full_range=location.range
+            )
             symbol.errors.extend(errors)
             return symbol
 
 
+def _split_oargs_into_named_and_unnamed(oargs):
+    oargs = [
+        parsed
+        for arg in oargs
+        for parsed in OArgData.parse(arg.text)
+    ]
+    
+    named_arguments = {
+        oarg.name: (oarg.value, oarg.value_span)
+        for oarg in oargs
+        if oarg.name is not None
+    }
+
+    unnamed_arguments = {
+        oarg.value: oarg.value_span
+        for oarg in oargs
+        if oarg.name is None
+    }
+    
+    return named_arguments, unnamed_arguments
+
+
 class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
-    DEFI_PATTERN = re.compile(r'[ma]*defi+s?\*?')
+    DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?\*?')
 
     def __init__(self,
                  name_argument_location: Location,
@@ -364,7 +467,7 @@ class DefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
 
 
 class TrefiSymbol(EnvironmentSymbolWithStaticArgumentCount):
-    TREFI_PATTERN = re.compile(r'[ma]*trefi+s?\*?')
+    TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?\*?')
 
     def __init__(
         self,

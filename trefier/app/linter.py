@@ -336,3 +336,4 @@ if __name__ == '__main__':
                     logger.info('Ending session: Without writing cache')
             break # break while(True)
     argh.dispatch_command(_main)
+    #_main(None, None, '/home/marian/projects/trefier-backend/data/smglom/marian', True, True)

@@ -8,6 +8,7 @@ import re
 import sys
 from functools import partial
 from loguru import logger
+import shlex
 
 from trefier.misc.location import Position, Range, Location
 from trefier.misc.file_watcher import FileWatcher
@@ -31,6 +32,31 @@ logger = logger.bind(file=True, stream=True)
 def _file_not_tracked(file: str):
     raise LinterException(f'File "{file}" not tracked')
 
+def _get_trefier_ignored_expressions(path: str) -> Iterator[re.Pattern]:
+    with open('/tmp/trefier-ignore-expressions.log', 'a+') as log:
+        try:
+            expr = re.compile(r'^\s*%+\s*(trefier-ignore\s+.+)$')
+            with open(path) as f:
+                for line in f:
+                    match = expr.match(line)
+                    if match is not None:
+                        args = shlex.split(match.group(1))
+                        if len(args) <= 1:
+                            continue
+                        e = args[1] == '-e'
+                        for ignored_pattern in args[1 + (1 if e else 0):]:
+                            try:
+                                if e:
+                                    yield re.compile(ignored_pattern)
+                                    print(f'compiled {ignored_pattern}', file=log, flush=True)
+                                else:
+                                    yield re.compile(re.escape(ignored_pattern))
+                                    print(f'compiled {re.escape(ignored_pattern)}', file=log, flush=True)
+                            except Exception as e:
+                                print(f'error ({ignored_pattern}): {e}', file=log, flush=True)
+                                pass
+        except Exception as e:
+            print(e, file=log, flush=True)
 
 class Linter:
     def __init__(self):
@@ -549,8 +575,10 @@ class Linter:
                 for binding
                 in bindings
             )
-            if is_unused:
+            if is_unused and not symi.noverb:
                 yield ReportEntry.unused_symbol(symi, symi)
+            elif not is_unused and symi.noverb:
+                yield ReportEntry.error(symi.range, f'Defi for symi "{symi.symbol_name}" marked as "noverb" found in at least one binding of the module "{symi.module}".')
 
     def _make_document_report(self, document: Document) -> Iterator[ReportEntry]:
         # report exceptions of the document
@@ -576,6 +604,7 @@ class Linter:
             And if no symbol matches yields that it might be a defi
             :returns List of tuples of (is_defi, token ranges, symbol name/text, module of trefi or None) """
         matches = []
+        trefier_ignored_regexes = list(_get_trefier_ignored_expressions(document.file))
         for group in self.tags.get(document.file, ()):
             for subgroup in _sublists(group):
                 ranges = [ tag.token_range for tag in subgroup ]
@@ -585,9 +614,11 @@ class Linter:
                 is_defi = True
                 for similarity, symi in self._find_similarly_named_symbols(name, 0):
                     is_defi = False
-                    matches.append((False, ranges, symi.symbol_name, symi.module))
+                    if not any(expr.fullmatch(symi.symbol_name) for expr in trefier_ignored_regexes):
+                        matches.append((False, ranges, symi.symbol_name, symi.module))
                 if is_defi:
-                    matches.append((True, ranges, name, None))
+                    if not any(expr.fullmatch(name) for expr in trefier_ignored_regexes):
+                        matches.append((True, ranges, name, None))
         return matches
 
     def _find_similarly_named_symbols(self, name: str, threshold: float = 0) -> Iterator[Tuple[float, SymiSymbol]]:

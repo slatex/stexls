@@ -1,4 +1,4 @@
-# Generated from SmglomLatexParser.g4 by ANTLR 4.7.2
+# Generated from LatexParser.g4 by ANTLR 4.7.2
 # encoding: utf-8
 from antlr4 import *
 from io import StringIO
@@ -37,9 +37,9 @@ def serializedATN():
         return buf.getvalue()
 
 
-class SmglomLatexParser ( Parser ):
+class LatexParser ( Parser ):
 
-    grammarFileName = "SmglomLatexParser.g4"
+    grammarFileName = "LatexParser.g4"
 
     atn = ATNDeserializer().deserialize(serializedATN())
 
@@ -98,14 +98,14 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def body(self):
-            return self.getTypedRuleContext(SmglomLatexParser.BodyContext,0)
+            return self.getTypedRuleContext(LatexParser.BodyContext,0)
 
 
         def EOF(self):
-            return self.getToken(SmglomLatexParser.EOF, 0)
+            return self.getToken(LatexParser.EOF, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_main
+            return LatexParser.RULE_main
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterMain" ):
@@ -120,14 +120,14 @@ class SmglomLatexParser ( Parser ):
 
     def main(self):
 
-        localctx = SmglomLatexParser.MainContext(self, self._ctx, self.state)
+        localctx = LatexParser.MainContext(self, self._ctx, self.state)
         self.enterRule(localctx, 0, self.RULE_main)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 22
             self.body()
             self.state = 23
-            self.match(SmglomLatexParser.EOF)
+            self.match(LatexParser.EOF)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -145,65 +145,65 @@ class SmglomLatexParser ( Parser ):
 
         def math(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.MathContext)
+                return self.getTypedRuleContexts(LatexParser.MathContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.MathContext,i)
+                return self.getTypedRuleContext(LatexParser.MathContext,i)
 
 
         def env(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.EnvContext)
+                return self.getTypedRuleContexts(LatexParser.EnvContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.EnvContext,i)
+                return self.getTypedRuleContext(LatexParser.EnvContext,i)
 
 
         def inlineEnv(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.InlineEnvContext)
+                return self.getTypedRuleContexts(LatexParser.InlineEnvContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.InlineEnvContext,i)
+                return self.getTypedRuleContext(LatexParser.InlineEnvContext,i)
 
 
         def token(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.TokenContext)
+                return self.getTypedRuleContexts(LatexParser.TokenContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.TokenContext,i)
+                return self.getTypedRuleContext(LatexParser.TokenContext,i)
 
 
         def OPEN_BRACE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.OPEN_BRACE)
+                return self.getTokens(LatexParser.OPEN_BRACE)
             else:
-                return self.getToken(SmglomLatexParser.OPEN_BRACE, i)
+                return self.getToken(LatexParser.OPEN_BRACE, i)
 
         def body(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.BodyContext)
+                return self.getTypedRuleContexts(LatexParser.BodyContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.BodyContext,i)
+                return self.getTypedRuleContext(LatexParser.BodyContext,i)
 
 
         def CLOSED_BRACE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.CLOSED_BRACE)
+                return self.getTokens(LatexParser.CLOSED_BRACE)
             else:
-                return self.getToken(SmglomLatexParser.CLOSED_BRACE, i)
+                return self.getToken(LatexParser.CLOSED_BRACE, i)
 
         def OPEN_SQUARE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.OPEN_SQUARE)
+                return self.getTokens(LatexParser.OPEN_SQUARE)
             else:
-                return self.getToken(SmglomLatexParser.OPEN_SQUARE, i)
+                return self.getToken(LatexParser.OPEN_SQUARE, i)
 
         def CLOSED_SQUARE(self, i:int=None):
             if i is None:
-                return self.getTokens(SmglomLatexParser.CLOSED_SQUARE)
+                return self.getTokens(LatexParser.CLOSED_SQUARE)
             else:
-                return self.getToken(SmglomLatexParser.CLOSED_SQUARE, i)
+                return self.getToken(LatexParser.CLOSED_SQUARE, i)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_body
+            return LatexParser.RULE_body
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterBody" ):
@@ -218,7 +218,7 @@ class SmglomLatexParser ( Parser ):
 
     def body(self):
 
-        localctx = SmglomLatexParser.BodyContext(self, self._ctx, self.state)
+        localctx = LatexParser.BodyContext(self, self._ctx, self.state)
         self.enterRule(localctx, 2, self.RULE_body)
         self._la = 0 # Token type
         try:
@@ -226,41 +226,41 @@ class SmglomLatexParser ( Parser ):
             self.state = 39
             self._errHandler.sync(self)
             _la = self._input.LA(1)
-            while (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << SmglomLatexParser.OPEN_SQUARE) | (1 << SmglomLatexParser.OPEN_BRACE) | (1 << SmglomLatexParser.MATH_ENV) | (1 << SmglomLatexParser.BEGIN) | (1 << SmglomLatexParser.INLINE_ENV_NAME) | (1 << SmglomLatexParser.TOKEN))) != 0):
+            while (((_la) & ~0x3f) == 0 and ((1 << _la) & ((1 << LatexParser.OPEN_SQUARE) | (1 << LatexParser.OPEN_BRACE) | (1 << LatexParser.MATH_ENV) | (1 << LatexParser.BEGIN) | (1 << LatexParser.INLINE_ENV_NAME) | (1 << LatexParser.TOKEN))) != 0):
                 self.state = 37
                 self._errHandler.sync(self)
                 token = self._input.LA(1)
-                if token in [SmglomLatexParser.MATH_ENV]:
+                if token in [LatexParser.MATH_ENV]:
                     self.state = 25
                     self.math()
                     pass
-                elif token in [SmglomLatexParser.BEGIN]:
+                elif token in [LatexParser.BEGIN]:
                     self.state = 26
                     self.env()
                     pass
-                elif token in [SmglomLatexParser.INLINE_ENV_NAME]:
+                elif token in [LatexParser.INLINE_ENV_NAME]:
                     self.state = 27
                     self.inlineEnv()
                     pass
-                elif token in [SmglomLatexParser.TOKEN]:
+                elif token in [LatexParser.TOKEN]:
                     self.state = 28
                     self.token()
                     pass
-                elif token in [SmglomLatexParser.OPEN_BRACE]:
+                elif token in [LatexParser.OPEN_BRACE]:
                     self.state = 29
-                    self.match(SmglomLatexParser.OPEN_BRACE)
+                    self.match(LatexParser.OPEN_BRACE)
                     self.state = 30
                     self.body()
                     self.state = 31
-                    self.match(SmglomLatexParser.CLOSED_BRACE)
+                    self.match(LatexParser.CLOSED_BRACE)
                     pass
-                elif token in [SmglomLatexParser.OPEN_SQUARE]:
+                elif token in [LatexParser.OPEN_SQUARE]:
                     self.state = 33
-                    self.match(SmglomLatexParser.OPEN_SQUARE)
+                    self.match(LatexParser.OPEN_SQUARE)
                     self.state = 34
                     self.body()
                     self.state = 35
-                    self.match(SmglomLatexParser.CLOSED_SQUARE)
+                    self.match(LatexParser.CLOSED_SQUARE)
                     pass
                 else:
                     raise NoViableAltException(self)
@@ -285,14 +285,14 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def INLINE_ENV_NAME(self):
-            return self.getToken(SmglomLatexParser.INLINE_ENV_NAME, 0)
+            return self.getToken(LatexParser.INLINE_ENV_NAME, 0)
 
         def args(self):
-            return self.getTypedRuleContext(SmglomLatexParser.ArgsContext,0)
+            return self.getTypedRuleContext(LatexParser.ArgsContext,0)
 
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_inlineEnv
+            return LatexParser.RULE_inlineEnv
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterInlineEnv" ):
@@ -307,12 +307,12 @@ class SmglomLatexParser ( Parser ):
 
     def inlineEnv(self):
 
-        localctx = SmglomLatexParser.InlineEnvContext(self, self._ctx, self.state)
+        localctx = LatexParser.InlineEnvContext(self, self._ctx, self.state)
         self.enterRule(localctx, 4, self.RULE_inlineEnv)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 42
-            self.match(SmglomLatexParser.INLINE_ENV_NAME)
+            self.match(LatexParser.INLINE_ENV_NAME)
             self.state = 44
             self._errHandler.sync(self)
             la_ = self._interp.adaptivePredict(self._input,2,self._ctx)
@@ -337,23 +337,23 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def envBegin(self):
-            return self.getTypedRuleContext(SmglomLatexParser.EnvBeginContext,0)
+            return self.getTypedRuleContext(LatexParser.EnvBeginContext,0)
 
 
         def body(self):
-            return self.getTypedRuleContext(SmglomLatexParser.BodyContext,0)
+            return self.getTypedRuleContext(LatexParser.BodyContext,0)
 
 
         def envEnd(self):
-            return self.getTypedRuleContext(SmglomLatexParser.EnvEndContext,0)
+            return self.getTypedRuleContext(LatexParser.EnvEndContext,0)
 
 
         def args(self):
-            return self.getTypedRuleContext(SmglomLatexParser.ArgsContext,0)
+            return self.getTypedRuleContext(LatexParser.ArgsContext,0)
 
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_env
+            return LatexParser.RULE_env
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterEnv" ):
@@ -368,7 +368,7 @@ class SmglomLatexParser ( Parser ):
 
     def env(self):
 
-        localctx = SmglomLatexParser.EnvContext(self, self._ctx, self.state)
+        localctx = LatexParser.EnvContext(self, self._ctx, self.state)
         self.enterRule(localctx, 6, self.RULE_env)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -402,19 +402,19 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def BEGIN(self):
-            return self.getToken(SmglomLatexParser.BEGIN, 0)
+            return self.getToken(LatexParser.BEGIN, 0)
 
         def OPEN_BRACE(self):
-            return self.getToken(SmglomLatexParser.OPEN_BRACE, 0)
+            return self.getToken(LatexParser.OPEN_BRACE, 0)
 
         def TOKEN(self):
-            return self.getToken(SmglomLatexParser.TOKEN, 0)
+            return self.getToken(LatexParser.TOKEN, 0)
 
         def CLOSED_BRACE(self):
-            return self.getToken(SmglomLatexParser.CLOSED_BRACE, 0)
+            return self.getToken(LatexParser.CLOSED_BRACE, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_envBegin
+            return LatexParser.RULE_envBegin
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterEnvBegin" ):
@@ -429,18 +429,18 @@ class SmglomLatexParser ( Parser ):
 
     def envBegin(self):
 
-        localctx = SmglomLatexParser.EnvBeginContext(self, self._ctx, self.state)
+        localctx = LatexParser.EnvBeginContext(self, self._ctx, self.state)
         self.enterRule(localctx, 8, self.RULE_envBegin)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 53
-            self.match(SmglomLatexParser.BEGIN)
+            self.match(LatexParser.BEGIN)
             self.state = 54
-            self.match(SmglomLatexParser.OPEN_BRACE)
+            self.match(LatexParser.OPEN_BRACE)
             self.state = 55
-            self.match(SmglomLatexParser.TOKEN)
+            self.match(LatexParser.TOKEN)
             self.state = 56
-            self.match(SmglomLatexParser.CLOSED_BRACE)
+            self.match(LatexParser.CLOSED_BRACE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -457,19 +457,19 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def END(self):
-            return self.getToken(SmglomLatexParser.END, 0)
+            return self.getToken(LatexParser.END, 0)
 
         def OPEN_BRACE(self):
-            return self.getToken(SmglomLatexParser.OPEN_BRACE, 0)
+            return self.getToken(LatexParser.OPEN_BRACE, 0)
 
         def TOKEN(self):
-            return self.getToken(SmglomLatexParser.TOKEN, 0)
+            return self.getToken(LatexParser.TOKEN, 0)
 
         def CLOSED_BRACE(self):
-            return self.getToken(SmglomLatexParser.CLOSED_BRACE, 0)
+            return self.getToken(LatexParser.CLOSED_BRACE, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_envEnd
+            return LatexParser.RULE_envEnd
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterEnvEnd" ):
@@ -484,18 +484,18 @@ class SmglomLatexParser ( Parser ):
 
     def envEnd(self):
 
-        localctx = SmglomLatexParser.EnvEndContext(self, self._ctx, self.state)
+        localctx = LatexParser.EnvEndContext(self, self._ctx, self.state)
         self.enterRule(localctx, 10, self.RULE_envEnd)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 58
-            self.match(SmglomLatexParser.END)
+            self.match(LatexParser.END)
             self.state = 59
-            self.match(SmglomLatexParser.OPEN_BRACE)
+            self.match(LatexParser.OPEN_BRACE)
             self.state = 60
-            self.match(SmglomLatexParser.TOKEN)
+            self.match(LatexParser.TOKEN)
             self.state = 61
-            self.match(SmglomLatexParser.CLOSED_BRACE)
+            self.match(LatexParser.CLOSED_BRACE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -512,10 +512,10 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def MATH_ENV(self):
-            return self.getToken(SmglomLatexParser.MATH_ENV, 0)
+            return self.getToken(LatexParser.MATH_ENV, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_math
+            return LatexParser.RULE_math
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterMath" ):
@@ -530,12 +530,12 @@ class SmglomLatexParser ( Parser ):
 
     def math(self):
 
-        localctx = SmglomLatexParser.MathContext(self, self._ctx, self.state)
+        localctx = LatexParser.MathContext(self, self._ctx, self.state)
         self.enterRule(localctx, 12, self.RULE_math)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 63
-            self.match(SmglomLatexParser.MATH_ENV)
+            self.match(LatexParser.MATH_ENV)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -552,10 +552,10 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def TOKEN(self):
-            return self.getToken(SmglomLatexParser.TOKEN, 0)
+            return self.getToken(LatexParser.TOKEN, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_token
+            return LatexParser.RULE_token
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterToken" ):
@@ -570,12 +570,12 @@ class SmglomLatexParser ( Parser ):
 
     def token(self):
 
-        localctx = SmglomLatexParser.TokenContext(self, self._ctx, self.state)
+        localctx = LatexParser.TokenContext(self, self._ctx, self.state)
         self.enterRule(localctx, 14, self.RULE_token)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 65
-            self.match(SmglomLatexParser.TOKEN)
+            self.match(LatexParser.TOKEN)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -592,17 +592,17 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def OPEN_SQUARE(self):
-            return self.getToken(SmglomLatexParser.OPEN_SQUARE, 0)
+            return self.getToken(LatexParser.OPEN_SQUARE, 0)
 
         def body(self):
-            return self.getTypedRuleContext(SmglomLatexParser.BodyContext,0)
+            return self.getTypedRuleContext(LatexParser.BodyContext,0)
 
 
         def CLOSED_SQUARE(self):
-            return self.getToken(SmglomLatexParser.CLOSED_SQUARE, 0)
+            return self.getToken(LatexParser.CLOSED_SQUARE, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_oarg
+            return LatexParser.RULE_oarg
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterOarg" ):
@@ -617,16 +617,16 @@ class SmglomLatexParser ( Parser ):
 
     def oarg(self):
 
-        localctx = SmglomLatexParser.OargContext(self, self._ctx, self.state)
+        localctx = LatexParser.OargContext(self, self._ctx, self.state)
         self.enterRule(localctx, 16, self.RULE_oarg)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 67
-            self.match(SmglomLatexParser.OPEN_SQUARE)
+            self.match(LatexParser.OPEN_SQUARE)
             self.state = 68
             self.body()
             self.state = 69
-            self.match(SmglomLatexParser.CLOSED_SQUARE)
+            self.match(LatexParser.CLOSED_SQUARE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -643,17 +643,17 @@ class SmglomLatexParser ( Parser ):
             self.parser = parser
 
         def OPEN_BRACE(self):
-            return self.getToken(SmglomLatexParser.OPEN_BRACE, 0)
+            return self.getToken(LatexParser.OPEN_BRACE, 0)
 
         def body(self):
-            return self.getTypedRuleContext(SmglomLatexParser.BodyContext,0)
+            return self.getTypedRuleContext(LatexParser.BodyContext,0)
 
 
         def CLOSED_BRACE(self):
-            return self.getToken(SmglomLatexParser.CLOSED_BRACE, 0)
+            return self.getToken(LatexParser.CLOSED_BRACE, 0)
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_rarg
+            return LatexParser.RULE_rarg
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterRarg" ):
@@ -668,16 +668,16 @@ class SmglomLatexParser ( Parser ):
 
     def rarg(self):
 
-        localctx = SmglomLatexParser.RargContext(self, self._ctx, self.state)
+        localctx = LatexParser.RargContext(self, self._ctx, self.state)
         self.enterRule(localctx, 18, self.RULE_rarg)
         try:
             self.enterOuterAlt(localctx, 1)
             self.state = 71
-            self.match(SmglomLatexParser.OPEN_BRACE)
+            self.match(LatexParser.OPEN_BRACE)
             self.state = 72
             self.body()
             self.state = 73
-            self.match(SmglomLatexParser.CLOSED_BRACE)
+            self.match(LatexParser.CLOSED_BRACE)
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)
@@ -695,20 +695,20 @@ class SmglomLatexParser ( Parser ):
 
         def rarg(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.RargContext)
+                return self.getTypedRuleContexts(LatexParser.RargContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.RargContext,i)
+                return self.getTypedRuleContext(LatexParser.RargContext,i)
 
 
         def oarg(self, i:int=None):
             if i is None:
-                return self.getTypedRuleContexts(SmglomLatexParser.OargContext)
+                return self.getTypedRuleContexts(LatexParser.OargContext)
             else:
-                return self.getTypedRuleContext(SmglomLatexParser.OargContext,i)
+                return self.getTypedRuleContext(LatexParser.OargContext,i)
 
 
         def getRuleIndex(self):
-            return SmglomLatexParser.RULE_args
+            return LatexParser.RULE_args
 
         def enterRule(self, listener:ParseTreeListener):
             if hasattr( listener, "enterArgs" ):
@@ -723,7 +723,7 @@ class SmglomLatexParser ( Parser ):
 
     def args(self):
 
-        localctx = SmglomLatexParser.ArgsContext(self, self._ctx, self.state)
+        localctx = LatexParser.ArgsContext(self, self._ctx, self.state)
         self.enterRule(localctx, 20, self.RULE_args)
         try:
             self.enterOuterAlt(localctx, 1)
@@ -735,11 +735,11 @@ class SmglomLatexParser ( Parser ):
                     self.state = 77
                     self._errHandler.sync(self)
                     token = self._input.LA(1)
-                    if token in [SmglomLatexParser.OPEN_BRACE]:
+                    if token in [LatexParser.OPEN_BRACE]:
                         self.state = 75
                         self.rarg()
                         pass
-                    elif token in [SmglomLatexParser.OPEN_SQUARE]:
+                    elif token in [LatexParser.OPEN_SQUARE]:
                         self.state = 76
                         self.oarg()
                         pass

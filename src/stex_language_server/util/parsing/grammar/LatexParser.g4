@@ -1,5 +1,5 @@
-parser grammar SmglomLatexParser;
-options { tokenVocab=SmglomLatexLexer; }
+parser grammar LatexParser;
+options { tokenVocab=LatexLexer; }
 
 main: body EOF;
 

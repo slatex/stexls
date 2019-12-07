@@ -1,4 +1,4 @@
-# Generated from SmglomLatexLexer.g4 by ANTLR 4.7.2
+# Generated from LatexLexer.g4 by ANTLR 4.7.2
 from antlr4 import *
 from io import StringIO
 from typing.io import TextIO
@@ -489,7 +489,7 @@ def serializedATN():
         return buf.getvalue()
 
 
-class SmglomLatexLexer(Lexer):
+class LatexLexer(Lexer):
 
     atn = ATNDeserializer().deserialize(serializedATN())
 
@@ -523,7 +523,7 @@ class SmglomLatexLexer(Lexer):
                   "CLOSED_BRACE", "MATH_ENV", "BEGIN", "END", "INLINE_ENV_NAME", 
                   "TOKEN" ]
 
-    grammarFileName = "SmglomLatexLexer.g4"
+    grammarFileName = "LatexLexer.g4"
 
     def __init__(self, input=None, output:TextIO = sys.stdout):
         super().__init__(input, output)

@@ -1,17 +1,11 @@
 from __future__ import annotations
+import itertools, os, re, copy, antlr4
 from typing import Iterator, Pattern, Dict, Iterable, Callable
-import itertools
-import os
-import re
-import copy
-
-from trefier.util.location import *
-
-from .grammar.out.SmglomLatexLexer import SmglomLatexLexer
-from .grammar.out.SmglomLatexParserListener import SmglomLatexParserListener
-from .grammar.out.SmglomLatexParser import SmglomLatexParser
-import antlr4
 from antlr4.error.ErrorListener import ErrorListener
+from stex_language_server.util.location import *
+from stex_language_server.util.parsing.grammar.out.LatexLexer import LatexLexer as _LatexLexer
+from stex_language_server.util.parsing.grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
+from stex_language_server.util.parsing.grammar.out.LatexParser import LatexParser as _LatexParser
 
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'Math', 'Node']
@@ -218,73 +212,73 @@ class InlineEnvironment(Environment):
         yield from super().tokens
 
 
-class LatexParser(SmglomLatexParserListener):
-    def enterMain(self, ctx: SmglomLatexParser.MainContext):
+class LatexParser(_LatexParserListener):
+    def enterMain(self, ctx: _LatexParser.MainContext):
         self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
-    def exitMain(self, ctx: SmglomLatexParser.MainContext):
+    def exitMain(self, ctx: _LatexParser.MainContext):
         assert len(self._stack) == 1
 
-    def enterInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
+    def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         env = InlineEnvironment(ctx.start.start, ctx.stop.stop + 1, self)
         symbol = ctx.INLINE_ENV_NAME().getSymbol()
         env.add_name(Token(str(ctx.INLINE_ENV_NAME())[1:], symbol.start + 1, symbol.stop + 1, self))
         self._stack.append(env)
 
-    def exitInlineEnv(self, ctx: SmglomLatexParser.InlineEnvContext):
+    def exitInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         env = self._stack.pop()
         self._stack[-1].add(env)
 
-    def enterEnv(self, ctx: SmglomLatexParser.EnvContext):
+    def enterEnv(self, ctx: _LatexParser.EnvContext):
         self._stack.append(Environment(ctx.start.start, ctx.stop.stop + 1, self))
 
-    def exitEnv(self, ctx: SmglomLatexParser.EnvContext):
+    def exitEnv(self, ctx: _LatexParser.EnvContext):
         env = self._stack.pop()
         self._stack[-1].add(env)
 
-    def enterEnvBegin(self, ctx: SmglomLatexParser.EnvBeginContext):
+    def enterEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
         pass
 
-    def exitEnvBegin(self, ctx: SmglomLatexParser.EnvBeginContext):
+    def exitEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
         assert isinstance(self._stack[-1], Environment)
         symbol = ctx.TOKEN().getSymbol()
         self._stack[-1].add_name(Token(str(ctx.TOKEN()), symbol.start, symbol.stop + 1, self))
 
-    def enterEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
+    def enterEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         pass
 
-    def exitEnvEnd(self, ctx: SmglomLatexParser.EnvEndContext):
+    def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         assert isinstance(self._stack[-1], Environment)
         if not self._stack[-1].name.text.strip() == str(ctx.TOKEN()).strip():
             raise Exception(f"Environment unbalanced:"
                             f" Expected {self._stack[-1].name.text.strip()} found {str(ctx.TOKEN()).strip()}")
 
-    def enterMath(self, ctx: SmglomLatexParser.MathContext):
+    def enterMath(self, ctx: _LatexParser.MathContext):
         pass
 
-    def exitMath(self, ctx: SmglomLatexParser.MathContext):
+    def exitMath(self, ctx: _LatexParser.MathContext):
         symbol = ctx.MATH_ENV().getSymbol()
         self._stack[-1].add(Math(str(ctx.MATH_ENV()), symbol.start, symbol.stop + 1, self))
 
-    def enterToken(self, ctx: SmglomLatexParser.TokenContext):
+    def enterToken(self, ctx: _LatexParser.TokenContext):
         pass
 
-    def exitToken(self, ctx: SmglomLatexParser.TokenContext):
+    def exitToken(self, ctx: _LatexParser.TokenContext):
         symbol = ctx.TOKEN().getSymbol()
         self._stack[-1].add(Token(str(ctx.TOKEN()), symbol.start, symbol.stop + 1, self))
 
-    def enterOarg(self, ctx: SmglomLatexParser.OargContext):
+    def enterOarg(self, ctx: _LatexParser.OargContext):
         self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
-    def exitOarg(self, ctx: SmglomLatexParser.OargContext):
+    def exitOarg(self, ctx: _LatexParser.OargContext):
         oarg = self._stack.pop()
         assert isinstance(self._stack[-1], Environment)
         self._stack[-1].add_oarg(oarg)
 
-    def enterRarg(self, ctx: SmglomLatexParser.RargContext):
+    def enterRarg(self, ctx: _LatexParser.RargContext):
         self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1, self))
 
-    def exitRarg(self, ctx: SmglomLatexParser.RargContext):
+    def exitRarg(self, ctx: _LatexParser.RargContext):
         rarg = self._stack.pop()
         assert isinstance(self._stack[-1], Environment)
         self._stack[-1].add_rarg(rarg)
@@ -334,9 +328,9 @@ class LatexParser(SmglomLatexParserListener):
             else:
                 self.source = file_or_document
             self._line_lengths = [len(line)+1 for line in self.source.split('\n')]
-            lexer = SmglomLatexLexer(antlr4.InputStream(self.source))
+            lexer = _LatexLexer(antlr4.InputStream(self.source))
             stream = antlr4.CommonTokenStream(lexer)
-            parser = SmglomLatexParser(stream)
+            parser = _LatexParser(stream)
             error_listener = MyErrorListener(self.file)
             parser.addErrorListener(error_listener)
             tree = parser.main()

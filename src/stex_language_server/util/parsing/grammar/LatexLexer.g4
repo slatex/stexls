@@ -1,4 +1,4 @@
-lexer grammar SmglomLatexLexer;
+lexer grammar LatexLexer;
 
 WS: [ \t\r\n]+ -> skip;
 

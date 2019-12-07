@@ -1,5 +1,5 @@
 from os import path
-from . import download
+from stex_language_server.util import download
 
 __all__ = ['maybe_download']
 

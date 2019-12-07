@@ -13,7 +13,7 @@ import datetime
 
 from .git import clone
 
-__all__ = ['maybe_download_git','maybe_download_and_extract']
+__all__ = ['maybe_download_git', 'maybe_download_and_extract']
 
 class Downloader:
     def __init__(self, url, download_location):

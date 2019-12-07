@@ -3,9 +3,10 @@
 import numpy as np
 from sklearn.manifold import LocallyLinearEmbedding as LLE
 from sklearn.decomposition import PCA
-from keras.layers import Embedding
 
-from . import download
+from tensorflow.keras.layers import Embedding
+
+from stex_language_server.util import download
 
 __all__ = ['maybe_download_and_extract', 'load']
 

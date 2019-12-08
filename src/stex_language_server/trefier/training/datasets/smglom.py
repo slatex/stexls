@@ -1,19 +1,6 @@
 from __future__ import annotations
-from typing import Union, Tuple, List, Optional, Iterable, Iterator
-from glob import glob
-from os import path
-from multiprocessing.pool import Pool
-from enum import IntEnum
-import re
-from tqdm import tqdm
-import functools
-import itertools
 
-from trefier.downloads import smglom as download_smglom
-from trefier.tokenization.latex import LatexParser, Token
-from trefier.tokenization.streams import LatexTokenStream, LatexToken
-
-__all__ = ['Label', 'parse_files', 'parse_dataset']
+from stex_language_server.util import download
 
 class Label(IntEnum):
     """ Possible labels. """
@@ -181,3 +168,47 @@ def parse_dataset(
     X, y = list(zip(*list_of_X_y_pairs))
 
     return X, y
+
+def maybe_download(
+    dest_dir: str = 'data/'):
+    ' Clones all smglom git repositories into the given destination. '
+    all_repositories = [
+        "smglom/physics",
+        "smglom/cs",
+        "smglom/lmfdb",
+        "smglom/probability",
+        "smglom/measure-theory",
+        "smglom/tannakian",
+        "smglom/categories",
+        "smglom/theresas-playground",
+        "smglom/complexity",
+        "smglom/arithmetics",
+        "smglom/elliptic-curves",
+        "smglom/manifolds",
+        "smglom/numthy",
+        "smglom/identities",
+        "smglom/numthyfun",
+        "smglom/constants",
+        "smglom/analysis",
+        "smglom/trigonometry",
+        "smglom/numbers",
+        "smglom/primes",
+        "smglom/linear-algebra",
+        "smglom/magic",
+        "smglom/functional-analysis",
+        "smglom/geometry",
+        "smglom/topology",
+        "smglom/calculus",
+        "smglom/algebra",
+        "smglom/graphs",
+        "smglom/sets",
+        "smglom/mv",
+        "smglom/chevahir",
+        "smglom/SMGloM"
+    ]
+    return [
+        download.maybe_download_git(
+            repo_url=os.path.join('https://gl.mathhub.info/', repo),
+            save_dir=path.join(dest_dir, '/'.join(repo.split('/')[:-1])))
+        for repo in repositories
+    ]

@@ -1,6 +1,10 @@
+' Interface to git. '
+
 import subprocess
 
 GIT_EXECUTABLE = 'git'
+
+__all__ = ['clone']
 
 def clone(repo: str, dest: str = None, depth: int = None) -> int:
     ' Clones a repository into the current pwd or dest if given. Returns git process exit code. '

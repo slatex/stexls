@@ -1,281 +1,167 @@
 from __future__ import annotations
-from typing import Union, Tuple, List, Optional
-
-import os.path as _path
-import json
-import copy
+from typing import Union, Optional, List
 
 __all__ = ['Position', 'Range', 'Location']
 
+
 class Position:
-    def __init__(self, line: int = 1, column: int = 1):
-        """
-        A position in a file.
-        :param line: 1-indexed line
-        :param column: 1-indexed column
-        """
+    ' Representation of a zero indexed line and character inside a file. '''
+    def __init__(self, line: int, character: int):
+        ''' Initializes the position with a line and character offset.
+        Parameters:
+            line: Zero indexed line of a file.
+            character: Zero indexed character of the line.
+        '''
         self.line = line
-        self.column = column
+        self.character = character
+    
+    def compare_to(self, other: Position) -> int:
+        ''' Compares two positions.
+        Parameters:
+            other: Other position to compare to.
+        Returns:
+            1. <0 if self < other.
+            2. 0 if self = other.
+            3. >0 if self > other.
+        '''
+        if self.line != other.line:
+            return self.line - other.line
+        elif self.character != other.character:
+            return self.character - other.character
+        else:
+            return 0
+    
+    def is_after(self, other: Position) -> bool:
+        ' Returns true if self appears after other. '
+        return 0 < self.compare_to(other)
+        
+    def is_after_or_equal(self, other: Position) -> bool:
+        ' Returns true if self appears after other or if they are equal. '
+        return 0 <= self.compare_to(other)
+        
+    def is_before(self, other: Position) -> bool:
+        ' Returns true if self appears before other. '
+        return self.compare_to(other) < 0
+        
+    def is_before_or_equal(self, other: Position) -> bool:
+        ' Returns true if self appears before other or if they are equal. '
+        return self.compare_to(other) <= 0
+    
+    def is_equal(self, other: Position) -> bool:
+        ' Returns true if line and character of both are the same. '
+        return self.line == other.line and self.character == other.character
+    
+    def replace(self, line: Optional[int] = None, character: Optional[int] = None) -> Position:
+        ''' Copies self and replaces the copies line and/or character.
+        Parameters:
+            line: Line of the copy if not None.
+            character: Character of the copy if not None.
+        Returns:
+            Copy of self with line and/or character replaced.
+        '''
+        return Position(
+            self.line if line is None else line,
+            self.character if character is None else character)
+    
+    def copy_from(self, other: Position):
+        ' Copies other line and character into self. '
+        self.line = other.line
+        self.character = other.character
+    
+    def copy(self) -> Position:
+        ' Creates a copy of this position. '
+        return Position(self.line, self.character)
 
-    def copy_from(self, that: Position):
-        self.line = that.line
-        self.column = that.column
-
-    def __repr__(self):
-        return f'Position(line={self.line}, column={self.column})'
-    
-    def __iter__(self):
-        """ Iterates through line and column members. """
-        yield self.line
-        yield self.column
-    
-    def __le__(self, other: Position) -> bool:
-        """
-        Tests if a position occurs before another position.
-        :param other Other position
-        :returns True if on a previous line or if on the same line, then the column needs to occur before
-        """
-        return self.before(other)
-
-    def __gt__(self, other: Position) -> bool:
-        """
-        Tests if a position occurs after another position.
-        :param other Other position
-        :returns True if on a previous line or if on the same line, then the column needs to occur before
-        """
-        return self.after(other)
-    
-    def __eq__(self, other: Position) -> bool:
-        return self.line == other.line and self.column == other.column
-    
-    def __ne__(self, other: Position) -> bool:
-        return not (self == other)
-    
-    def to_json(self):
-        return json.dumps(self.__dict__)
-    
-    def __hash__(self):
-        return hash(self.line) ^ hash(self.column)
-    
-    def before(self, other: Position, strict=False) -> bool:
-        """
-        :param other Other position
-        :param strict If True, only returns True if column < other.column if they are on the same line
-        :returns True if this is occurs before the other position.
-        """
-        return self.line < other.line or (self.line == other.line and (self.column < other.column or (not strict and self.column == other.column)))
-    
-    def after(self, other: Position, strict=False) -> bool:
-        """
-        :param other Other position
-        :param strict If True, only returns True if column > other.column if they are on the same line
-        :returns True if this occurs after the other.
-        """
-        return other.line < self.line or (self.line == other.line and (other.column < self.column or (not strict and other.column == self.column)))
-    
-    def append_to_file(self, file) -> str:
-        """
-        Appends the location to a file in order to create a link to the position.
-        :returns Link to the location in file:line:column format
-        """
-        return f'{file}:{self.line}:{self.column}'
-
-
+        
 class Range:
-    def __init__(self, begin: Position, end: Optional[Position] = None):
-        """
-        A range between two positions
-        :param begin: Begin of the range
-        :param end: End of the range
-        """
-        if not isinstance(begin, Position):
-            raise ValueError(f"begin must be of type Position. Found: {str(type(begin))}")
-        if end is not None and not isinstance(end, Position):
-            raise ValueError(f"end must be of type Position. Found: {str(type(end))}")
-        self.begin = begin
-        self.end = end or begin
-
-    def copy_from(self, that: Range):
-        self.begin = Position(0, 0)
-        self.begin.copy_from(that.begin)
-        self.end = Position(0, 0)
-        self.end.copy_from(that.end)
-
-    def __le__(self, other: Union[Range, Position]) -> bool:
-        return self.before(other)
-
-    def __gt__(self, other: Union[Range, Position]) -> bool:
-        return self.after(other)
+    ' Represents a range given by a start and end position. '
+    def __init__(self, start: Position, end: Position):
+        ''' Initializes the range.
+        Parameters:
+            start: Begin position.
+            end: End position.
+        '''
+        self.start = start
+        self.end = end
     
-    def __eq__(self, other: Range) -> bool:
-        if not isinstance(other, Range):
-            return False
-        return self.begin == other.begin and self.end == other.end
+    def is_empty(self) -> bool:
+        ''' Checks wether the range is empty or not.
+            The range is empty if start and end are equal.
+        '''
+        return start.equals(end)
     
-    def __ne__(self, other: Range) -> bool:
-        return not (self == other)
-
-    def union(self, other: Range) -> Range:
-        return Range(copy.copy(min([self.begin, other.begin])), copy.copy(max([self.end, other.end])))
+    def is_single_line(self) -> bool:
+        ' Returns true if the start and end positions are on the same line. '
+        return self.start.line == self.end.line
     
-    def before(self, other: Union[Range, Position], strict: bool = False) -> bool:
-        """
-        Returns whether a range or a position occurs before this range begins.
-        :param other: A range or position
-        :param strict: If True, checks positions inclusively
-        :return: True if other occurs before self
-        """
-        if isinstance(other, Position):
-            return self.end.before(other, strict=strict)
-        elif isinstance(other, Range):
-            return self.end.before(other.begin, strict=strict)
-        else:
-            raise ValueError("other must be of type Range or Position")
+    def union(self, other: Union[Range, Position]) -> Range:
+        ''' Creates a new Range with the union of self and other.
+        Parameters:
+            other: Range to create union with.
+                If other is a position, it will be converted to an empty range.
+        Returns:
+            New range representing the union of self and other.
+            The union is given by the smaller start and larger end position of both.
+        '''
+        return Range(
+            self.start.copy() if self.start.qual(other.start)
+            else other.start.copy(),
+            self.end.copy() if self.end.is_after_or_equal(other.end)
+            else other.end.copy())
     
-    def after(self, other: Union[Range, Position], strict: bool = False) -> bool:
-        """
-        Returns whether a range or a position occurs after this range begins.
-        :param other: A range or position
-        :param strict: If True, checks positions inclusively
-        :return: True if other occurs after self
-        """
-        if isinstance(other, Position):
-            return self.begin.after(other, strict=strict)
-        elif isinstance(other, Range):
-            return self.begin.after(other.end, strict=strict)
-        else:
-            raise ValueError("other must be of type Range or Position")
+    def replace(self, start: Optional[Position] = None, end: Optional[Position] = None) -> Range:
+        ''' Creates a copy with a new start and end.
+        If start or end is not None they will be copied and
+        not passed as is to the copied range.
+        Parameters:
+            start: Optional new start position.
+            end: Optional new end position.
+        Returns:
+            New range instance with provided start and end.
+        '''
+        return Range(
+            (self.start if start is None else start).copy(),
+            (self.end if end is None else end).copy())
     
-    def contains(self, other: Union[Range, Position], strict: bool = False) -> bool:
-        """
-        Returns whether a range or a position is completely contained withing this range
-        :param other: A range or position
-        :param strict: If True, checks positions inclusively. Other may also touch the edges of this range.
-        :return: True if other occurs before self
-        """
-        if isinstance(other, Position):
-            return self.begin.before(other, strict=strict) and self.end.after(other, strict=strict)
-        elif isinstance(other, Range):
-            return self.begin.before(other.begin, strict=strict) and self.end.after(other.end, strict=strict)
-        else:
-            raise ValueError("other must be of type Range or Position")
+    def copy_from(self, other: Range):
+        ' Replaces self start and end with copies of other start and end. '
+        self.start = other.start.copy()
+        self.end = other.end.copy()
     
-    def to_json(self):
-        return json.dumps(self, default=lambda obj: obj.__dict__)
+    def copy(self) -> Range:
+        ' Creates a deep copy of self. '
+        return Range(self.start.copy(), self.end.copy())
 
     @staticmethod
-    def reduce_union(ranges: List[Range]) -> Range:
-        """ Reduces the union of all ranges in the list. """
-        assert ranges
-        union = ranges[0]
-        for that in ranges[1:]:
-            union = union.union(that)
-        return union
-    
-    def __hash__(self):
-        return hash(self.begin) ^ hash(self.end)
-    
-    def __iter__(self):
-        yield self.begin
-        yield self.end
-
-    def __repr__(self):
-        return f'Range(begin={self.begin}, end={self.end})'
+    def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Range:
+        ''' Creates the big union of all ranges and positions given.
+            The big union is given by the range formed by the smallest
+            and largest position in the list.
+        '''
+        if not rangesOrPositions:
+            raise ValueError('List of ranges may not be empty.')
+        accmin: Position = None
+        accmax: Position = None
+        for x in rangesOrPositions[1:]:
+            if isinstance(x, Position):
+                if accmin is None or x.is_before(accmin):
+                    accmin = x
+                if accmax is None or x.is_after(accmax):
+                    accmax = x
+            else:
+                if accmin is None or x.start.is_before(accmin):
+                    accmin = x.start
+                if accmax is None or x.end.is_after(accmax):
+                    accmax = x.end
+        assert accmin is not None
+        assert accmax is not None
+        return Range(accmin.copy(), accmax.copy())
 
 
 class Location:
-    def __init__(self, file: str, range: Range, offset: Tuple[int, int] = None):
-        """ Creates a range in a file.
-        Arguments:
-            :param file: The target file.
-            :param range: The range in the file.
-            :param offset: Optional precomputed character offset representation for the range: tuple(begin, end).
-                            If None then the offset will be computed by loading the file.
-        """
-        self.file = _path.abspath(file)
-        self.range = range
-        self._offset = offset
-        self._text = None
-    
-    def contains(self, location: Union[Location, Range, Position]) -> bool:
-        if isinstance(location, Location):
-            return self.range.contains(location.range)
-        return self.range.contains(location)
-
-    def copy_from(self, that: Location):
-        self.file = that.file
-        self.range = Range(Position(0, 0), Position(0, 0))
-        self.range.copy_from(that.range)
-        self._offset = that._offset
-        self._text = that._text
-
-    def union(self, other: Union[Location, Range]) -> Location:
-        other_range = other if isinstance(other, Range) else other.range
-        return Location(self.file, self.range.union(other_range))
-
-    @staticmethod
-    def reduce_union(locations: List[Location]) -> Location:
-        """ Reduces the union of all locations in the list. """
-        assert locations
-        location = locations[0]
-        for that in locations[1:]:
-            location = location.union(that)
-        return location
-    
-    @property
-    def offset(self) -> Tuple[int, int]:
-        """ Returns the range as a character offset tuple (begin:int, end:int) """
-        if self._offset is not None:
-            return self._offset
-        with open(self.file) as ref:
-            lines = ref.read().split('\n')
-            self._offset = (
-                sum(map(len,
-                        lines[:self.range.begin.line - 1])) + self.range.begin.line - 1 + self.range.begin.column - 1,
-                sum(map(len,
-                        lines[:self.range.end.line - 1])) + self.range.end.line - 1 + self.range.end.column - 1
-            )
-        return self._offset
-    
-    @property
-    def text(self) -> str:
-        """ Returns the string in the range by opening the file. """
-        try:
-            if self._text is not None:
-                return self._text
-            begin, end = self.offset
-            with open(self.file) as ref:
-                self._text = ref.read()[begin:end]
-            return self._text
-        except FileNotFoundError:
-            return None
-    
-    def to_json(self):
-        return f'{{"file":"{self.file}","range":{self.range.to_json()}}}'
-    
-    def to_link(self) -> str:
-        return self.range.begin.append_to_file(self.file)
-    
-    def __repr__(self):
-        return self.to_link()
-
-    @property
-    def relative(self) -> Location:
-        """ :returns Copy of the same location, but the file path is relative. """
-        location = Location(self.file, self.range, self._offset)
-        location._text = self._text
-        location.file = _path.relpath(self.file)
-        return location
-    
-    def __eq__(self, other):
-        if other is None:
-            return False
-        if not isinstance(other, Location):
-            return False
-        return _path.abspath(self.file) == _path.abspath(other.file) and self.range == other.range
-    
-    def __ne__(self, other):
-        return not (self == other)
-    
-    def __hash__(self):
-        return hash(_path.abspath(self.file)) ^ hash(self.range)
+    def __init__(self, uri: str, positionOrRange: Union[Position, Range]):
+        self.uri = uri
+        if isinstance(positionOrRange, Position):
+            self.range = Range(positionOrRange, positionOrRange)
+        else:
+            self.range = range

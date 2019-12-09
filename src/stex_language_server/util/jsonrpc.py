@@ -4,6 +4,8 @@ Specification from: https://www.jsonrpc.org/specification#overview
 from __future__ import annotations
 from typing import Optional, Union, List, Dict, Callable
 from concurrent.futures import thread
+import threading
+import time
 import json
 import http
 import socket
@@ -78,10 +80,10 @@ class ResponseMessage(Message):
     ''' A response message gives success or failure status in response
         to a request message with the same id.
     '''
-    def __init__(self, id: Union[str, int], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
+    def __init__(self, id: Union[str, int, None], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
         ''' Initializes a response message.
         Parameters:
-            id: The id of the request to respond to.
+            id: The id of the request to respond to. "None" if there was an error detecting the request id.
             result: Result of the method execution.
                 Result object should be json serializable or use a custom json encoder.
                 This must be "None" if the method failed.
@@ -132,7 +134,7 @@ class ErrorCodes(IntEnum):
 
 
 class ByteBuffer:
-    def __init__(self, maxsize: int = 1):
+    def __init__(self):
         self.buffer = b''
     
     def append(self, data: Union[str, bytes]):
@@ -141,10 +143,10 @@ class ByteBuffer:
         self.buffer += data
     
     def readln(self):
-        ln = None
         if b'\n' in self.buffer:
             ln, self.buffer = self.buffer.split(b'\n', maxsplit=1)
-        return str(ln)
+            return ln.decode('utf-8')
+        return None
     
     def size(self) -> int:
         return len(self.buffer)
@@ -158,78 +160,131 @@ class ByteBuffer:
         return data
 
 
-class JsonRpcClient:
-    def __init__(self, port: int, host: str = 'localhost'):
-        try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((host, port))
-        finally:
-            self.socket.close()
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, *args, **kwargs):
-        self.socket.close()
-    
-    def call(self, method: str, id: Union[str, int], params: Union[Dict[str, Any], List[Any]]):
-        pass
-
-
-class JsonRpcServer:
-    def __init__(
-        self,
-        methods: Dict[str, Callable],
-        host: str = 'localhost',
-        port: int = 0):
-        try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.bind((host, port))
-            self.host, self.port = self.socket.getsockname()
-            self.methods = methods
-        finally:
-            self.socket.close()
-    
-    def handle_client(self, conn: socket.socket, adr):
-        print('thread.start', adr)
-        buffer = ByteBuffer()
-        content_length = None
-        while True:
-            while content_length is None:
-                buffer.append(conn.recv(1024))
-                ln = buffer.readln()
-                if ln is not None:
-                    parts = ln.split(' ')
-                    if (not len(parts) == 2
-                        or parts[0].lower() != 'content-length:'
-                        or not parts[-1].isdigit()):
-                        print("invalid header", ln)
-                    else:
-                        content_length = int(parts[-1])
-                        print('content-length:', content_length)
-            while buffer.size() < content_length:
-                buffer.append(conn.recv(1024))
-            content = str(buffer.readbytes(content_length))
-            print('content:', content_length, content)
-            content_length = None
-        conn.close()
-        print('thread.end')
-
-    def server_forever(self, max_workers: int = None, backlog: int = None):
-        if backlog is not None:
-            self.socket.listen(backlog)
-        with thread.ThreadPoolExecutor(max_workers, 'jsonrpc-server') as executor:
-            while True:
-                conn, adr = self.socket.accept()
-                conn.recv(1024)
-                print('accepted', adr)
-                executor.submit(self.handle_client, conn, adr)
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, *args, **kwargs):
-        self.close()
+class JsonRpcBase:
+    def __init__(self):
+        self.closed = False
+        self.buffer = ByteBuffer()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
     def close(self):
+        if self.closed:
+            return
+        self.closed = True
         self.socket.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        self.close()
+
+    def _read(self, sock: socket.socket) -> str:
+        content_length = None
+        print('waiting for header')
+        while content_length is None:
+            self.buffer.append(sock.recv(32))
+            ln = self.buffer.readln()
+            if ln is not None:
+                print('line', ln)
+                parts = ln.split(' ')
+                if (len(parts) != 2
+                    or parts[0].lower() != 'content-length:'
+                    or not parts[-1].isdigit()):
+                    print("invalid header", ln)
+                else:
+                    content_length = int(parts[-1])
+                    print('content-length:', content_length)
+            else:
+                time.sleep(0)
+        while self.buffer.size() < content_length:
+            self.buffer.append(sock.recv(1024))
+            time.sleep(0)
+        content = str(self.buffer.readbytes(content_length))
+        print('<--', content, len(content), flush=True)
+        return content
+
+    def _send_message(self, sock: socket.socket, message: Union[RequestMessage, NotificationMessage, ResponseMessage]):
+        content = bytes(message.serialize(), 'utf-8')
+        data = bytes(f'content-length: {len(content)}\n', 'utf-8') + content
+        print('-->', data, len(content), flush=True)
+        sock.sendall(data)
+
+
+def jsonrps_client_method(name: str):
+    def outer(f):
+        @functools.wraps(f)
+        def wrapper(self: JsonRpcBase, *args, id: Union[str, int] = None, **kwargs):
+            if not isinstance(self, JsonRpcBase):
+                raise ValueError('Caller must extend JsonRpcBase')
+            if args and kwargs:
+                raise ValueError('jsonrpc does not allow mixed args and kwargs.')
+            if id is None:
+                message = NotificationMessage(method=name, params=args or kwargs)
+            else:
+                message = RequestMessage(id=id, method=name, params=args or kwargs)
+            return self._send_message(message)
+        return wrapper
+    return outer
+
+
+class JsonRpcClient(JsonRpcBase):
+    def __init__(self, port: int, host: str = 'localhost'):
+        super().__init__()
+        try:
+            self.socket.connect((host, port))
+            self.host, self.port = (host, port)
+        except:
+            self.closed = True
+            self.socket.close()
+            raise
+
+
+class JsonRpcServer(JsonRpcBase):
+    def __init__(self, port: int = 0, host: str = 'localhost'):
+        super().__init__()
+        try:
+            self.socket.bind((host, port))
+            self.host, self.port = self.socket.getsockname()
+        except:
+            self.closed = True
+            self.socket.close()
+            raise
+    
+    def handle_client(self, conn: socket.socket, adr):
+        print('thread.start', adr, flush=True)
+        try:
+            print(self._read(conn), flush=True)
+            self._send_message(conn, RequestMessage(1, 'test', {'value': {'object': True}}))
+            print(self._read(conn), flush=True)
+        finally:
+            conn.close()
+        print('thread.end', adr, flush=True)
+
+    def serve_forever(self, max_workers: int = None, backlog: int = 1):
+        self.socket.listen(backlog)
+        with thread.ThreadPoolExecutor(max_workers, 'jsonrpc-server') as executor:
+            while not self.closed:
+                conn, adr = self.socket.accept()
+                print('accepted', adr)
+                executor.submit(self.handle_client, conn, adr)
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='localhost')
+    parser.add_argument('--port', type=int, default=0)
+    subparser = parser.add_subparsers(dest='mode', required=True)
+    client_parser = subparser.add_parser('client')
+    server_parser = subparser.add_parser('server')
+
+    args = parser.parse_args()
+
+    if args.mode == 'client':
+        with JsonRpcClient(args.port, args.host) as client:
+            client._send_message(client.socket, NotificationMessage('start', [1,2,3]))
+            print(client._read(client.socket))
+            client._send_message(client.socket, ResponseMessage(1, {'success':True}))
+    elif args.mode == 'server':
+        with JsonRpcServer(args.port, args.host) as server:
+            print(f'created server at {server.host}:{server.port}')
+            server.serve_forever()

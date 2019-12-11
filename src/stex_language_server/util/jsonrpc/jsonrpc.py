@@ -1,16 +1,23 @@
 from __future__ import annotations
-from typing import Callable, Any, Optional, List, Dict
+from typing import Callable, Any, Optional, List, Dict, Union
 import itertools
 import functools
 import inspect
 import threading
 import json
 import traceback
+import io
+import socketserver
+import socket
+from ..buffer import ByteBuffer
+from ..promise import Promise
+from .util import JsonRcpContentBuffer
+from .util import json2message
 from .core import *
 
-__all__ = ['request', 'notification', 'method', 'json2message', 'JsonRpc']
+__all__ = ['request', 'notification', 'method', 'JsonRpc']
 
-def request(method: str = None):
+def request(method: str = None, block: bool = True):
     ''' Decorator that offloads the call to a JsonRpc server
         and blocks until the response has arrived.
         The function itself is NOT called. The function body should consist
@@ -21,7 +28,10 @@ def request(method: str = None):
     def decorator(f):
         @functools.wraps(f)
         def wrapper(self: JsonRpc, *args, **kwargs):
-            return self.submit_request(method or f.__name__, args, kwargs)
+            if args and kwargs:
+                raise ValueError('Mixing args and kwargs not allowed.')
+            message = RequestMessage(self.generate_id(), method or f.__name__, args or kwargs)
+            return self.send(message, block=block)
         return wrapper
     return decorator
 
@@ -36,7 +46,10 @@ def notification(method: str = None):
     def decorator(f):
         @functools.wraps(f)
         def wrapper(self: JsonRpc, *args, **kwargs):
-            self.submit_notification(method or f.__name__, args, kwargs)
+            if args and kwargs:
+                raise ValueError('Mixing args and kwargs not allowed.')
+            message = NotificationMessage(method or f.__name__, args or kwargs)
+            self.send(message)
         return wrapper
     return decorator
 
@@ -47,45 +60,9 @@ def method(name: str = None):
         return f
     return decorator
 
-def json2message(obj: object) -> Message:
-    ''' Parses the json object and attemps to restore the original Message object.
-    Returns:
-        Returns the original message object or raises a ValueError
-        if the json object is invalid.
-    '''
-    protocol = obj.get('jsonrpc')
-    if protocol is None or protocol != '2.0':
-        raise ValueError(f'Invalid protocol: {protocol}')
-    if 'method' in obj and 'id' in obj and obj['id'] is None:
-        raise ValueError('Request object must not have id "null".')
-    if 'params' in obj and obj['params'] is None:
-        raise ValueError('"params" must not be null.')
-    if 'result' in obj and 'error' in obj:
-        raise ValueError('"result" and "error" must not be present at the same time.')
-    if 'error' in obj and obj['error'] is None:
-        raise ValueError('"error" must not be null.')
-    if 'result' in obj and obj['result'] is None:
-        raise ValueError('"result" must not be null.')
-    if 'method' in obj:
-        method = obj.get('method')
-        params = obj.get('params')
-        if 'id' in obj:
-            return RequestMessage(obj['id'], method, params)
-        else:
-            return NotificationMessage(method, params)
-    elif 'result' in obj:
-        result = obj.get('result')
-        return ResponseMessage(obj.get('id'), result=result)
-    elif 'error' in obj:
-        error = obj.get('error')
-        return ResponseMessage(obj.get('id'), error=error)
-    else:
-        raise ValueError('Unable to restore message.')
-
-
 class JsonRpc:
     def __init__(self):
-        self.methods = []
+        self.methods = {}
         for attr in dir(self):
             if not attr.startswith('_'):
                 val = getattr(self, attr)
@@ -93,51 +70,66 @@ class JsonRpc:
                     name = val.jsonrpc_method_name
                     if name in self.methods:
                         raise ValueError(f'Two or more methods with the name: {name}')
-                    self.methods.append(name)
+                    self.methods[name] = val
+        self.__promises = {}
+        self.__promises_lock = threading.Lock()
+        self.__writer_lock = threading.Lock()
         self.__next_id = 1
-        self.__next_id_lock = threading.Lock()
+        self.__id_lock = threading.Lock()
 
-    def send(
-        self,
-        message: Union[Message, List[Message]],
-        target: Any = None) -> Union[object, List[ResponseMessage], None]:
-        ''' Sends a message or a batch of messages
-            and blocks until all responses have been resolved.
-            RequestMessages need to be resolveable using resolve().
-        Parameters:
-            message: A message or batch of messages to send.
-        Returns:
-            Result of a request if the message was a request.
-            Raises exception if the message was a request and failed.
-            Returns list of ResponseMessage if the message was a batch
-            regardless of if the request failed or not.
-            Returns None if the message was not a request or if 
-            not request was inside the batch.
-        '''
-        raise NotImplementedError()
-
-    def resolve(self, response: ResponseMessage):
-        ' Resolves pending requests with the same id as the response. '
+    def get_default_target(self) -> io.BytesIO:
         raise NotImplementedError()
     
     def generate_id(self):
-        ' Generates the next id. Threadsafe. '
-        with self.__next_id_lock:
+        with self.__id_lock:
             id = self.__next_id
             self.__next_id += 1
         return id
-    
-    def submit_request(self, method: str, args, kwargs, target: Any = None) -> object:
-        ' Creates a request object and sends it. Returns the result or raises if the request failed. '
-        if args and kwargs:
-            raise ValueError('Mixing of args and kwargs is not allowed.')
-        return self.send(RequestMessage(self.generate_id(), method, args or kwargs), target=target)
 
-    def submit_notification(self, method: str, args, kwargs, target: Any = None):
-        ' Creates a notification object and sends it. Returns the result of send(). Returns immediately. '
-        if args and kwargs:
-            raise ValueError('Mixing of args and kwargs is not allowed')
-        return self.send(NotificationMessage(method, args or kwargs), target=target)
+    def send(
+        self,
+        message_or_batch: Union[Message, List[Message]],
+        target: io.BytesIO = None,
+        block: bool = True) -> Optional[ResponseMessage, List[ResponseMessage]]:
+        stream = target or self.get_default_target()
+        if not stream.writable:
+            raise ValueError('target must be writable.')
+        if isinstance(message_or_batch, Message):
+            serialized = message_or_batch.serialize()
+            if isinstance(message_or_batch, RequestMessage):
+                promise = Promise()
+                with self.__promises_lock:
+                    self.__promises[message_or_batch.id] = promise
+        else:
+            serialized = '[' + ','.join(msg.serialize() for msg in message_or_batch) + ']'
+            promises = []
+            for msg in message_or_batch:
+                if isinstance(msg, RequestMessage):
+                    promise = Promise()
+                    promises.append(promise)
+                    with self.__promises_lock:
+                        self.__promises[msg.id] = promise
+        data = bytes(serialized, 'utf-8')
+        header = bytes(f'content-length: {len(data)}\n\n', 'utf-8')
+        with self.__writer_lock:
+            count = stream.write(header)
+            count += stream.write(data)
+        if count != len(data) + len(header):
+            raise ValueError('Stream failed to write all bytes.')
+        if isinstance(message_or_batch, RequestMessage):
+            if block:
+                return promise.get()
+            else:
+                return promise
+        else:
+            if block:
+                return [
+                    promise.get()
+                    for promise in promises
+                ]
+            else:
+                return promises
+        return None
 
     def call(self, method: str, params: Union[List[Any], Dict[str, Any]] = None) -> Any:
         ''' Executes <method> by applying <params> and returns the methods return value.
@@ -150,24 +142,15 @@ class JsonRpc:
         if method not in self.methods:
             raise ValueError(f'Unknown method: {method}')
         if params is None:
-            return getattr(self, method)()
+            return self.methods[method]()
         if isinstance(params, (list, tuple)):
-            return getattr(self, method)(*params)
+            return self.methods[method](*params)
         if isinstance(params, dict):
-            return getattr(self, method)(**params)
+            return self.methods[method](**params)
         else:
             raise ValueError(f'Invalid params type: {type(params)}')
 
     def receive(self, raw_message: str) -> Union[Message, List[Message]]:
-        ''' Handles a still serialized message received from the server
-            or a client. The message is desierialized and exececuted
-            if it is a request or notification. The request response
-            message is returned and needs to be send to the partner.
-        Parameters:
-            raw_message: A raw message from client or server.
-        Returns:
-            A response or batch of responses that need to be send.
-        '''
         try:
             obj = json.loads(raw_message)
         except json.JSONDecodeError:
@@ -196,11 +179,11 @@ class JsonRpc:
             if message.method not in self.methods:
                 return ResponseMessage(message.id, error=METHOD_NOT_FOUND)
             try:
-                if hasattr(message.params):
+                if hasattr(message, 'params'):
                     result = self.call(message.method, message.params)
                 else:
                     result = self.call(message.method)
-            except TypeError:
+            except TypeError as e:
                 return ResponseMessage(message.id, error=INVALIDA_PARAMS)
             except Exception as e:
                 return ResponseMessage(message.id, error=ErrorObject(
@@ -211,11 +194,16 @@ class JsonRpc:
                 try:
                     self.call(message.method, message.params)
                 except Exception:
-                    traceback.print_exec()
+                    pass
         elif isinstance(message, ResponseMessage):
-            self.resolve(message)
+            if message.id in self.__promises:
+                self.__promises[message.id].resolve(message)
+                with self.__promises_lock:
+                    del self.__promises[message.id]
         else:
             return ResponseMessage(
+                None,
                 error=ErrorObject(
                     ErrorCodes.InternalError,
                     data=f'Unknown message type: {type(message)}'))
+

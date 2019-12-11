@@ -8,7 +8,9 @@ import json
 import traceback
 from .core import *
 
-def request(method: str = None, target_getter: Callable[[JsonRpc], Any] = None):
+__all__ = ['request', 'notification', 'method', 'json2message', 'JsonRpc']
+
+def request(method: str = None):
     ''' Decorator that offloads the call to a JsonRpc server
         and blocks until the response has arrived.
         The function itself is NOT called. The function body should consist
@@ -19,11 +21,11 @@ def request(method: str = None, target_getter: Callable[[JsonRpc], Any] = None):
     def decorator(f):
         @functools.wraps(f)
         def wrapper(self: JsonRpc, *args, **kwargs):
-            return self.submit_request(method or f.__name__, args, kwargs, target=target_getter(self) if target_getter else None)
+            return self.submit_request(method or f.__name__, args, kwargs)
         return wrapper
     return decorator
 
-def notification(method: str = None, target_getter: Callable[[JsonRpc], Any] = None):
+def notification(method: str = None):
     ''' Decorator that offloads the call to a JsonRpc server.
         Returns immediatly and no results or errors will be recoverable.
         The function itself is NOT called. The function body should consist
@@ -34,7 +36,7 @@ def notification(method: str = None, target_getter: Callable[[JsonRpc], Any] = N
     def decorator(f):
         @functools.wraps(f)
         def wrapper(self: JsonRpc, *args, **kwargs):
-            self.submit_notification(method or f.__name__, args, kwargs, target=target_getter(self) if target_getter else None)
+            self.submit_notification(method or f.__name__, args, kwargs)
         return wrapper
     return decorator
 
@@ -44,6 +46,42 @@ def method(name: str = None):
         f.jsonrpc_method_name = name or f.__name__
         return f
     return decorator
+
+def json2message(obj: object) -> Message:
+    ''' Parses the json object and attemps to restore the original Message object.
+    Returns:
+        Returns the original message object or raises a ValueError
+        if the json object is invalid.
+    '''
+    protocol = obj.get('jsonrpc')
+    if protocol is None or protocol != '2.0':
+        raise ValueError(f'Invalid protocol: {protocol}')
+    if 'method' in obj and 'id' in obj and obj['id'] is None:
+        raise ValueError('Request object must not have id "null".')
+    if 'params' in obj and obj['params'] is None:
+        raise ValueError('"params" must not be null.')
+    if 'result' in obj and 'error' in obj:
+        raise ValueError('"result" and "error" must not be present at the same time.')
+    if 'error' in obj and obj['error'] is None:
+        raise ValueError('"error" must not be null.')
+    if 'result' in obj and obj['result'] is None:
+        raise ValueError('"result" must not be null.')
+    if 'method' in obj:
+        method = obj.get('method')
+        params = obj.get('params')
+        if 'id' in obj:
+            return RequestMessage(obj['id'], method, params)
+        else:
+            return NotificationMessage(method, params)
+    elif 'result' in obj:
+        result = obj.get('result')
+        return ResponseMessage(obj.get('id'), result=result)
+    elif 'error' in obj:
+        error = obj.get('error')
+        return ResponseMessage(obj.get('id'), error=error)
+    else:
+        raise ValueError('Unable to restore message.')
+
 
 class JsonRpc:
     def __init__(self):
@@ -58,6 +96,29 @@ class JsonRpc:
                     self.methods.append(name)
         self.__next_id = 1
         self.__next_id_lock = threading.Lock()
+
+    def send(
+        self,
+        message: Union[Message, List[Message]],
+        target: Any = None) -> Union[object, List[ResponseMessage], None]:
+        ''' Sends a message or a batch of messages
+            and blocks until all responses have been resolved.
+            RequestMessages need to be resolveable using resolve().
+        Parameters:
+            message: A message or batch of messages to send.
+        Returns:
+            Result of a request if the message was a request.
+            Raises exception if the message was a request and failed.
+            Returns list of ResponseMessage if the message was a batch
+            regardless of if the request failed or not.
+            Returns None if the message was not a request or if 
+            not request was inside the batch.
+        '''
+        raise NotImplementedError()
+
+    def resolve(self, response: ResponseMessage):
+        ' Resolves pending requests with the same id as the response. '
+        raise NotImplementedError()
     
     def generate_id(self):
         ' Generates the next id. Threadsafe. '
@@ -66,34 +127,19 @@ class JsonRpc:
             self.__next_id += 1
         return id
     
-    def submit_request(self, method: str, args, kwargs, target: Optional[Any] = None) -> Any:
-        ' Creates a request object and sends it to the target. Blocks until send() is resolved. '
+    def submit_request(self, method: str, args, kwargs, target: Any = None) -> object:
+        ' Creates a request object and sends it. Returns the result or raises if the request failed. '
         if args and kwargs:
             raise ValueError('Mixing of args and kwargs is not allowed.')
-        return self.send(RequestMessage(self.generate_id(), method, args or kwargs), target)
+        return self.send(RequestMessage(self.generate_id(), method, args or kwargs), target=target)
 
-    def submit_notification(self, method: str, args, kwargs, target: Optional[Any] = None):
-        ' Creates a notification object and sends it to the target. Returns immediately. '
+    def submit_notification(self, method: str, args, kwargs, target: Any = None):
+        ' Creates a notification object and sends it. Returns the result of send(). Returns immediately. '
         if args and kwargs:
             raise ValueError('Mixing of args and kwargs is not allowed')
-        self.send(NotificationMessage(method, args or kwargs), target)
+        return self.send(NotificationMessage(method, args or kwargs), target=target)
 
-    def send(self, message: Union[Message, List[Message]], target: Optional[Any] = None) -> Optional[Any, List[Any]]:
-        ''' Sends a message or a batch of messages to the target
-            and blocks until all responses have been resolved.
-        Parameters:
-            message: A message or batch of messages to send to the target.
-            target: An optional identifier for the target to send the message to.
-        Returns:
-            Response or list of responses from the target.
-        '''
-        raise NotImplementedError()
-    
-    def resolve(self, response: ResponseMessage):
-        ' Resolves pending requests with the same id as the response. '
-        raise NotImplementedError()
-
-    def call(self, method: str, params: Union[List[Any], Dict[str, Any]]) -> Any:
+    def call(self, method: str, params: Union[List[Any], Dict[str, Any]] = None) -> Any:
         ''' Executes <method> by applying <params> and returns the methods return value.
         Parameters:
             method: Method identifier.
@@ -112,7 +158,7 @@ class JsonRpc:
         else:
             raise ValueError(f'Invalid params type: {type(params)}')
 
-    def handle(self, raw_message: str) -> Union[Message, List[Message]]:
+    def receive(self, raw_message: str) -> Union[Message, List[Message]]:
         ''' Handles a still serialized message received from the server
             or a client. The message is desierialized and exececuted
             if it is a request or notification. The request response
@@ -127,21 +173,21 @@ class JsonRpc:
         except json.JSONDecodeError:
             return PARSE_ERROR
         if isinstance(obj, list):
-            batch = []
-            for ok, message in map(self.__restore_message(obj)):
-                if ok:
-                    response = self.__handle_message(message)
-                    if response:
-                        batch.append(response)
-                else:
-                    batch.append(response)
-            response = batch
+            response = []
+            for raw in obj:
+                try:
+                    message = json2message(raw)
+                    response_message = self.__handle_message(message)
+                except ValueError:
+                    response_message = INVALID_REQUEST
+                if response_message is not None:
+                    response.append(response_message)
         else:
-            ok, message = self.__restore_message(obj)
-            if ok:
+            try:
+                message = json2message(obj)
                 response = self.__handle_message(message)
-            else:
-                response = message
+            except ValueError:
+                response = INVALID_REQUEST
         return response
     
     def __handle_message(self, message: Message) -> Optional[ResponseMessage]:
@@ -150,8 +196,10 @@ class JsonRpc:
             if message.method not in self.methods:
                 return ResponseMessage(message.id, error=METHOD_NOT_FOUND)
             try:
-                params = message.params if hasattr(message, 'params') else None
-                result = self.call(message.method, params)
+                if hasattr(message.params):
+                    result = self.call(message.method, message.params)
+                else:
+                    result = self.call(message.method)
             except TypeError:
                 return ResponseMessage(message.id, error=INVALIDA_PARAMS)
             except Exception as e:
@@ -168,44 +216,6 @@ class JsonRpc:
             self.resolve(message)
         else:
             return ResponseMessage(
-                None,
                 error=ErrorObject(
                     ErrorCodes.InternalError,
                     data=f'Unknown message type: {type(message)}'))
-
-    def __restore_message(self, obj: object) -> Tuple[bool, Message]:
-        ''' Parses the json object and attemps to restore the original Message object.
-        Returns:
-            Tuple of bool and Message.
-            If the bool is True, then the message is the restored message.
-            If the bool is False, then the message could not be restored
-            or is in an illegal state, therefore an error response object is returned.
-        '''
-        protocol = obj.get('jsonrpc')
-        if protocol is None or protocol != '2.0':
-            return (False, INVALID_REQUEST)
-        if 'result' in obj and 'error' in obj:
-            return (False, INVALID_REQUEST)
-        id = obj.get('id')
-        if 'method' in obj:
-            method = obj.get('method')
-            params = obj.get('params')
-            print(id, method, params)
-            if 'params' in obj and params is None:
-                return (False, INVALID_REQUEST)
-            if 'id' in obj:
-                return (True, RequestMessage(id, method, params))
-            else:
-                return (True, NotificationMessage(method, params))
-        elif 'result' in obj:
-            result = obj.get('result')
-            if result is None:
-                return (False, INVALID_REQUEST)
-            return (True, ResponseMessage(id, result=result))
-        elif 'error' in obj:
-            error = obj.get('error')
-            if error is None:
-                return (False, INVALID_REQUEST)
-            return (True, ResponseMessage(id, error=error))
-        else:
-            return (False, INVALID_REQUEST)

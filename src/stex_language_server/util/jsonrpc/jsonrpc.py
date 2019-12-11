@@ -91,9 +91,6 @@ class JsonRpc:
         message_or_batch: Union[Message, List[Message]],
         target: io.BytesIO = None,
         block: bool = True) -> Optional[ResponseMessage, List[ResponseMessage]]:
-        stream = target or self.get_default_target()
-        if not stream.writable:
-            raise ValueError('target must be writable.')
         if isinstance(message_or_batch, Message):
             serialized = message_or_batch.serialize()
             if isinstance(message_or_batch, RequestMessage):
@@ -111,6 +108,7 @@ class JsonRpc:
                         self.__promises[msg.id] = promise
         data = bytes(serialized, 'utf-8')
         header = bytes(f'content-length: {len(data)}\n\n', 'utf-8')
+        stream = target or self.get_default_target()
         with self.__writer_lock:
             count = stream.write(header)
             count += stream.write(data)
@@ -121,7 +119,7 @@ class JsonRpc:
                 return promise.get()
             else:
                 return promise
-        else:
+        elif isinstance(message_or_batch, list):
             if block:
                 return [
                     promise.get()
@@ -155,23 +153,29 @@ class JsonRpc:
             obj = json.loads(raw_message)
         except json.JSONDecodeError:
             return PARSE_ERROR
+        if not isinstance(obj, (list, dict)):
+            return INVALID_REQUEST
         if isinstance(obj, list):
-            response = []
+            responses = []
             for raw in obj:
                 try:
                     message = json2message(raw)
-                    response_message = self.__handle_message(message)
+                    response = self.__handle_message(message)
                 except ValueError:
-                    response_message = INVALID_REQUEST
-                if response_message is not None:
-                    response.append(response_message)
+                    response = INVALID_REQUEST
+                except:
+                    response = INTERNAL_ERROR
+                if response is not None:
+                    responses.append(response)
+            return responses
         else:
             try:
                 message = json2message(obj)
-                response = self.__handle_message(message)
+                return self.__handle_message(message)
             except ValueError:
-                response = INVALID_REQUEST
-        return response
+                return INVALID_REQUEST
+            except:
+                return INTERNAL_ERROR
     
     def __handle_message(self, message: Message) -> Optional[ResponseMessage]:
         ' A helper that creates response messages according to message type. '

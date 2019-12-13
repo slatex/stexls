@@ -62,12 +62,12 @@ class RequestMessage(Message):
         super().__init__()
         if id is None:
             raise ValueError('RequestMessage id must not be "None"')
-        if params is not None and not isinstance(params, (dict, list, tuple)):
+        if not (params is None or isinstance(params, (dict, list, tuple))):
             raise ValueError(f'Invalid params type, allowed are list, dict and None: {type(params)}')
+        self.id = id
         self.method = method
         if params is not None:
             self.params = params
-        self.id = id
 
 
 class NotificationMessage(Message):
@@ -88,7 +88,8 @@ class ResponseMessage(Message):
     ''' A response message gives success or failure status in response
         to a request message with the same id.
     '''
-    def __init__(self, id: Optional[Union[str, int]], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
+    def __init__(
+        self, id: Optional[Union[str, int]], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
         ''' Initializes a response message.
         Parameters:
             id: The id of the request to respond to. "None" if there was an error detecting the request id.

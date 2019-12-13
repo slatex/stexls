@@ -1,0 +1,15 @@
+\begin{modsig}[creators=marian]{test_module}
+    \gimport{import1}
+    \gimport{import2a}{import2b}
+    \gimport[base1/simple]{import3a}{import3b}{import3c}
+    \gimport*{import*4a}{import*4b}{import*4c}
+    \gimport*[base2/simple]{import*5}
+
+    \symtest[test1a]{test1b}{test2c}{test2d} %should be ignored
+    \symdef[name=def1]{def1a}{def1b}{def1c}
+    \symdef[name=def2]{def2}
+
+    \symi{symi1}
+    \symii{symii2a}{symii2b}
+    \symiii*{symiii*3a}{symiii*3b}{symiii*3c}
+\end{modsig}

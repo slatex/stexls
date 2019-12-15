@@ -96,10 +96,10 @@ class Message:
         log.debug('Decoding content as "%s"', charset)
         return self.content.decode(charset)
 
-    def serialize(self) -> bytes:
+    def serialize(self, header_encoding: str = 'utf-8', linebreak: str = b'\r\n') -> bytes:
         actual_length = len(self.content)
         content_length = self.header.get_value('content-length')
-        header = self.header.serialize()
+        header = self.header.serialize(encoding=header_encoding, linebreak=linebreak)
         if actual_length != content_length:
             raise ValueError(
                 f'Header content-length ({content_length}) '

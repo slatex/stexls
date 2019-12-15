@@ -58,7 +58,7 @@ class JsonRpcProtocol:
         self._connections = {}
         self.dispatcher_factory = dispatcher_factory
     
-    async def on_connect(self, reader, writer):
+    async def on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peername = writer.get_extra_info('peername')
         if peername in self._connections:
             raise ValueError(f'Peername already connected: {peername}')

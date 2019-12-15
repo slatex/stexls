@@ -80,13 +80,28 @@ class DispatcherBase:
             self.__next_id += 1
         return id
     
-    def request(self, method: str, params: Union[list, dict]):
+    def request(self, method: str, params: Union[list, dict]) -> Any:
         message = RequestMessage(self.__generate_id(), method, params)
         return self.send(message)
     
-    def notification(self, method: str, params: Union[list, dict]):
+    def notification(self, method: str, params: Union[list, dict]) -> Any:
         message = NotificationMessage(method, params)
         return self.send(message)
     
-    def send(self, *message: Message, as_batch: bool = True):
-        return self.__target.receive(*message)
+    async def send(self, *message: Message, as_batch: bool = True):
+        return await self.__target.receive(*message)
+    
+    def call(self, method: str, params: Union[list, dict, None], id: Union[int, str] = None) -> ResponseMessage:
+        fn = self.__methods.get(method)
+        if not fn:
+            return ResponseMessage(id, error=ErrorObject(ErrorCodes.MethodNotFound))
+        try:
+            if params is None:
+                result = fn()
+            elif isinstance(params, list):
+                result = fn(*params)
+            elif isinstance(params, dict):
+                result = fn(**params)
+        except TypeError:
+            return ResponseMessage(id, error=ErrorObject(ErrorCodes.InvalidParams))
+        return ResponseMessage(id, result=result)

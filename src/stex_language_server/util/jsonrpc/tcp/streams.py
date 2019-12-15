@@ -54,3 +54,18 @@ class MessageReaderStream:
                     log.warning('Resetting after invalid line: "%s"', line.strip())
                     self._header.reset()
                     continue
+
+
+class MessageWriterStream:
+    def __init__(
+        self,
+        writer: asyncio.StreamWriter,
+        header_encoding: str = 'utf-8',
+        linebreak: bytes = b'\r\n'):
+        self._writer = writer
+        self._header_encoding = header_encoding
+        self._linebreak = linebreak
+    
+    async def write(self, message: Message):
+        data = message.serialize(self._header_encoding, self._linebreak)
+        return await self._writer.write(data)

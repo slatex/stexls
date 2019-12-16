@@ -1,7 +1,7 @@
 from typing import Optional
 from .core import Message, ResponseMessage, RequestMessage, NotificationMessage, ErrorCodes, ErrorObject
 
-__all__ = ['validate_json', 'restore_message', 'RestoreException']
+__all__ = ['validate_json', 'restore_message']
 
 def validate_json(o: object) -> Optional[ResponseMessage]:
     ''' Validates a json object.
@@ -29,10 +29,6 @@ def validate_json(o: object) -> Optional[ResponseMessage]:
         or (id and not method and not params and result and not error)
         or (id and not method and not params and not result and error)):
         return INVALID
-
-
-class RestoreException(Exception):
-    ' Exception raise by restore_message if the json is not a Message. '
 
 
 def restore_message(o: object) -> Message:

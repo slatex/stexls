@@ -144,12 +144,11 @@ class RestoreException(Exception):
 
 
 def restore_message(o: object) -> Message:
-    ''' Restores the original message given as a json object or raises
-        a RestoreException with the response object if the object
-        is not a valid message. '''
-    invalid = validate_json(o)
-    if invalid is not None:
-        raise RestoreException(invalid)
+    ''' Restores the original message from a given json object.
+        Assumes that the object is valid.
+    Return:
+        Original message, assuming the input is correct.
+    '''
     if 'method' in o:
         if 'id' in o:
             return RequestMessage(

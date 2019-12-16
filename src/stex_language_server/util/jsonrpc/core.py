@@ -111,6 +111,12 @@ class ResponseMessage(Message):
         self.id = id
 
 def validate_json(o: object) -> Optional[ResponseMessage]:
+    ''' Validates a json object.
+    Returns:
+        Nothing if the object can be as a core.Message
+        else returns a ResponseMessage with the error 
+        that can be sent back.
+    '''
     INVALID = ResponseMessage(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
     id = 'id' in o
     not_null = id and o['id'] is not None

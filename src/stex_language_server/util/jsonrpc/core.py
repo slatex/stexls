@@ -16,6 +16,8 @@ __all__ = [
     'NotificationMessage',
     'ResponseMessage',
     'validate_json',
+    'RestoreException',
+    'restore_message',
     'ErrorObject',
     'ErrorCodes',
     'PARSE_ERROR',
@@ -129,6 +131,29 @@ def validate_json(o: object) -> Optional[ResponseMessage]:
         or (id and not method and not params and result and not error)
         or (id and not method and not params and not result and error)):
         return INVALID
+
+
+class RestoreException(Exception):
+    ' Exception raise by restore_message if the json is not a Message. '
+
+
+def restore_message(o: object) -> Message:
+    ''' Restores the original message given as a json object or raises
+        a RestoreException with the response object if the object
+        is not a valid message. '''
+    invalid = validate_json(o)
+    if invalid is not None:
+        raise RestoreException(invalid)
+    if 'method' in o:
+        if 'id' in o:
+            return RequestMessage(
+                id=o['id'], method=o['method'], params=p.get('params'))
+        else:
+            return NotificationMessage(
+                method=o['method'], params=o.get('params'))
+    else:
+        return ResponseMessage(
+            id=o.get('id'), result=o.get('result'), error=o.get('error'))
 
 
 class ErrorObject:

@@ -79,29 +79,6 @@ class JsonRpcProtocol:
     def __init__(self, dispatcher: DispatcherBase):
         self._dispatcher = dispatcher
 
-    async def serve_forever(
-        self, host: str = 'localhost', port: int = 0):
-        server = await asyncio.start_server(
-            self.on_connect, host, port)
-        info = server.sockets[0].getsockname()
-        log.info('Started server at %s', info)
-        try:
-            async with server:
-                await server.serve_forever()
-        finally:
-            await self._dispatcher.close()
-        log.debug('Server %s serve_forever() finished.', info)
-    
-    async def open_connection(
-        self, host: str = 'localhost', port: int = 0):
-        log.info('Connecting client to %s:%i', host, port)
-        reader, writer = await asyncio.open_connection(host, port)
-        try:
-            await self.on_connect(reader, writer)
-        finally:
-            await self._dispatcher.close()
-        log.info('Client connection to %s:%i finished.', host, port)
-
     async def on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peername = writer.get_extra_info('peername')
         incoming_messages = asyncio.Queue()

@@ -134,8 +134,8 @@ class DispatcherBase:
             log.debug('Sending %s to %s', message, target)
             await outputs.put(message)
 
-    async def _execute_task(self, target: Any, message: Message):
-        log.debug('Executing task message: %s', message)
+    async def _handle_message_task(self, target: Any, message: Message):
+        log.debug('Handling message: %s', message)
         if isinstance(message, RequestMessage):
             log.debug('Executing request %s (%s).', message.id, message.method)
             params = getattr(message, 'params', None)
@@ -182,7 +182,7 @@ class DispatcherBase:
                     log.info('Dispatcher receive_task terminator received from %s.',target)
                     break
                 log.debug('Received message %s from %s.', message, target)
-                asyncio.create_task(self._execute_task(target, message))
+                asyncio.create_task(self._handle_message_task(target, message))
         finally:
             log.debug('Receive task finished, inserting terminator into send task.')
             await self.__targets[target].put(None)

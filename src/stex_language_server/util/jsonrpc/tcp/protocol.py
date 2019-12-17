@@ -86,11 +86,11 @@ class JsonRpcProtocol:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter):
         peername = writer.get_extra_info('peername')
+        log.info('Protocol connected to %s.', peername)
         self._connections[peername].set_result(True)
         incoming_messages = asyncio.Queue()
         outgoing_messages = asyncio.Queue()
         try:
-            log.info('Starting receive, send, read and write task with %s.', peername)
             receive_task = self._dispatcher.receive_task(peername, incoming_messages)
             send_task  = self._dispatcher.send_task(peername, outgoing_messages)
             reader_task = _read_input_stream(reader, incoming_messages, outgoing_messages)
@@ -99,11 +99,9 @@ class JsonRpcProtocol:
                 receive_task,
                 send_task,
                 reader_task,
-                writer_task,
-                )
-            log.info('Receive, send, read and write tasks of %s finished.', peername)
+                writer_task)
+            log.info('Protocol receive, send read and write tasks exited.')
         finally:
             writer.close()
             del self._connections[peername]
             log.info('Closing connection to %s.', peername)
-

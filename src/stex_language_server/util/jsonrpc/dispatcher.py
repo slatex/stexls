@@ -74,7 +74,7 @@ class DispatcherBase:
         return id
     
     async def request(self, method: str, params: Union[list, dict], target: Any = None) -> Any:
-        log.info('Sending request for %s to %s.', method, target)
+        log.info('Sending request for %s(%s) to %s.', method, params, target)
         message = RequestMessage(self.__generate_id(), method, params)
         await self.__targets[target or await self.__default_target].put(message)
         try:
@@ -84,7 +84,7 @@ class DispatcherBase:
             del self.__requests[message.id]
     
     async def notification(self, method: str, params: Union[list, dict], target: Any = None) -> Any:
-        log.info('Sending notification %s', method)
+        log.info('Sending notification %s(%s) to %s', method, params, target)
         message = NotificationMessage(method, params)
         await self.__targets[target or await self.__default_target].put(message)
 
@@ -96,7 +96,7 @@ class DispatcherBase:
                 return 
             return ResponseMessage(id, error=ErrorObject(ErrorCodes.MethodNotFound))
         try:
-            log.info('%s(%s) called under id %s.', method, params, id)
+            log.info('%s(%s) called with id %s.', method, params, id)
             if params is None:
                 result = fn()
             elif isinstance(params, list):
@@ -134,6 +134,41 @@ class DispatcherBase:
             log.debug('Sending %s to %s', message, target)
             await outputs.put(message)
 
+    async def _execute_task(self, target: Any, message: Message):
+        log.debug('Executing task message: %s', message)
+        if isinstance(message, RequestMessage):
+            log.debug('Executing request %s (%s).', message.id, message.method)
+            params = getattr(message, 'params', None)
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, self.call, message.method, params, message.id)
+            log.debug('Putting response %s in %s', response, self.__targets[target])
+            await self.__targets[target].put(response)
+        elif isinstance(message, NotificationMessage):
+            log.debug('Executing notification %s.', message.method)
+            params = getattr(message, 'params', None)
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, self.call, message.method, params)
+        elif isinstance(message, ResponseMessage):
+            log.debug('Received response %s.', message.id)
+            if message.id is None:
+                if hasattr(message, 'error'):
+                    log.warning('JsonRpcError(%i): %s', message.error.code, message.error.message)
+                else:
+                    log.warning('Response without id from %s: %s', target, message.result)
+            elif message.id not in self.__requests:
+                log.warning('Received response for non-existend id %s.', message.id)
+            elif hasattr(message, 'error'):
+                log.warning('Resolving request %s with error (%s): %s.',
+                    message.id, message.error.code, message.error.message)
+                self.__requests[message.id].set_exception(Exception(message.error.message))
+            else:
+                log.info('Resolving request %s.', message.id)
+                self.__requests[message.id].set_result(message.result)
+        else:
+            log.error('Invalid message type received: %s', type(message))
+
     async def receive_task(self, target: Any, inputs: asyncio.Queue):
         log.info('Starting dispatcher receive_task from %s.', target)
         if not self.__default_target.done():
@@ -147,34 +182,7 @@ class DispatcherBase:
                     log.info('Dispatcher receive_task terminator received from %s.',target)
                     break
                 log.debug('Received message %s from %s.', message, target)
-                if isinstance(message, RequestMessage):
-                    log.debug('Executing request %s (%s).', message.id, message.method)
-                    params = getattr(message, 'params', None)
-                    response = self.call(message.method, params, message.id)
-                    log.debug('Putting response %s in %s', response, self.__targets[target])
-                    await self.__targets[target].put(response)
-                elif isinstance(message, NotificationMessage):
-                    log.debug('Executing notification %s.', message.method)
-                    params = getattr(message, 'params', None)
-                    self.call(message.method, params)
-                elif isinstance(message, ResponseMessage):
-                    log.debug('Received response %s.', message.id)
-                    if message.id is None:
-                        if hasattr(message, 'error'):
-                            log.warning('JsonRpcError(%i): %s', message.error.code, message.error.message)
-                        else:
-                            log.warning('Response without id from %s: %s', target, message.result)
-                    elif message.id not in self.__requests:
-                        log.warning('Received response for non-existend id %s.', message.id)
-                    elif hasattr(message, 'error'):
-                        log.warning('Resolving request %s with error (%s): %s.',
-                            message.id, message.error.code, message.error.message)
-                        self.__requests[message.id].set_exception(Exception(message.error.message))
-                    else:
-                        log.info('Resolving request %s.', message.id)
-                        self.__requests[message.id].set_result(message.result)
-                else:
-                    log.error('Invalid message type received: %s', type(message))
+                asyncio.create_task(self._execute_task(target, message))
         finally:
             log.debug('Receive task finished, inserting terminator into send task.')
             await self.__targets[target].put(None)

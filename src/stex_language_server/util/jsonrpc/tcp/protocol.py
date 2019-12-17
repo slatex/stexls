@@ -64,10 +64,12 @@ async def _write_output_stream(
                 serialized = message.serialize()
             except:
                 log.exception('Failed to serialize message.')
+                continue
             try:
                 stream_writer.write(serialized)
             except:
                 log.exception('Failed to write serialized:\n\n%s', serialized)
+                continue
     finally:
         log.info('Writer task finished.')
         writer.close()

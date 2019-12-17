@@ -71,12 +71,16 @@ class Header:
     
     def serialize(self, encoding: str = 'utf-8', linebreak: str = '\r\n') -> bytes:
         if not self.ready():
+            log.error('Attempting to serialize invalid header')
             raise ValueError('Header not ready to be serialized.')
+        log.debug('Serializing header (%i items).', len(self.header_items))
+        for item in self.header_items.values():
+            log.debug('HeaderItem: %s=%s', item.name, item.value)
         s = linebreak.join(
             f'{item.name}: {item.value}'
             for item in self.header_items.values()
             if item.value is not None)
-        return bytes(s + linebreak, encoding)
+        return bytes(s + linebreak + linebreak, encoding)
 
 
 class Message:
@@ -96,14 +100,14 @@ class Message:
         log.debug('Decoding content as "%s"', charset)
         return self.content.decode(charset)
 
-    def serialize(self, header_encoding: str = 'utf-8', linebreak: str = b'\r\n') -> bytes:
+    def serialize(self, header_encoding: str = 'utf-8', linebreak: str = '\r\n') -> bytes:
         actual_length = len(self.content)
         content_length = self.header.get_value('content-length')
-        header = self.header.serialize(encoding=header_encoding, linebreak=linebreak)
         if actual_length != content_length:
             raise ValueError(
                 f'Header content-length ({content_length}) '
                 f'and actual content length ({actual_length}) do not match.')
+        header = self.header.serialize(encoding=header_encoding, linebreak=linebreak)
         return header + self.content
 
 __all__ = ['Message', 'Header', 'HeaderItem']

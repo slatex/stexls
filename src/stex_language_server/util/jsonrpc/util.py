@@ -22,7 +22,7 @@ def validate_json(o: object) -> Optional[ResponseMessage]:
         or (id and not isinstance(o.get('id'), (int, str)))
         or (method and not isinstance(o['method'], str))
         or (params and not isinstance(o['params'], (list, dict)))
-        or (error and (not isinstance(o['error'], dict) or 'code' not in o['error'] or 'message' not in o))):
+        or (error and (not isinstance(o['error'], dict) or 'code' not in o['error'] or 'message' not in o['error']))):
         return INVALID
     if not (
         ((not_null or not id) and method and not result and not error)
@@ -45,5 +45,12 @@ def restore_message(o: object) -> Message:
             return NotificationMessage(
                 method=o['method'], params=o.get('params'))
     else:
+        if 'error' in o:
+            error = ErrorObject(
+                code=o['error']['code'],
+                message=o['error']['message'],
+                data=o['error'].get('data', None))
+        else:
+            error = None
         return ResponseMessage(
-            id=o.get('id'), result=o.get('result'), error=o.get('error'))
+            id=o.get('id'), result=o.get('result'), error=error)

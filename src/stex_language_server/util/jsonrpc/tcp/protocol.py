@@ -2,6 +2,7 @@ from typing import AsyncGenerator, Callable
 import asyncio
 import logging
 import json
+from collections import defaultdict
 from .streams import MessageReaderStream, MessageWriterStream
 from .message import Message, Header, HeaderItem
 from ..dispatcher import DispatcherBase
@@ -78,9 +79,14 @@ async def _write_output_stream(
 class JsonRpcProtocol:
     def __init__(self, dispatcher: DispatcherBase):
         self._dispatcher = dispatcher
+        self._connections = defaultdict(asyncio.Future)
 
-    async def on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def on_connect(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter):
         peername = writer.get_extra_info('peername')
+        self._connections[peername].set_result(True)
         incoming_messages = asyncio.Queue()
         outgoing_messages = asyncio.Queue()
         try:
@@ -93,9 +99,11 @@ class JsonRpcProtocol:
                 receive_task,
                 send_task,
                 reader_task,
-                writer_task)
+                writer_task,
+                )
             log.info('Receive, send, read and write tasks of %s finished.', peername)
         finally:
             writer.close()
+            del self._connections[peername]
             log.info('Closing connection to %s.', peername)
 

@@ -51,7 +51,8 @@ def method(f):
 
 
 class DispatcherBase:
-    def __init__(self):
+    def __init__(self, threading: bool = True):
+        self.__threading = threading
         self.__methods = {}
         for attr in dir(self):
             if not attr.startswith('_'):
@@ -182,7 +183,13 @@ class DispatcherBase:
                     log.info('Dispatcher receive_task terminator received from %s.',target)
                     break
                 log.debug('Received message %s from %s.', message, target)
-                asyncio.create_task(self._handle_message_task(target, message))
+                handle_task = self._handle_message_task(target, message)
+                if self.__threading:
+                    log.debug('Launching message handler asynchronously.')
+                    asyncio.create_task(handle_task)
+                else:
+                    log.debug('Waiting for message handler to finish.')
+                    await handle_task
         finally:
             log.debug('Receive task finished, inserting terminator into send task.')
             await self.__targets[target].put(None)

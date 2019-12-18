@@ -155,7 +155,10 @@ class DispatcherBase:
             log.debug('Received response %s.', message.id)
             if message.id is None:
                 if hasattr(message, 'error'):
-                    log.warning('JsonRpcError(%i): %s', message.error.code, message.error.message)
+                    log.warning(
+                        'JsonRpcError(%i): %s', message.error.code, message.error.message)
+                    if hasattr(message.error, 'data'):
+                        log.warning(message.error.data)
                 else:
                     log.warning('Response without id from %s: %s', target, message.result)
             elif message.id not in self.__requests:
@@ -163,7 +166,8 @@ class DispatcherBase:
             elif hasattr(message, 'error'):
                 log.warning('Resolving request %s with error (%s): %s.',
                     message.id, message.error.code, message.error.message)
-                self.__requests[message.id].set_exception(Exception(message.error.message))
+                self.__requests[message.id].set_exception(
+                    Exception(message.error.message, getattr(message.error, 'data')))
             else:
                 log.info('Resolving request %s.', message.id)
                 self.__requests[message.id].set_result(message.result)

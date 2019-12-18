@@ -1,5 +1,5 @@
 from typing import Optional
-from .core import Message, ResponseMessage, RequestMessage, NotificationMessage, ErrorCodes, ErrorObject
+from .core import Message, ResponseMessage, RequestMessage, NotificationMessage, ErrorCodes, ErrorObject, INVALID_REQUEST
 
 __all__ = ['validate_json', 'restore_message']
 
@@ -10,6 +10,8 @@ def validate_json(o: object) -> Optional[ResponseMessage]:
         else returns a ResponseMessage with the error 
         that can be sent back.
     '''
+    if not isinstance(o, dict):
+        return INVALID_REQUEST
     INVALID = ResponseMessage(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
     id = 'id' in o
     not_null = id and o['id'] is not None

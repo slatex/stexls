@@ -109,17 +109,17 @@ class DispatcherBase:
             if id is None:
                 return
             return ResponseMessage(id, result=result)
-        except TypeError:
+        except TypeError as e:
             log.exception('Possible invalid param error when calling %s(%s)', method, params)
             if id is None:
                 return
-            return ResponseMessage(id, error=ErrorObject(ErrorCodes.InvalidParams))
+            return ResponseMessage(id, error=ErrorObject(ErrorCodes.InvalidParams, data=e))
         except Exception as e:
             log.exception('InternalError during method call of %s with id %s.', method, id)
             if id is None:
                 return
             return ResponseMessage(
-                id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
+                id, error=ErrorObject(ErrorCodes.InternalError, data={'type': str(type(e)), 'message': str(e)}))
 
     async def send_task(self, target: Any, outputs: asyncio.Queue):
         log.info('Starting dispatcher send_task to %s', target)

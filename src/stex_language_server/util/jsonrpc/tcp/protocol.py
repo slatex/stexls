@@ -112,11 +112,12 @@ class JsonRpcTcpProtocol(
     
     async def handle_request(self, request: core.RequestObject):
         params = getattr(request, 'params', None)
-        response = self.__dispatcher.call(request.method, params, request.id)
-        return response
+        log.debug('Handling request with id %i: %s(%s)', request.id, request.method, params)
+        return self.__dispatcher.call(request.method, params, request.id)
 
     async def handle_notification(self, notification: core.NotificationObject):
         params = getattr(notification, 'params', None)
+        log.debug('Handling notification: %s(%s)', notification.method, params)
         self.__dispatcher.call(notification.method, params)
 
     async def handle_response(self, response: core.ResponseObject):
@@ -126,8 +127,10 @@ class JsonRpcTcpProtocol(
             log.warning('Received response with invalid id (%i): %s', response.id, response)
         else:
             if hasattr(response, 'error'):
+                log.warning('Resolving request id %i with exception: %s', response.id, response)
                 self.__futures[response.id].set_exception(Exception(response.error))
             elif hasattr(response, 'result'):
+                log.debug('Resolving request id %i with result: %s', response.id, response)
                 self.__futures[response.id].set_result(response.result)
             else:
                 log.warning('Received response (id %i) without result or error: %s', response.id, response)

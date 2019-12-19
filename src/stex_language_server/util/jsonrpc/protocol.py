@@ -247,8 +247,11 @@ class JsonRpcProtocol:
                     log.info('Message terminator received.')
                     break
                 responses = await self._handle_message(message)
-                log.debug('Sending responses to the writer task: %s', responses)
-                await self.__writer_queue.put(responses)
+                if responses is None:
+                    log.debug('Message handled but no responses were generated.')
+                else:
+                    log.debug('Sending responses to the writer task: %s', responses)
+                    await self.__writer_queue.put(responses)
         except (EOFError, asyncio.CancelledError) as e:
             log.info('Reader task exiting because of %s.', type(e))
         finally:

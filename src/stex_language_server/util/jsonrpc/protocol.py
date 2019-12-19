@@ -81,7 +81,7 @@ class JsonRpcMessage:
             return JsonRpcMessage(errors=(err,))
         if not isinstance(message, (dict, list)):
             log.warning('Deserialized json string must be a list or dictionary. Found: %s\n\n%s', type(message), message)
-            err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, data=str(e)))
+            err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest))
             return JsonRpcMessage(errors=(err,))
         if isinstance(message, dict):
             invalid = validate_json(message)

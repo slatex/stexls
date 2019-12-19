@@ -173,7 +173,7 @@ class MessageHandler:
 
 class InputHandler:
     ' This represents input done by the user and not by the protocol. '
-    async def get(self) -> JsonRpcMessage:
+    async def get_user_input(self) -> JsonRpcMessage:
         ''' Creates a future that resolves to a json rpc message made by the user.
         Returns:
             JsonRpcMessage or None if no more message will be sent this way.
@@ -280,7 +280,7 @@ class JsonRpcProtocol:
         try:
             while True:
                 log.debug('Waiting for user input.')
-                message: JsonRpcMessage = await self.__user_input_handler.get()
+                message: JsonRpcMessage = await self.__user_input_handler.get_user_input()
                 log.debug('User message received: %s', message)
                 if message is None:
                     log.debug('User task terminator received.')

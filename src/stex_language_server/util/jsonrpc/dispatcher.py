@@ -80,7 +80,7 @@ class Dispatcher:
                 else:
                     raise TypeError(f'Invalid params type: {type(params)}')
                 if asyncio.iscoroutine(result):
-                    log.debug('Called method %s returned an coroutine object.')
+                    log.debug('Called method %s returned an coroutine object.', method)
                     result = await result
                 log.debug('Method %s(%s) called successfully.', method, params)
                 response = ResponseObject(

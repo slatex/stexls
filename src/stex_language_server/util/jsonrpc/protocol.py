@@ -218,17 +218,19 @@ class JsonRpcProtocol:
             A json rpc message with the response objects to the inputs.
         '''
         log.info('Handling message %s.', message)
-        responses = list(message.errors())
-        for request in message.requests():
-            log.debug('Handle request: %s', request)
-            response = await self.__message_handler.handle_request(request)
-            responses.append(response)
-        for notification in message.notifications():
-            log.debug('Handle notification: %s', notification)
-            await self.__message_handler.handle_notification(notification)
-        for response in message.responses():
-            log.debug('Handle response: %s', response)
-            await self.__message_handler.handle_response(response)
+        request_tasks = list(map(
+            asyncio.create_task,
+            map(self.__message_handler.handle_request, message.requests())))
+        tasks = map(
+            asyncio.create_task,
+            itertools.chain(
+                map(self.__message_handler.handle_notification, message.notifications()),
+                map(self.__message_handler.handle_response, message.responses())))
+        await asyncio.gather(*tasks)
+        responses = [
+            await response
+            for response in request_tasks]
+        responses.extend(message.errors())
         log.debug('Message handled and generated %s responses.', len(responses))
         return JsonRpcMessage(responses, is_batch=message.is_batch())
     

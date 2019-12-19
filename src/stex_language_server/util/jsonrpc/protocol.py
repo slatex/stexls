@@ -54,6 +54,11 @@ class JsonRpcMessage:
     def responses(self) -> Iterable[ResponseObject]:
         ' Iterable of responses in this message. '
         return self._responses
+    
+    def objects(self) -> Iterator[MessageObject]:
+        ' Iterator with all types of messages in this object. '
+        return itertools.chain(
+            self.requests(), self.notifications(), self.responses())
 
     def errors(self) -> Iterable[ResponseObject]:
         ''' List of errors that occured or were detected while parsing this message. 
@@ -109,15 +114,22 @@ class JsonRpcMessage:
             If is_batch() is True, yields a single string with an
             json array that contains all serialized messages. '''
         serializations = tuple(
-            json.dumps(msg, default=lambda x: x.__dict__)
-            for msg in itertools.chain(
-                self.requests(), self.notifications(), self.responses()))
+            json.dumps(obj, default=lambda x: x.__dict__)
+            for obj in self.objects())
         log.debug('Serialized messages:\n\n%a', serializations)
         if self.is_batch():
             serialized = '[' + ','.join(serializations) + ']'
             yield serialized
         else:
             yield from serializations
+
+    def __repr__(self):
+        return (
+            '[JsonRpcMessage objects=['
+            + ','.join(map(str, self.objects()))
+            + '] errors=['
+            + ','.join(map(str, self.errors()))
+            + ']]')
 
 
 class ReaderStream:

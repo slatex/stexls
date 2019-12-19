@@ -1,210 +1,91 @@
 from __future__ import annotations
-from typing import Union, Any, Awaitable
+from typing import Union, Any, Awaitable, Optional
 from collections import defaultdict
 import asyncio
-import functools
 import logging
-from .core import Message, NotificationMessage, RequestMessage, ResponseMessage, ErrorObject, ErrorCodes
+import itertools
+from .core import *
+from .hooks import extract_methods
+
 log = logging.getLogger(__name__)
 
-__all__ = ['request', 'notification', 'method', 'DispatcherBase', 'MessageHandler']
-
-def alias(name: str):
-    assert name is not None
-    def alias_decorator(f):
-        log.debug('JsonRpc hook alias %s->%s', f, name)
-        f.json_rpc_name = name
-        return f
-    return alias_decorator
-
-def request(f):
-    log.debug('JsonRpc request hook: %s', f)
-    if not hasattr(f, 'json_rpc_name'):
-        f.json_rpc_name = f.__name__
-    @functools.wraps(f)
-    def request_wrapper(self: DispatcherBase, *args, **kwargs):
-        if args and kwargs:
-            raise ValueError('Mixing args and kwargs not allowed.')
-        f(self, *args, **kwargs)
-        return self.request(f.json_rpc_name, args or kwargs)
-    return request_wrapper
-
-def notification(f):
-    log.debug('JsonRpc notification hook: %s', f)
-    if not hasattr(f, 'json_rpc_name'):
-        f.json_rpc_name = f.__name__
-    @functools.wraps(f)
-    def notification_wrapper(self: DispatcherBase, *args, **kwargs):
-        if args and kwargs:
-            raise ValueError('Mixing args and kwargs not allowed.')
-        f(self, *args, **kwargs)
-        return self.notification(f.json_rpc_name, args or kwargs)
-    return notification_wrapper
-
-def method(f):
-    ' Decorator that enables this function to be called remotely. '
-    log.debug('JsonRpc method hook: %s', f)
-    if not hasattr(f, 'json_rpc_name'):
-        f.json_rpc_name = f.__name__
-    f.json_rpc_method = True
-    return f
+__all__ = ['Dispatcher', 'DispatcherTarget']
 
 
-class DispatcherBase:
-    def __init__(self, threading: bool = True):
-        self.__threading = threading
-        self.__methods = {}
-        for attr in dir(self):
-            if not attr.startswith('_'):
-                val = getattr(self, attr)
-                if callable(val) and hasattr(val, 'json_rpc_method') and val.json_rpc_method:
-                    name = val.json_rpc_name
-                    if name in self.__methods:
-                        raise ValueError(f'Two or more methods with the name: {name}')
-                    self.__methods[name] = val
-                    log.debug('Registered dispatcher method %s as "%s".', val, name)
-        self.__next_id = 1
+class DispatcherTarget:
+    ''' Represents a local version of the target of a dispatcher.
+        The dispatcher generates a message and gives it to this
+        fake "target". The "target" returns a future object for
+        result of the sending operation. The true remote target
+        then handles the dispatched message and returns
+        some response to the fake local "target". The returned future
+        object can now be resolved and the dispatcher receives
+        the result.
+        If the sent message does not expect some kind of result,
+        None will be returned. '''
+    async def dispatch(self, message: MessageObject) -> Optional[Awaitable[ResponseObject]]:
+        ' Makes the target dispatch a message and return a Awaitable response or None. '
+        raise NotImplementedError()
+
+
+class Dispatcher:
+    ''' A dispatcher is a hook that allows sending user messages to a connection
+        between a client and the server.
+        The dispatcher behaves like a normal python object, except that
+        the called methods are done somewhere different and have to wait
+        until the message is send, handled and the response returned.
+    '''
+    def __init__(self, target: DispatcherTarget):
+        ' Initializes the dispatcher with a target for the messages it dispatches. '
+        self.__target = target
+        self.__methods = extract_methods(self)
+        self.__id_generator = itertools.count(1)
         self.__requests = defaultdict(asyncio.Future)
         self.__targets = defaultdict(asyncio.Queue)
         self.__default_target = asyncio.Future()
 
-    def __generate_id(self):
-        id = self.__next_id
-        self.__next_id += 1
-        log.debug('Generated id %i.', id)
-        return id
-    
-    async def request(self, method: str, params: Union[list, dict], target: Any = None) -> Any:
-        log.info('Sending request for %s(%s) to %s.', method, params, target)
-        message = RequestMessage(self.__generate_id(), method, params)
-        await self.__targets[target or await self.__default_target].put(message)
-        try:
-            return await self.__requests[message.id]
-        finally:
-            log.debug('Finished waiting for response of request %s', message.id)
-            del self.__requests[message.id]
-    
-    async def notification(self, method: str, params: Union[list, dict], target: Any = None) -> Any:
-        log.info('Sending notification %s(%s) to %s', method, params, target)
-        message = NotificationMessage(method, params)
-        await self.__targets[target or await self.__default_target].put(message)
+    async def request(self, method: str, params: Union[list, dict, None] = None) -> Any:
+        ' Sends a request message using the dispatch handler and awaits the results. '
+        id = next(self.__id_generator)
+        log.info('Dispatching request %s(%s) with id %i.', method, params, id)
+        message = RequestObject(id, method, params)
+        return await self.__target.dispatch(message)
 
-    def call(self, method: str, params: Union[list, dict, None], id: Union[int, str] = None) -> ResponseMessage:
+    async def notification(self, method: str, params: Union[list, dict, None] = None):
+        ' Sends a notification message using the dispatch handler and returns immediatly. '
+        log.info('Dispatching notification %s(%s).', method, params)
+        message = NotificationObject(method, params)
+        return await self.__target.dispatch(message)
+
+    def call(self, method: str, params: Union[list, dict, None], id: Union[int, str] = None) -> Optional[ResponseObject]:
+        ' Calls the given method with the parameters and generates a response object according to the results. '
+        log.info('Method %s(%s) called with id %s.', method, params, id)
         fn = self.__methods.get(method)
         if not fn:
-            log.warning('Invalid method name "%s" called.', method)
-            if id is None:
-                return 
-            return ResponseMessage(id, error=ErrorObject(ErrorCodes.MethodNotFound))
-        try:
-            log.info('%s(%s) called with id %s.', method, params, id)
-            if params is None:
-                result = fn()
-            elif isinstance(params, list):
-                result = fn(*params)
-            elif isinstance(params, dict):
-                result = fn(**params)
-            else:
-                raise TypeError('Invalid params type %s.' % type(params))
-            if id is None:
-                return
-            return ResponseMessage(id, result=result)
-        except TypeError as e:
-            log.exception('Possible invalid param error when calling %s(%s)', method, params)
-            if id is None:
-                return
-            return ResponseMessage(id, error=ErrorObject(ErrorCodes.InvalidParams, data=e))
-        except Exception as e:
-            log.exception('InternalError during method call of %s with id %s.', method, id)
-            if id is None:
-                return
-            return ResponseMessage(
-                id, error=ErrorObject(ErrorCodes.InternalError, data={'type': str(type(e)), 'message': str(e)}))
-
-    async def send_task(self, target: Any, outputs: asyncio.Queue):
-        log.info('Starting dispatcher send_task to %s', target)
-        if not self.__default_target.done():
-            log.debug('Setting default target to %s.', target)
-            self.__default_target.set_result(target)
-        while True:
-            log.debug('Waiting for a message to send to %s', target)
-            message = await self.__targets[target].get()
-            if message is None:
-                log.info('Dispatcher send_task to %s terminated.', target)
-                break
-            log.debug('Sending %s to %s', message, target)
-            await outputs.put(message)
-
-    async def _handle_message_task(self, target: Any, message: Message):
-        log.debug('Handling message: %s', message)
-        if isinstance(message, RequestMessage):
-            log.debug('Executing request %s (%s).', message.id, message.method)
-            params = getattr(message, 'params', None)
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, self.call, message.method, params, message.id)
-            log.debug('Putting response %s in %s', response, self.__targets[target])
-            await self.__targets[target].put(response)
-        elif isinstance(message, NotificationMessage):
-            log.debug('Executing notification %s.', message.method)
-            params = getattr(message, 'params', None)
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, self.call, message.method, params)
-        elif isinstance(message, ResponseMessage):
-            log.debug('Received response %s.', message.id)
-            if message.id is None:
-                if hasattr(message, 'error'):
-                    log.warning(
-                        'JsonRpcError(%i): %s', message.error.code, message.error.message)
-                    if hasattr(message.error, 'data'):
-                        log.warning(message.error.data)
-                else:
-                    log.warning('Response without id from %s: %s', target, message.result)
-            elif message.id not in self.__requests:
-                log.warning('Received response for non-existend id %s.', message.id)
-            elif hasattr(message, 'error'):
-                log.warning('Resolving request %s with error (%s): %s.',
-                    message.id, message.error.code, message.error.message)
-                self.__requests[message.id].set_exception(
-                    Exception(message.error.message, getattr(message.error, 'data')))
-            else:
-                log.info('Resolving request %s.', message.id)
-                self.__requests[message.id].set_result(message.result)
+            log.warning('Method %s not found.', method)
+            response = ResponseObject(
+                id, error=ErrorObject(ErrorCodes.MethodNotFound, data=method))
         else:
-            log.error('Invalid message type received: %s', type(message))
-
-    async def receive_task(self, target: Any, inputs: asyncio.Queue):
-        log.info('Starting dispatcher receive_task from %s.', target)
-        if not self.__default_target.done():
-            log.debug('Setting default target to %s.', target)
-            self.__default_target.set_result(target)
-        try:
-            while True:
-                log.debug('Waiting for a message from %s.', target)
-                message = await inputs.get()
-                if message is None:
-                    log.info('Dispatcher receive_task terminator received from %s.',target)
-                    break
-                log.debug('Received message %s from %s.', message, target)
-                handle_task = self._handle_message_task(target, message)
-                if self.__threading:
-                    log.debug('Launching message handler asynchronously.')
-                    asyncio.create_task(handle_task)
+            try:
+                if params is None:
+                    result = fn()
+                elif isinstance(params, list):
+                    result = fn(*params)
+                elif isinstance(params, dict):
+                    result = fn(**params)
                 else:
-                    log.debug('Waiting for message handler to finish.')
-                    await handle_task
-        finally:
-            log.debug('Receive task finished, inserting terminator into send task.')
-            await self.__targets[target].put(None)
-            
-    async def close(self):
-        log.info('Stopping dispatcher.')
-        self.__default_target.cancel()
-        for target, q in self.__targets.items():
-            log.debug('Terminating target %s', target)
-            await q.put(None)
-        for id, fut in self.__requests.items():
-            log.debug('Canceling request future %s', id)
-            fut.cancel()
-        log.info('Dispatcher stopped.')
+                    raise TypeError(f'Invalid params type: {type(params)}')
+                log.debug('Method %s(%s) called successfully.', method, params)
+                response = ResponseObject(
+                    id, result=result)
+            except TypeError as e:
+                log.exception('Method %s(%s) threw possible InvalidParams error.', method, params)
+                response = ResponseObject(
+                    id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
+            except Exception as e:
+                log.exception('Method %s(%s) threw an unknown error.', method, params)
+                response = ResponseObject(
+                    id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
+        if id is not None:
+            log.debug('Returning response to method call of %s(%s) with id %s.', method, params, id)
+            return response

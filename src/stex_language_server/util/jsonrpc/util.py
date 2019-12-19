@@ -1,18 +1,17 @@
 from typing import Optional
-from .core import Message, ResponseMessage, RequestMessage, NotificationMessage, ErrorCodes, ErrorObject, INVALID_REQUEST
+from .core import *
 
 __all__ = ['validate_json', 'restore_message']
 
-def validate_json(o: object) -> Optional[ResponseMessage]:
+def validate_json(o: object) -> Optional[ResponseObject]:
     ''' Validates a json object.
     Returns:
-        Nothing if the object can be as a core.Message
-        else returns a ResponseMessage with the error 
-        that can be sent back.
+        Response object with error information if
+        the object o is not a valid json rpc message object.
     '''
     if not isinstance(o, dict):
-        return INVALID_REQUEST
-    INVALID = ResponseMessage(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
+        return ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest))
+    INVALID = ResponseObject(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
     id = 'id' in o
     not_null = id and o['id'] is not None
     method = 'method' in o
@@ -33,18 +32,19 @@ def validate_json(o: object) -> Optional[ResponseMessage]:
         return INVALID
 
 
-def restore_message(o: object) -> Message:
+def restore_message(o: object) -> MessageObject:
     ''' Restores the original message from a given json object.
         Assumes that the object is valid.
     Return:
-        Original message, assuming the input is correct.
+        A valid json rpc message object, assuming
+        the input is valid.
     '''
     if 'method' in o:
         if 'id' in o:
-            return RequestMessage(
+            return RequestObject(
                 id=o['id'], method=o['method'], params=o.get('params'))
         else:
-            return NotificationMessage(
+            return NotificationObject(
                 method=o['method'], params=o.get('params'))
     else:
         if 'error' in o:
@@ -54,5 +54,5 @@ def restore_message(o: object) -> Message:
                 data=o['error'].get('data', None))
         else:
             error = None
-        return ResponseMessage(
+        return ResponseObject(
             id=o.get('id'), result=o.get('result'), error=error)

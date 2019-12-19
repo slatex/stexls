@@ -11,57 +11,36 @@ import functools
 from enum import IntEnum
 
 __all__ = [
-    'Message',
-    'RequestMessage',
-    'NotificationMessage',
-    'ResponseMessage',
+    'MessageObject',
+    'RequestObject',
+    'NotificationObject',
+    'ResponseObject',
     'ErrorObject',
-    'ErrorCodes',
-    'PARSE_ERROR',
-    'INVALID_REQUEST',
-    'METHOD_NOT_FOUND',
-    'INVALIDA_PARAMS',
-    'INTERNAL_ERROR',
+    'ErrorCodes'
 ]
 
-class Message:
+class MessageObject:
     ' Base message. All Messages contain the string "jsonrpc: 2.0". '
     def __init__(self):
         self.jsonrpc = "2.0"
-    
-    def serialize(self, encoder: Optional[json.JSONEncoder] = None) -> str:
-        ''' Serializes the message object into json.
-        Parameters:
-            encoder: Custom encoder in case method parameters are not serializable.
-        Returns:
-            JSON string.
-        '''
-        if encoder is None:
-            return json.dumps(self, default=lambda o: o.__dict__)
-        else:
-            return encoder.encode(self.__dict__)
 
 
-class RequestMessage(Message):
+class RequestObject(MessageObject):
     ''' Request messages send a method
         with parameters to the sever.
-        The server must repond with a ResponseMessage containing
+        The server must repond with a ResponseObject containing
         the same id the client provided.
     '''
     def __init__(self, id: Union[str, int], method: str, params: Union[Dict[str, Any], List[Any]] = None):
         ''' Initializes the request object.
         Parameters:
             id: Client defined identifier used to re-identify the response.
-            method: Method to be performed by the server.
-            params: Parameters for the method.
-                The parameters must be in the right order if they are a list,
-                or with the correct parameter names if a dictionary.
-                The parameters should be json serializable, but you
-                can use a custom JSONEncoder in Message.serialize().
+            method: Remote procedure name to be executed on the server.
+            params: Parameters for the method. Must be json serializable.
         '''
         super().__init__()
         if id is None:
-            raise ValueError('RequestMessage id must not be "None"')
+            raise ValueError('RequestObject id must not be "None"')
         if not (params is None or isinstance(params, (dict, list, tuple))):
             raise ValueError(f'Invalid params type, allowed are list, dict and None: {type(params)}')
         self.id = id
@@ -70,21 +49,22 @@ class RequestMessage(Message):
             self.params = params
 
 
-class NotificationMessage(Message):
+class NotificationObject(MessageObject):
     ''' A notification is a request without an id.
         The server will try to execute the method but the client will not be notified
-        about the results.
+        about the results or errors.
     '''
     def __init__(self, method: str, params: Union[Dict[str, Any], List[Any]]):
         ''' Initializes a notification message.
-            See RequestMessage for information about parameters.
+            See RequestObject for information about parameters.
         '''
         super().__init__()
         self.method = method
-        self.params = params
+        if params is not None:
+            self.params = params
 
 
-class ResponseMessage(Message):
+class ResponseObject(MessageObject):
     ''' A response message gives success or failure status in response
         to a request message with the same id.
     '''
@@ -94,9 +74,10 @@ class ResponseMessage(Message):
         Parameters:
             id: The id of the request to respond to. "None" if there was an error detecting the request id.
             result: Result of the method execution.
-                Result object should be json serializable or use a custom json encoder.
+                Result object should be json serializable.
                 This must be "None" if the method failed.
-            error: Information about method failure. This must be "None" if the method succeeded.
+            error: Information about method failure.
+                This must be "None" if the method succeeded.
         '''
         super().__init__()
         if result is not None and error is not None:
@@ -106,7 +87,6 @@ class ResponseMessage(Message):
         else:
             self.result = result
         self.id = id
-
 
 
 class ErrorObject:
@@ -150,10 +130,3 @@ class ErrorCodes(IntEnum):
         if code in range(-32000, -32100):
             return 'Server error'
         raise ValueError(f'Unknown error code: {code}')
-
-
-PARSE_ERROR = ResponseMessage(None, error=ErrorObject(ErrorCodes.ParseError))
-INVALID_REQUEST = ResponseMessage(None, error=ErrorObject(ErrorCodes.InvalidRequest))
-METHOD_NOT_FOUND = ErrorObject(ErrorCodes.MethodNotFound)
-INVALIDA_PARAMS = ErrorObject(ErrorCodes.InvalidParams)
-INTERNAL_ERROR = ErrorObject(ErrorCodes.InternalError)

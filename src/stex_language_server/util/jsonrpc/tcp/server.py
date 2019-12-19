@@ -28,7 +28,7 @@ class Server:
         try:
             await protocol.run_until_finished()
         except Exception:
-            log.critical('Server connection run loop to %s was interrupted by an exception.', peername)
+            log.exception('Server connection run loop to %s was interrupted by an exception.', peername)
         finally:
             await protocol.close()
             log.info('Connection to client %s closed.', peername)

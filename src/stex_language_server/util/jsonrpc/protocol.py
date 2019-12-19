@@ -32,15 +32,15 @@ class MessageHandler:
     ''' A message handler provides the services needed to
         handle request, notification and response objects.
     '''
-    async def request(self, request: RequestObject) -> ResponseObject:
+    async def handle_request(self, request: RequestObject) -> ResponseObject:
         ' Executes a request method and returns the response object. '
         raise NotImplementedError()
 
-    async def notification(self, notification: NotificationObject):
+    async def handle_notification(self, notification: NotificationObject):
         ' Executes a notification method and returns. '
         raise NotImplementedError()
 
-    async def response(self, response: ResponseObject):
+    async def handle_response(self, response: ResponseObject):
         ' Resolves the request object with the same id as the response object. '
         raise NotImplementedError()
 
@@ -91,14 +91,14 @@ class JsonRpcProtocol:
         responses = list(message.errors())
         for request in message.requests():
             log.debug('Handle request: %s', request)
-            response = await self.__message_handler.request(request)
+            response = await self.__message_handler.handle_request(request)
             responses.append(response)
         for notification in message.notifications():
             log.debug('Handle notification: %s', notification)
-            await self.__message_handler.notification(notification)
+            await self.__message_handler.handle_notification(notification)
         for response in message.responses():
             log.debug('Handle response: %s', response)
-            await self.__message_handler.response(response)
+            await self.__message_handler.handle_response(response)
         log.debug('Message handled and generated %s responses.', len(responses))
         return JsonRpcMessage(responses, is_batch=message.is_batch())
     

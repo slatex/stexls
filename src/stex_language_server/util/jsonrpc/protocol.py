@@ -1,43 +1,9 @@
-from typing import Iterable, Callable
+from typing import Iterable, Callable, Iterator
 import asyncio
 import logging
 from .core import *
 
 log = logging.getLogger(__name__)
-
-class JsonRpcMessage:
-    ''' This class represents a message.
-        A message can be a list of jrpc objects,
-        but it also can just be a single jrpc object.
-    '''
-    def requests(self) -> Iterable[RequestObject]:
-        ' Iterable of requests in this message. '
-        raise NotImplementedError()
-
-    def notifications(self) -> Iterable[NotificationObject]:
-        ' Iterable of notifications in this message. '
-        raise NotImplementedError()
-
-    def responses(self) -> Iterable[ResponseObject]:
-        ' Iterable of responses in this message. '
-        raise NotImplementedError()
-
-    def set_responses(self, responses: Iterable[ResponseObject]):
-        ' Sets the output of self.responses(). '
-        raise NotImplementedError()
-
-    def errors(self) -> Iterable[ResponseObject]:
-        ''' List of errors that occured or were detected while parsing this message. 
-            These errors must be send back to the origin. '''
-        raise NotImplementedError()
-
-    def set_batch(self, value: bool):
-        ' Sets the internal flag for whether the objects in this message should be transported as a batch. '
-        raise NotImplementedError()
-
-    def is_batch(self) -> bool:
-        ' Gets the internal flag of whether the objects form a single batch or not. '
-        raise NotImplementedError()
 
 
 class ReaderStream:
@@ -133,11 +99,8 @@ class JsonRpcProtocol:
         for response in message.responses():
             log.debug('Handle response: %s', response)
             await self.__message_handler.response(response)
-        out = JsonRpcMessage()
-        out.set_batch(message.is_batch())
         log.debug('Message handled and generated %s responses.', len(responses))
-        out.set_responses(responses)
-        return out
+        return JsonRpcMessage(responses, is_batch=message.is_batch())
     
     async def _reader_task(self):
         ''' The reader tasks listens to to the internal ReaderStream

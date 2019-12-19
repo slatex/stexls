@@ -2,13 +2,13 @@
 Specification from: https://www.jsonrpc.org/specification#overview
 """
 from __future__ import annotations
-from typing import Optional, Union, List, Dict, Any, Tuple
-import traceback
+from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
 import json
-import queue
-import threading
 import functools
+import itertools
 from enum import IntEnum
+
+from .util import validate_json, restore_message
 
 __all__ = [
     'MessageObject',
@@ -130,3 +130,93 @@ class ErrorCodes(IntEnum):
         if code in range(-32000, -32100):
             return 'Server error'
         raise ValueError(f'Unknown error code: {code}')
+
+
+class JsonRpcMessage:
+    ''' This class represents a message in transit.
+        A message can be a list of jrpc objects,
+        but it also can just be a single jrpc object.
+        The message can be built by adding requests,
+        notifications an responses. After that it
+        can be serialized using to_json and sent
+        using any transmissin protocol.
+        The target can then deserialize the message
+        using from_json. All requests, notifications and responses
+        in the given string will be placed accordingly and erros,
+        if any occured during deserialization,
+        can be queried using the errors() getter.
+    '''
+    def __init__(self, objects: Iterable[MessageObject] = (), is_batch: bool = False, errors: Iterable[ResponseObject] = ()):
+        ' Initializes the message by storing the given objects. '
+        self._requests = tuple(
+            o for o in objects if isinstance(o, RequestObject))
+        self._notifications = tuple(
+            o for o in objects if isinstance(o, NotificationObject))
+        self._responses = tuple(
+            o for o in objects if isinstance(o, ResponseObject))
+        self._errors = tuple(errors)
+        self._is_batch = is_batch
+
+    def requests(self) -> Iterable[RequestObject]:
+        ' Iterable of requests in this message. '
+        return self._requests
+
+    def notifications(self) -> Iterable[NotificationObject]:
+        ' Iterable of notifications in this message. '
+        return self._notifications
+
+    def responses(self) -> Iterable[ResponseObject]:
+        ' Iterable of responses in this message. '
+        return self._responses
+
+    def errors(self) -> Iterable[ResponseObject]:
+        ''' List of errors that occured or were detected while parsing this message. 
+            These errors must be send back to the origin. '''
+        return self._errors
+
+    def is_batch(self) -> bool:
+        ' Gets the internal flag of whether the objects form a single batch or not. '
+        return self._is_batch
+
+    @staticmethod
+    def from_json(self, string: str) -> JsonRpcMessage:
+        ' Deserializes the json string. '
+        try:
+            message = json.loads(string)
+        except json.JSONDecodeError as e:
+            err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, data=str(e)))
+            return JsonRpcMessage(errors=(err,))
+        if not isinstance(message, (dict, list)):
+            err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, data=str(e)))
+            return JsonRpcMessage(errors=(err,))
+        if isinstance(message, dict):
+            invalid = validate_json(message)
+            if invalid is not None:
+                return JsonRpcMessage(errors=(invalid,))
+            restored = restore_message(message)
+            return JsonRpcMessage(objects=(restored,))
+        elif isinstance(message, list):
+            errors = []
+            objects = []
+            for msg in message:
+                invalid = validate_json(msg)
+                if invalid is not None:
+                    errors.append(invalid)
+                else:
+                    objects.append(restore_message(msg))
+            return JsonRpcMessage(
+                objects=objects, is_batch=True, errors=errors)
+
+    def to_json(self) -> Iterator[str]:
+        ''' Serializes all messages as json strings and yields
+            the serialized strings for every message.
+            If is_batch() is True, yields a single string with an
+            json array that contains all serialized messages. '''
+        serializations = (
+            json.dumps(msg, default=lambda x: x.__dict__)
+            for msg in itertools.chain(
+                self.requests(), self.notifications(), self.responses()))
+        if self.is_batch():
+            yield '[' + ','.join(serializations) + ']'
+        else:
+            yield from serializations

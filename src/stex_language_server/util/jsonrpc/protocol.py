@@ -116,7 +116,7 @@ class JsonRpcMessage:
         serializations = tuple(
             json.dumps(obj, default=lambda x: x.__dict__)
             for obj in self.objects())
-        log.debug('Serialized messages:\n\n%a', serializations)
+        log.debug('Serialized messages: %a', serializations)
         if self.is_batch():
             serialized = '[' + ','.join(serializations) + ']'
             yield serialized
@@ -129,7 +129,7 @@ class JsonRpcMessage:
             + ','.join(map(str, self.objects()))
             + '] errors=['
             + ','.join(map(str, self.errors()))
-            + ']]')
+            + f'] is_batch={self.is_batch()}]')
 
 
 class ReaderStream:

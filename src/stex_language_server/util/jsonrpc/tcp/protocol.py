@@ -1,107 +1,143 @@
-from typing import AsyncGenerator, Callable
+from typing import Optional, Awaitable
 import asyncio
 import logging
-import json
 from collections import defaultdict
-from .streams import MessageReaderStream, MessageWriterStream
-from .message import Message, Header, HeaderItem
-from ..dispatcher import DispatcherBase
-from .. import core, util
+from .. import protocol
+from .. import core
+from .. import dispatcher
 
 log = logging.getLogger(__name__)
 
-__all__ = ['JsonRpcProtocol']
+__all__ = ['JsonRpcTcpProtocol']
 
-async def _read_input_stream(
-    reader: asyncio.StreamReader,
-    incoming_messages: asyncio.Queue,
-    outgoing_errors: asyncio.Queue):
-    stream_reader = MessageReaderStream(
-        reader,
-        header=Header([
-            HeaderItem('Content-Length', int, required=True),
-            HeaderItem('Content-Type', str)]))
-    log.info('Reader task started.')
-    while True:
-        log.debug('Waiting for message.')
-        content: str = '<undefined>'
-        try:
-            content = await stream_reader.read()
-            log.debug('Reader received content:\n\n%s', content)
-            try:
-                obj = json.loads(content)
-            except json.JSONDecodeError:
-                log.exception(content)
-                await outgoing_errors.put(core.INVALID_REQUEST)
-                continue
-            invalid = util.validate_json(obj)
-            if invalid is not None:
-                log.warning('Invalid JSON (%s):\n\n%s', invalid.error.message, content)
-                await outgoing_errors.put(invalid)
-                continue
-            jrpc_message = util.restore_message(obj)
-            await incoming_messages.put(jrpc_message)
-        except (EOFError, asyncio.CancelledError):
-            log.info('Reader task finished.')
-            await incoming_messages.put(None)
-            await outgoing_errors.put(None)
-            break
-        except:
-            log.exception('Failed to parse message:\n\n%s', content)
-            await outgoing_errors.put(core.INVALID_REQUEST)
 
-async def _write_output_stream(
-    writer: asyncio.StreamWriter, outgoing_messages: asyncio.Queue):
-    log.info('Writer task started.')
-    stream_writer = MessageWriterStream(writer)
-    try:
+class TcpReaderStream(protocol.ReaderStream):
+    def __init__(self, reader: asyncio.StreamReader, encoding: str = 'utf-8', linebreak: str = '\r\n'):
+        self._reader = reader
+        self._encoding = encoding
+        self._linebreak = linebreak
+
+    async def read(self) -> Optional[protocol.JsonRpcMessage]:
+        content_length = None
+        content_type = None
+        log.debug('Start reading from stream.')
         while True:
-            log.debug('Writer waiting for message to send.')
-            message = await outgoing_messages.get()
-            if message is None:
-                break 
-            log.debug('Writer writing message: %s', message)
-            try:
-                serialized = message.serialize()
-            except:
-                log.exception('Failed to serialize message.')
+            log.debug('Waiting for a line.')
+            ln = await self._reader.readline()
+            if not ln:
+                log.info('Reader stream received EOF while waiting for line. Returning None.')
+                return None
+            ln = ln.decode(self._encoding).strip()
+            if not ln:
+                log.debug('Received terminator line.')
+                if content_length is not None and content_length > 0:
+                    log.debug('Header content-length is set to "%i". Header is valid.', content_length)
+                    break
+                else:
+                    log.warning('Header is in inconsistent state after receiving terminator. Resetting.')
+                    content_length = None
+                    content_type = None
+                    continue
+            log.debug('Line received: %s', ln)
+            parts = ln.split(':')
+            parts = tuple(map(str.lower, map(str.strip, parts)))
+            if (len(parts) != 2
+                or parts[0] not in ('content-length', 'content-type')
+                or (parts[0] == 'content-length' and not parts[1].isdigit())):
+                log.debug('Received line is invalid. Resetting.')
+                content_length = None
+                content_type = None
                 continue
-            try:
-                stream_writer.write(serialized)
-            except:
-                log.exception('Failed to write serialized:\n\n%s', serialized)
-                continue
-    finally:
-        log.info('Writer task finished.')
-        writer.close()
+            setting, value = parts
+            if setting == 'content-length':
+                content_length = int(value)
+                log.debug('Setting content-length to "%i".', content_length)
+            else:
+                content_type = value
+                log.debug('Setting content-type to "%s"', content_type)
+        log.debug('Reading "%i" bytes.', content_length)
+        try:
+            content = await self._reader.read(content_length)
+            if not content or len(content) != content_length:
+                raise EOFError()
+        except (EOFError, asyncio.IncompleteReadError):
+            log.warning('Reader stream received eof while waiting for %i bytes.', content_length)
+            return None
+        content = content.decode(self._encoding)
+        log.debug('Content received: "%s"', content)
+        return protocol.JsonRpcMessage.from_json(content)
 
 
-class JsonRpcProtocol:
-    def __init__(self, dispatcher: DispatcherBase):
-        self._dispatcher = dispatcher
-        self._connections = defaultdict(asyncio.Future)
+class TcpWriterStream(protocol.WriterStream):
+    def __init__(self, writer: asyncio.StreamWriter, encoding: str = 'utf-8', linebreak: str = '\r\n'):
+        self._writer = writer
+        self._encoding = encoding
+        self._linebreak = linebreak
 
-    async def on_connect(
+    async def write(self, message: protocol.JsonRpcMessage):
+        for string in message.to_json():
+            content = bytes(string, self._encoding)
+            header_string = (f'Content-Length: {len(content)}{self._linebreak}'
+                             f'Content-Type: charset={self._encoding}{self._linebreak}{self._linebreak}')
+            header = bytes(header_string, self._encoding)
+            self._writer.write(header + content)
+
+
+class JsonRpcTcpProtocol(
+    protocol.JsonRpcProtocol,
+    protocol.InputHandler,
+    protocol.MessageHandler,
+    dispatcher.DispatcherTarget):
+    def __init__(
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter):
-        peername = writer.get_extra_info('peername')
-        log.info('Protocol connected to %s.', peername)
-        self._connections[peername].set_result(True)
-        incoming_messages = asyncio.Queue()
-        outgoing_messages = asyncio.Queue()
-        try:
-            receive_task = self._dispatcher.receive_task(peername, incoming_messages)
-            send_task  = self._dispatcher.send_task(peername, outgoing_messages)
-            reader_task = _read_input_stream(reader, incoming_messages, outgoing_messages)
-            writer_task = _write_output_stream(writer, outgoing_messages)
-            await asyncio.gather(
-                receive_task,
-                send_task,
-                reader_task,
-                writer_task)
-            log.info('Protocol receive, send read and write tasks exited.')
-        finally:
-            writer.close()
-            del self._connections[peername]
-            log.info('Closing connection to %s.', peername)
+        self.__reader = TcpReaderStream(reader)
+        self.__writer = TcpWriterStream(writer)
+        super().__init__(self, self, self.__reader, self.__writer)
+        self.__user_input_queue = asyncio.Queue()
+        self.__futures = defaultdict(asyncio.Future)
+        self.__dispatcher = None
+    
+    async def close(self):
+        await super().close()
+        log.info('JsonRpcTcpProtocol close() called.')
+        await self.__user_input_queue.put(None)
+        for id, fut in self.__futures.items():
+            log.debug('Cancelling future id %i', id)
+            fut.cancel()
+    
+    def set_dispatcher(self, dispatcher: dispatcher.Dispatcher):
+        self.__dispatcher = dispatcher
+    
+    async def handle_request(self, request: core.RequestObject):
+        params = getattr(request, 'params', None)
+        response = self.__dispatcher.call(request.method, params, request.id)
+        return response
+
+    async def handle_notification(self, notification: core.NotificationObject):
+        params = getattr(notification, 'params', None)
+        self.__dispatcher.call(notification.method, params)
+
+    async def handle_response(self, response: core.ResponseObject):
+        if response.id is None:
+            log.warning('Received response without id: %s', response)
+        elif response.id not in self.__futures:
+            log.warning('Received response with invalid id (%i): %s', response.id, response)
+        else:
+            if hasattr(response, 'error'):
+                self.__futures[response.id].set_exception(Exception(response.error))
+            elif hasattr(response, 'result'):
+                self.__futures[response.id].set_result(response.result)
+            else:
+                log.warning('Received response (id %i) without result or error: %s', response.id, response)
+    
+    async def get_user_input(self):
+        return await self.__user_input_queue.get()
+    
+    async def dispatch(self, message: core.MessageObject) -> Optional[Awaitable[core.ResponseObject]]:
+        await self.__user_input_queue.put(protocol.JsonRpcMessage(objects=(message,)))
+        if isinstance(message, core.RequestObject):
+            response = await self.__futures[message.id]
+            del self.__futures[message.id]
+            return response

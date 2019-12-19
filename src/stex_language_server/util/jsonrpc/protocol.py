@@ -208,6 +208,10 @@ class JsonRpcProtocol:
         self.__writer = writer
         self.__writer_queue = asyncio.Queue()
     
+    async def close(self):
+        log.info('JsonRpcProtocol close() called.')
+        await self.__writer_queue.put(None)
+    
     async def _handle_message(self, message: JsonRpcMessage) -> JsonRpcMessage:
         ''' Handles all message objects in a json rpc message.
         Returns:
@@ -243,13 +247,12 @@ class JsonRpcProtocol:
                     log.info('Message terminator received.')
                     break
                 responses = await self._handle_message(message)
-                log.debug('Sending %s responses to the writer task.', len(responses))
+                log.debug('Sending responses to the writer task: %s', responses)
                 await self.__writer_queue.put(responses)
         except (EOFError, asyncio.CancelledError) as e:
             log.info('Reader task exiting because of %s.', type(e))
         finally:
-            log.debug('Putting terminator in writer queue.')
-            await self.__writer_queue.put(None)
+            await self.close()
         log.info('Reader task finished.')
     
     async def _writer_task(self):
@@ -260,7 +263,7 @@ class JsonRpcProtocol:
         try:
             while True:
                 log.debug('Writer waiting for message from queue.')
-                message: JsonRpcMessage = self.__writer_queue.get()
+                message: JsonRpcMessage = await self.__writer_queue.get()
                 log.debug('Message received: %s', message)
                 if message is None:
                     log.debug('Writer task terminator received.')

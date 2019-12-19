@@ -88,7 +88,7 @@ class Range:
         ''' Checks wether the range is empty or not.
             The range is empty if start and end are equal.
         '''
-        return start.equals(end)
+        return self.start.equals(self.end)
     
     def is_single_line(self) -> bool:
         ' Returns true if the start and end positions are on the same line. '

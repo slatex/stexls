@@ -96,8 +96,9 @@ class JsonRpcMessage:
                     log.warning('Batch entry failed validation: %s', msg)
                     errors.append(invalid)
                 else:
-                    log.debug('Restored batch entry: %s', msg)
-                    objects.append(restore_message(msg))
+                    restored = restore_message(msg)
+                    log.debug('Restored batch entry: %s', restored)
+                    objects.append(restored)
             log.debug('Batch restored %i objects (%i errors).', len(objects), len(errors))
             return JsonRpcMessage(
                 objects=objects, is_batch=True, errors=errors)

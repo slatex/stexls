@@ -9,21 +9,13 @@ __all__ = ['Cache', 'CacheException', 'FailedToWriteCacheError', 'FailedToReadCa
 
 
 class CacheException(RuntimeError):
-    def __init__(self, *args):
-        super().__init__(*args)
-
+    ' Shared exception for all exception raised by this module. '
 
 class FailedToWriteCacheError(CacheException):
-    """ Error thrown when the specified cache file can't be written. """
-    def __init__(self, *args):
-        super().__init__(*args)
-
+    ' Error raised when the specified cache file can not be written. '
 
 class FailedToReadCacheError(CacheException):
-    """ Error thrown when the specified cache file can't be read from. """
-    def __init__(self, *args):
-        super().__init__(*args)
-
+    ' Error raised when the specified cache file can not be read from. '
 
 class Cache:
     """ In 'with' statements: Saves and loads cached data initialized by a factory in the constructor. """

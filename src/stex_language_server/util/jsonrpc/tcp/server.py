@@ -12,7 +12,6 @@ class Server:
         self.__dispatcher_factor = dispatcher_factory
         self._started = asyncio.Future()
         self._running = False
-        self.connections = asyncio.Queue()
     
     async def started(self):
         ''' A coroutine that only returns after the server has started.
@@ -26,16 +25,11 @@ class Server:
         protocol = JsonRpcTcpProtocol(reader, writer)
         dispatcher = self.__dispatcher_factor(protocol)
         protocol.set_dispatcher(dispatcher)
-        done = asyncio.Future()
-        await self.connections.put(done)
         try:
             await protocol.run_until_finished()
-            done.set_result(True)
-        except Exception as e:
+        except Exception:
             log.critical('Server connection run loop to %s was interrupted by an exception.', peername)
-            done.set_exception(e)
         finally:
-            done.cancel()
             await protocol.close()
             log.info('Connection to client %s closed.', peername)
 

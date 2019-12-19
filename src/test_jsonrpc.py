@@ -2,22 +2,22 @@ import argparse
 import threading
 import asyncio
 import logging
-logging.basicConfig(level=logging.DEBUG)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('mode', choices=['server', 'client'])
 parser.add_argument('--port', type=int, default=10000)
 parser.add_argument('--host', default='localhost')
-parser.add_argument('--method', default='echo')
-parser.add_argument('--args', nargs='*', default=[])
+parser.add_argument('--shared', action='store_true')
+parser.add_argument('--loglevel', default='warning', type=lambda x: getattr(logging, x.upper(), logging.WARNING))
 args = parser.parse_args()
 
-from stex_language_server.util.jsonrpc.tcp.protocol import JsonRpcProtocol
-from stex_language_server.util.jsonrpc.dispatcher import DispatcherBase, method, notification, request
+logging.basicConfig(level=args.loglevel)
+from stex_language_server.util.jsonrpc.tcp.client import Client
+from stex_language_server.util.jsonrpc.tcp.server import Server
+from stex_language_server.util.jsonrpc.dispatcher import Dispatcher
+from stex_language_server.util.jsonrpc.hooks import *
 
-class ClientDispatcher(DispatcherBase):
-    def __init__(self):
-        super().__init__()
-        self.values = {}
+class ClientDispatcher(Dispatcher):
     @request
     def echo(self, *msg): pass
     @request
@@ -27,41 +27,49 @@ class ClientDispatcher(DispatcherBase):
     @request
     def invalid(self, *args): pass
 
-class ServerDispatcher(DispatcherBase):
-    def __init__(self):
-        super().__init__()
-        self.values = {}
+global_values = {}
+class ServerDispatcher(Dispatcher):
+    def __init__(self, target):
+        super().__init__(target)
+        if args.shared:
+            self.values = global_values
+        else:
+            self.values = {}
     @method
     def echo(self, *msg):
         print('echo', *msg)
-        return msg
+        return msg, self.values
     @method
     def get(self, x):
-        return self.values.get(x)
+        return self.values[x]
     @method
     def set(self, x, value):
         self.values[x] = value
 
 if args.mode == 'server':
-    dispatcher = ServerDispatcher()
-    server = JsonRpcProtocol(dispatcher).serve_forever(
-        args.host, args.port)
-    asyncio.run(server)
+    server = Server(ServerDispatcher)
+    asyncio.run(server.serve_forever(args.host, args.port))
 elif args.mode == 'client':
+    client_parser = argparse.ArgumentParser()
+    client_parser.add_argument('method')
+    client_parser.add_argument('args', nargs='*', default=[])
+    import shlex
     async def main():
-        dispatcher = ClientDispatcher()
-        protocol = JsonRpcProtocol(dispatcher)
-        connection = protocol.open_connection(args.host, args.port)
-        client_task = asyncio.create_task(connection)
-        result = getattr(dispatcher, args.method)(*args.args)
-        try:
-            print("RESULT", await result)
-        except Exception as e:
-            print("RESULT EXCEPTION", e)
-        print('ECHo', await dispatcher.echo('Hello, World!'))
-        print('Get', await dispatcher.get('x'))
-        print('Set', await dispatcher.set('x', 'Hello, World!'))
-        print('Get', await dispatcher.get('x'))
-        await client_task
-
+        client = Client(ClientDispatcher)
+        dispatcher, done = await client.open_connection(args.host, args.port)
+        while True:
+            print('> ', end='')
+            ln = input().strip()
+            if ln in ('exit', 'quit'):
+                break
+            if not ln:
+                continue
+            cmd = client_parser.parse_args(shlex.split(ln))
+            try:
+                f = getattr(dispatcher, cmd.method)
+                print(await f(*cmd.args))
+            except Exception as e:
+                print(e)
+        print('Waiting until done.')
+        print(await done)
     asyncio.run(main())

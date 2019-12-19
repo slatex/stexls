@@ -246,7 +246,7 @@ class JsonRpcProtocol:
                 log.debug('Sending %s responses to the writer task.', len(responses))
                 await self.__writer_queue.put(responses)
         except (EOFError, asyncio.CancelledError) as e:
-            log.exception('Reader task exiting because of %s.', type(e))
+            log.info('Reader task exiting because of %s.', type(e))
         finally:
             log.debug('Putting terminator in writer queue.')
             await self.__writer_queue.put(None)

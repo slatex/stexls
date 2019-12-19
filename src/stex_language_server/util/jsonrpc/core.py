@@ -4,7 +4,7 @@ Specification from: https://www.jsonrpc.org/specification#overview
 from __future__ import annotations
 from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
 from enum import IntEnum
-
+import json
 
 __all__ = [
     'MessageObject',
@@ -19,6 +19,9 @@ class MessageObject:
     ' Base message. All Messages contain the string "jsonrpc: 2.0". '
     def __init__(self):
         self.jsonrpc = "2.0"
+    
+    def __repr__(self):
+        return json.dumps(self, default=lambda x: x.__dict__)
 
 
 class RequestObject(MessageObject):

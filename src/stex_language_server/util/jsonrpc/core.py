@@ -103,6 +103,9 @@ class ErrorObject:
         if data is not None:
             self.data = data
     
+    def __repr__(self):
+        return json.dumps(self, default=lambda x: x.__dict__)
+    
 
 class ErrorCodes(IntEnum):
     ' jsonrpc reserved error codes '

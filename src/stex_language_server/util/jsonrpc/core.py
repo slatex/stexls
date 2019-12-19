@@ -6,9 +6,11 @@ from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
 import json
 import functools
 import itertools
+import logging
 from enum import IntEnum
-
 from .util import validate_json, restore_message
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     'MessageObject',
@@ -181,29 +183,38 @@ class JsonRpcMessage:
     @staticmethod
     def from_json(self, string: str) -> JsonRpcMessage:
         ' Deserializes the json string. '
+        log.info('Deserializing message from json. (%i characters)', len(string))
         try:
             message = json.loads(string)
         except json.JSONDecodeError as e:
+            log.exception('Failed to parse json:\n\n%s', string)
             err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, data=str(e)))
             return JsonRpcMessage(errors=(err,))
         if not isinstance(message, (dict, list)):
+            log.warning('Deserialized json string must be a list or dictionary. Found: %s\n\n%s', type(message), message)
             err = ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, data=str(e)))
             return JsonRpcMessage(errors=(err,))
         if isinstance(message, dict):
             invalid = validate_json(message)
             if invalid is not None:
+                log.warning('Object failed validation: %s', message)
                 return JsonRpcMessage(errors=(invalid,))
             restored = restore_message(message)
+            log.debug('Restored single message: %s', restored)
             return JsonRpcMessage(objects=(restored,))
         elif isinstance(message, list):
+            log.debug('Restoring batch (%i entries).', len(message))
             errors = []
             objects = []
             for msg in message:
                 invalid = validate_json(msg)
                 if invalid is not None:
+                    log.warning('Batch entry failed validation: %s', msg)
                     errors.append(invalid)
                 else:
+                    log.debug('Restored batch entry: %s', msg)
                     objects.append(restore_message(msg))
+            log.debug('Batch restored %i objects (%i errors).', len(objects), len(errors))
             return JsonRpcMessage(
                 objects=objects, is_batch=True, errors=errors)
 
@@ -217,6 +228,11 @@ class JsonRpcMessage:
             for msg in itertools.chain(
                 self.requests(), self.notifications(), self.responses()))
         if self.is_batch():
-            yield '[' + ','.join(serializations) + ']'
+            log.info('Serialized message batch with %i entries.', len(serializations))
+            serialized = '[' + ','.join(serializations) + ']'
+            log.debug('Serialized message:\n\n%s', serialized)
+            yield serialized
         else:
+            log.info('Serialized %i messages.', len(serializations))
+            log.debug('Serialized messages:\n\n%a', serializations)
             yield from serializations

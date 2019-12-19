@@ -22,6 +22,8 @@ from stex_language_server.util.jsonrpc.hooks import *
 
 class ClientDispatcher(Dispatcher):
     @request
+    def invalid_params(self, *params): pass
+    @request
     def echo(self, *msg): pass
     @request
     def get(self, x): pass
@@ -44,6 +46,10 @@ class ServerDispatcher(Dispatcher):
             self.values = global_values
         else:
             self.values = {}
+    @method
+    def invalid_params(self, one):
+        print('Called with valid params: ', one)
+        return one
     @method
     def echo(self, *msg):
         print('echo', *msg)
@@ -85,12 +91,12 @@ elif args.mode == 'client':
     import shlex
     async def main():
         client = Client(ClientDispatcher)
-        dispatcher, done = await client.open_connection(args.host, args.port)
+        dispatcher = await client.open_connection(args.host, args.port)
         async def input_worker():
+            loop = asyncio.get_event_loop()
             while True:
-                await asyncio.sleep(1)
                 print('> ', end='')
-                ln = input().strip()
+                ln = (await loop.run_in_executor(None, input)).strip()
                 if ln in ('exit', 'quit'):
                     break
                 if not ln:
@@ -100,7 +106,11 @@ elif args.mode == 'client':
                     f = getattr(dispatcher, cmd.method)
                     coro = f(*cmd.args)
                     print(await coro)
-                except Exception as e:
-                    print(e)
-        await asyncio.gather(input_worker(), done)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+        try:
+            await input_worker()
+        finally:
+            client.close()
     asyncio.run(main())

@@ -113,12 +113,12 @@ class JsonRpcTcpProtocol(
     async def handle_request(self, request: core.RequestObject):
         params = getattr(request, 'params', None)
         log.debug('Handling request with id %i: %s(%s)', request.id, request.method, params)
-        return self.__dispatcher.call(request.method, params, request.id)
+        return await self.__dispatcher.call(request.method, params, request.id)
 
     async def handle_notification(self, notification: core.NotificationObject):
         params = getattr(notification, 'params', None)
         log.debug('Handling notification: %s(%s)', notification.method, params)
-        self.__dispatcher.call(notification.method, params)
+        await self.__dispatcher.call(notification.method, params)
 
     async def handle_response(self, response: core.ResponseObject):
         if response.id is None:

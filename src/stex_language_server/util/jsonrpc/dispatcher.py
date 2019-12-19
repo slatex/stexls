@@ -57,7 +57,11 @@ class Dispatcher:
         message = NotificationObject(method, params)
         return await self.__target.dispatch(message)
 
-    def call(self, method: str, params: Union[list, dict, None], id: Union[int, str] = None) -> Optional[ResponseObject]:
+    async def call(
+        self,
+        method: str,
+        params: Union[list, dict, None],
+        id: Union[int, str] = None) -> Optional[ResponseObject]:
         ' Calls the given method with the parameters and generates a response object according to the results. '
         log.info('Method %s(%s) called with id %s.', method, params, id)
         fn = self.__methods.get(method)
@@ -75,6 +79,9 @@ class Dispatcher:
                     result = fn(**params)
                 else:
                     raise TypeError(f'Invalid params type: {type(params)}')
+                if asyncio.iscoroutine(result):
+                    log.debug('Called method %s returned an coroutine object.')
+                    result = await result
                 log.debug('Method %s(%s) called successfully.', method, params)
                 response = ResponseObject(
                     id, result=result)

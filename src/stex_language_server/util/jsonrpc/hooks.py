@@ -1,6 +1,5 @@
 import logging
 import functools
-from .dispatcher import Dispatcher
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ def request(f):
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
 
+    from .dispatcher import Dispatcher
     @functools.wraps(f)
     def request_wrapper(self: Dispatcher, *args, **kwargs):
         if args and kwargs:
@@ -39,6 +39,7 @@ def notification(f):
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
 
+    from .dispatcher import Dispatcher
     @functools.wraps(f)
     def notification_wrapper(self: Dispatcher, *args, **kwargs):
         if args and kwargs:

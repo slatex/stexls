@@ -72,8 +72,12 @@ class ServerDispatcher(Dispatcher):
             return await loop.run_in_executor(pool, functools.partial(worker, float(t)))
 
 if args.mode == 'server':
-    server = Server(ServerDispatcher)
-    asyncio.run(server.serve_forever(args.host, args.port))
+    async def main():
+        server = Server(ServerDispatcher)
+        task = asyncio.create_task(server.serve_forever(args.host, args.port))
+        print('Server running at:', await server.started())
+        await task
+    asyncio.run(main())
 elif args.mode == 'client':
     client_parser = argparse.ArgumentParser()
     client_parser.add_argument('method')

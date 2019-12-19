@@ -136,11 +136,15 @@ class JsonRpcTcpProtocol(
                 log.warning('Received response (id %i) without result or error: %s', response.id, response)
     
     async def get_user_input(self):
+        log.debug('Getting user input: %s', self.__user_input_queue)
         return await self.__user_input_queue.get()
     
     async def dispatch(self, message: core.MessageObject) -> Optional[Awaitable[core.ResponseObject]]:
+        log.debug('Dispatching message: %s', message)
         await self.__user_input_queue.put(protocol.JsonRpcMessage(objects=(message,)))
+        log.debug('Message dispatched: %s', self.__user_input_queue)
         if isinstance(message, core.RequestObject):
+            log.debug('Waiting for result of dispatched request.')
             response = await self.__futures[message.id]
             del self.__futures[message.id]
             return response

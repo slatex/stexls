@@ -3,6 +3,7 @@ from typing import Iterable, Callable, Iterator
 import asyncio
 import logging
 import itertools
+import json
 from .core import *
 from .util import restore_message, validate_json
 
@@ -106,18 +107,15 @@ class JsonRpcMessage:
             the serialized strings for every message.
             If is_batch() is True, yields a single string with an
             json array that contains all serialized messages. '''
-        serializations = (
+        serializations = tuple(
             json.dumps(msg, default=lambda x: x.__dict__)
             for msg in itertools.chain(
                 self.requests(), self.notifications(), self.responses()))
+        log.debug('Serialized messages:\n\n%a', serializations)
         if self.is_batch():
-            log.info('Serialized message batch with %i entries.', len(serializations))
             serialized = '[' + ','.join(serializations) + ']'
-            log.debug('Serialized message:\n\n%s', serialized)
             yield serialized
         else:
-            log.info('Serialized %i messages.', len(serializations))
-            log.debug('Serialized messages:\n\n%a', serializations)
             yield from serializations
 
 

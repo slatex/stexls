@@ -57,19 +57,21 @@ elif args.mode == 'client':
     async def main():
         client = Client(ClientDispatcher)
         dispatcher, done = await client.open_connection(args.host, args.port)
-        while True:
-            print('> ', end='')
-            ln = input().strip()
-            if ln in ('exit', 'quit'):
-                break
-            if not ln:
-                continue
-            cmd = client_parser.parse_args(shlex.split(ln))
-            try:
-                f = getattr(dispatcher, cmd.method)
-                print(await f(*cmd.args))
-            except Exception as e:
-                print(e)
-        print('Waiting until done.')
-        print(await done)
+        async def input_worker():
+            while True:
+                await asyncio.sleep(1)
+                print('> ', end='')
+                ln = input().strip()
+                if ln in ('exit', 'quit'):
+                    break
+                if not ln:
+                    continue
+                cmd = client_parser.parse_args(shlex.split(ln))
+                try:
+                    f = getattr(dispatcher, cmd.method)
+                    coro = f(*cmd.args)
+                    print(await coro)
+                except Exception as e:
+                    print(e)
+        await asyncio.gather(input_worker(), done)
     asyncio.run(main())

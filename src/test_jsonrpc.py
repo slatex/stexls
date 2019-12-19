@@ -1,7 +1,10 @@
 import argparse
 import threading
 import asyncio
+import time
 import logging
+import functools
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 parser = argparse.ArgumentParser()
 parser.add_argument('mode', choices=['server', 'client'])
@@ -26,6 +29,12 @@ class ClientDispatcher(Dispatcher):
     def set(self, x, value): pass
     @request
     def invalid(self, *args): pass
+    @request
+    def io(self, time): pass
+    @request
+    def blocking(self, time): pass
+    @request
+    def pool(self, time): pass
 
 global_values = {}
 class ServerDispatcher(Dispatcher):
@@ -45,6 +54,22 @@ class ServerDispatcher(Dispatcher):
     @method
     def set(self, x, value):
         self.values[x] = value
+    @method
+    async def io(self, time):
+        await asyncio.sleep(float(time))
+        return float(time)**2
+    @method
+    def blocking(self, t):
+        time.sleep(float(t))
+        return float(t)**2
+    @method
+    async def pool(self, t):
+        loop = asyncio.get_event_loop()
+        def worker(t):
+            time.sleep(t)
+            return t ** 2
+        with ProcessPoolExecutor() as pool:
+            return await loop.run_in_executor(pool, functools.partial(worker, float(t)))
 
 if args.mode == 'server':
     server = Server(ServerDispatcher)

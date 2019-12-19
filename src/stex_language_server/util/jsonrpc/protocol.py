@@ -65,7 +65,7 @@ class JsonRpcMessage:
         return self._is_batch
 
     @staticmethod
-    def from_json(self, string: str) -> JsonRpcMessage:
+    def from_json(string: str) -> JsonRpcMessage:
         ' Deserializes the json string. '
         log.info('Deserializing message from json. (%i characters)', len(string))
         try:

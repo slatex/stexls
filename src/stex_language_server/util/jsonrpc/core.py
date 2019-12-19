@@ -3,7 +3,6 @@ Specification from: https://www.jsonrpc.org/specification#overview
 """
 from __future__ import annotations
 from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
-import json
 from enum import IntEnum
 
 

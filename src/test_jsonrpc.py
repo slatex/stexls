@@ -80,9 +80,9 @@ class ServerDispatcher(Dispatcher):
 if args.mode == 'server':
     async def main():
         server = Server(ServerDispatcher)
-        task = asyncio.create_task(server.serve_forever(args.host, args.port))
+        server_task = asyncio.create_task(server.serve_forever(args.host, args.port))
         print('Server running at:', await server.started())
-        await task
+        await server_task
     asyncio.run(main())
 elif args.mode == 'client':
     client_parser = argparse.ArgumentParser()

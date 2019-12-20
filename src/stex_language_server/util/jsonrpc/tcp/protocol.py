@@ -128,7 +128,7 @@ class JsonRpcTcpProtocol(
         else:
             if hasattr(response, 'error'):
                 log.warning('Resolving request id %i with exception: %s', response.id, response)
-                self.__futures[response.id].set_exception(Exception(response.error))
+                self.__futures[response.id].set_exception(response.error.to_exception())
             elif hasattr(response, 'result'):
                 log.debug('Resolving request id %i with result: %s', response.id, response)
                 self.__futures[response.id].set_result(response.result)

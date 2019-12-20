@@ -16,3 +16,6 @@ class ParseErrorException(JsonRpcException):
 
 class InvalidRequestException(JsonRpcException):
     ' Exceptinon raised when the message sent to a server is malformed. '
+
+class ServerErrorException(JsonRpcException):
+    ' Exception raised when the type of exception can not be determined. '

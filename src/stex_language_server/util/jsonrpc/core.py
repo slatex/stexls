@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
 from enum import IntEnum
 import json
+from . import exceptions
 
 __all__ = [
     'MessageObject',
@@ -106,6 +107,22 @@ class ErrorObject:
     def __repr__(self):
         return json.dumps(self, default=lambda x: x.__dict__)
     
+    def to_exception(self) -> Exception:
+        ' Creates a python exception object using the code of this ErrorObject. '
+        if self.code == ErrorCodes.ParseError:
+            return exceptions.ParseErrorException(str(self))
+        if self.code == ErrorCodes.InvalidRequest:
+            return exceptions.InvalidRequestException(str(self))
+        if self.code == ErrorCodes.MethodNotFound:
+            return exceptions.MethodNotFoundException(str(self))
+        if self.code == ErrorCodes.InvalidParams:
+            return exceptions.InvalidParamsException(str(self))
+        if self.code == ErrorCodes.InternalError:
+            return exceptions.InternalErrorException(str(self))
+        if self.code in range(-32000, -32100):
+            return exceptions.ServerErrorException(str(self))
+        return Exception(str(self))
+
 
 class ErrorCodes(IntEnum):
     ' jsonrpc reserved error codes '

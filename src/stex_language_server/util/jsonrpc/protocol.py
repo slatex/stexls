@@ -32,7 +32,11 @@ class JsonRpcMessage:
         if any occured during deserialization,
         can be queried using the errors() getter.
     '''
-    def __init__(self, objects: Iterable[MessageObject] = (), is_batch: bool = False, errors: Iterable[ResponseObject] = ()):
+    def __init__(
+        self,
+        objects: Iterable[MessageObject] = (),
+        is_batch: bool = False,
+        errors: Iterable[ResponseObject] = ()):
         ' Initializes the message by storing the given objects. '
         self._requests = tuple(
             o for o in objects if isinstance(o, RequestObject))

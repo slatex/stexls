@@ -97,7 +97,7 @@ elif args.mode == 'client':
             while True:
                 print('> ', end='')
                 ln = (await loop.run_in_executor(None, input)).strip()
-                if ln in ('exit', 'quit'):
+                if ln in ('exit', 'quit', 'q'):
                     break
                 if not ln:
                     continue

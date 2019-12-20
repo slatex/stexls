@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Iterable, Callable, Iterator
+from typing import Iterable, Callable, Iterator, Tuple, Union
 import asyncio
 import logging
 import itertools
@@ -181,6 +181,36 @@ class InputHandler:
         raise NotImplementedError()
 
 
+class Inspector:
+    ''' An interface for an server inspector.
+        Provides methods that allow for inspection of incoming and outgoing messages.
+    '''
+    def __init__(self):
+        self._queue = asyncio.Queue()
+    
+    def add_outgoing(self, message: MessageObject):
+        ' Adds a message to the outgoing queue. '
+        self._queue.put_nowait(('outgoing', message))
+    
+    def add_incoming(self, message: MessageObject):
+        ' Adds a message to the incoming queue. '
+        self._queue.put_nowait(('incoming', message))
+    
+    async def get(self) -> Tuple[Union['incoming', 'outgoing'], MessageObject]:
+        ''' Gets the next message sent or received.
+        Returns:
+            2-Tuple of ('incoming' | 'outgoing', MessageObject)
+            or None if there will be no more outgoing messages.
+        '''
+        log.debug('Inspector waiting for a new message to inspect.')
+        return await self._queue.get()
+    
+    def close(self):
+        log.debug('Closing inspector.')
+        self._queue.put_nowait(None)
+        self._queue = None
+
+
 class JsonRpcProtocol:
     ' This is a implementation for the json-rpc-protocol. '
     def __init__(
@@ -207,10 +237,24 @@ class JsonRpcProtocol:
         self.__reader = reader
         self.__writer = writer
         self.__writer_queue = asyncio.Queue()
+        self.__inspectors: List[Inspector] = []
+
+    def make_inspector(self) -> Inspector:
+        ' Adds an inspector to this protocol. '
+        inspector = Inspector()
+        self.__inspectors.append(inspector)
+        log.debug('Adding inspector to protocol (%i inspectors).', len(self.__inspectors))
+        return inspector
     
+    def remove_inspector(self, inspector: Inspector):
+        ' Removes an inspector from this protocol. '
+        self.__inspectors.remove(inspector)
+
     async def close(self):
         log.info('JsonRpcProtocol close() called.')
         await self.__writer_queue.put(None)
+        for i in self.__inspectors:
+            await i.close()
     
     async def _handle_message(self, message: JsonRpcMessage) -> JsonRpcMessage:
         ''' Handles all message objects in a json rpc message.
@@ -248,6 +292,10 @@ class JsonRpcProtocol:
                 if message is None:
                     log.info('Message terminator received.')
                     break
+                for inspector in self.__inspectors:
+                    log.debug('Adding incoming messages to inspector %s.', inspector)
+                    for msg in message.objects():
+                        inspector.add_incoming(msg)
                 responses = await self._handle_message(message)
                 log.debug('Sending responses to the writer task: %s', responses)
                 await self.__writer_queue.put(responses)
@@ -270,6 +318,10 @@ class JsonRpcProtocol:
                 if message is None:
                     log.debug('Writer task terminator received.')
                     break
+                for inspector in self.__inspectors:
+                    log.debug('Adding outgoing messages to inspector %s.', inspector)
+                    for msg in message.objects():
+                        inspector.add_outgoing(msg)
                 log.debug('Writing message to stream.')
                 await self.__writer.write(message)
         except asyncio.CancelledError:

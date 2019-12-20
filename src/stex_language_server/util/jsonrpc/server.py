@@ -1,15 +1,15 @@
 from typing import Optional
 import asyncio
 import logging
-from .protocol import JsonRpcTcpProtocol
+from .protocol import JsonRpcProtocol
 
 log = logging.getLogger(__name__)
 
 __all__ = ['Server']
 
 class Server:
-    def __init__(self, dispatcher_factory):
-        self.__dispatcher_factor = dispatcher_factory
+    def __init__(self, protocol_factory):
+        self._protocol_factory = protocol_factory
         self._started = asyncio.Future()
         self._running = False
     
@@ -22,15 +22,12 @@ class Server:
     async def _connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peername = writer.get_extra_info('peername')
         log.info('Server incoming connection from %s.', peername)
-        protocol = JsonRpcTcpProtocol(reader, writer)
-        dispatcher = self.__dispatcher_factor(protocol)
-        protocol.set_dispatcher(dispatcher)
+        protocol = self._protocol_factory(reader, writer)
         try:
             await protocol.run_until_finished()
         except Exception:
             log.exception('Server connection run loop to %s was interrupted by an exception.', peername)
         finally:
-            await protocol.close()
             log.info('Connection to client %s closed.', peername)
 
     async def serve_forever(

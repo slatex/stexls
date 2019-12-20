@@ -15,10 +15,11 @@ parser.add_argument('--loglevel', default='warning', type=lambda x: getattr(logg
 args = parser.parse_args()
 
 logging.basicConfig(level=args.loglevel)
-from stex_language_server.util.jsonrpc.tcp.client import Client
-from stex_language_server.util.jsonrpc.tcp.server import Server
+from stex_language_server.util.jsonrpc.client import Client
+from stex_language_server.util.jsonrpc.server import Server
 from stex_language_server.util.jsonrpc.dispatcher import Dispatcher
 from stex_language_server.util.jsonrpc.hooks import *
+from stex_language_server.util.jsonrpc.protocol import *
 
 class ClientDispatcher(Dispatcher):
     @request
@@ -38,12 +39,12 @@ class ClientDispatcher(Dispatcher):
     @request
     def pool(self, time): pass
 
-global_values = {}
-class ServerDispatcher(Dispatcher):
-    def __init__(self, target):
-        super().__init__(target)
+class ServerProtocol(JsonRpcProtocol):
+    global_values = {}
+    def __init__(self, reader, writer):
+        super().__init__(reader, writer)
         if args.shared:
-            self.values = global_values
+            self.values = ServerProtocol.global_values
         else:
             self.values = {}
     @method
@@ -79,7 +80,7 @@ class ServerDispatcher(Dispatcher):
 
 if args.mode == 'server':
     async def main():
-        server = Server(ServerDispatcher)
+        server = Server(ServerProtocol)
         server_task = asyncio.create_task(server.serve_forever(args.host, args.port))
         print('Server running at:', await server.started())
         await server_task

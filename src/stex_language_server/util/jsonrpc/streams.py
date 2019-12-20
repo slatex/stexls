@@ -1,7 +1,9 @@
 from typing import Union, Optional, Any
 import re
 import json
+import logging
 
+log = logging.getLogger(__name__)
 
 __all__ = (
     'AsyncReaderStream',
@@ -12,8 +14,8 @@ __all__ = (
 
 class AsyncReaderStream:
     ' Interface for a stream that can read lines and bytes asynchronously. '
-    async def readline(self, linebreak: bytes) -> str:
-        ' Reads data until linebreak is reached. '
+    async def readuntil(self, separator: bytes = b'\n') -> bytes:
+        ' Reads data until separator is reached. '
         raise NotImplementedError()
 
     async def read(self, count: int) -> bytes:
@@ -34,26 +36,35 @@ class JsonStreamReader:
         ' Reads a header from stream until the terminator line is reached. '
         header = {}
         while True:
-            line: bytes = await self._stream.readline(linebreak)
+            log.debug('Start reading until linebreak %s', linebreak)
+            line: bytes = await self._stream.readuntil(linebreak)
             if not line:
+                log.debug('Stream reader header encountered end of file.')
                 raise EOFError()
             if line == linebreak:
+                log.debug('Stream reader header terminator received.')
                 return header
+            log.debug('Line received: "%s"', line.strip())
             line = line.decode(encoding)
             parts = line.split(separator)
             setting, value = map(str.strip, parts)
+            log.debug('Setting header setting "%s" to "%s"', setting, value)
             header[setting.lower()] = value
 
     async def read(self, header: dict) -> Union[dict, list, str, float, int, bool, None]:
         ' Reads data according to the header from stream and parses the content as json and returns it. '
         content_length: int = int(header['content-length'])
+        log.debug('Header content length is %i.', content_length)
         content_type: Optional[str] = header.get('content-type')
         charset: str = 'utf-8'
         if content_type:
             for m in re.finditer(r'(?<!\w)charset=([\w\-]+)', content_type):
                 charset = m.group(1)
-        content: bytes = self._stream.read(content_length)
+        log.debug('Json reader reading %i bytes.', content_length)
+        content: bytes = await self._stream.read(content_length)
+        log.debug('Decoding content using charset "%s"', charset)
         content = content.decode(charset)
+        log.debug('Content read: "%s"', content)
         return json.loads(content)
 
 
@@ -75,7 +86,8 @@ class JsonStreamWriter:
         separator: str = ':',
         encoding: str = 'utf-8',
         linebreak: bytes = b'\r\n'):
-        header = setting + ': ' + value
+        header = f'{setting}{separator} {value}'
+        log.debug('Json writer sending header "%s" with value "%s"', setting, value)
         data = bytes(header, encoding) + linebreak
         self._stream.write(data)
 
@@ -92,6 +104,9 @@ class JsonStreamWriter:
         content_type: str = 'application/json; charset={encoding}'):
         content = json.dumps(o, default=lambda x: x.__dict__)
         content = bytes(content, encoding)
+        log.debug(
+            'Prepairing header: content-length=%i, encoding=%s, content-type=%s',
+            len(content), encoding, content_type)
         self.send_header(
             'Content-Length',
             len(content),
@@ -107,4 +122,3 @@ class JsonStreamWriter:
                 linebreak)
         self.end_header(linebreak)
         self._stream.write(content)
-

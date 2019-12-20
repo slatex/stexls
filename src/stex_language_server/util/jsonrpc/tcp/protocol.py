@@ -55,6 +55,8 @@ class TcpReaderStream(protocol.ReaderStream):
             elif setting == 'content-type':
                 content_type = value
                 log.debug('Setting content-type to "%s"', content_type)
+            else:
+                log.debug('Ignoring setting "%s" with value "%s"', setting, value)
         log.debug('Reading "%i" bytes.', content_length)
         try:
             content = await self._reader.read(content_length)

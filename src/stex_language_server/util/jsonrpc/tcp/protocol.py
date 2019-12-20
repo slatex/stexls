@@ -78,7 +78,7 @@ class TcpWriterStream(protocol.WriterStream):
         for string in message.to_json():
             content = bytes(string, self._encoding)
             header_string = (f'Content-Length: {len(content)}{self._linebreak}'
-                             f'Content-Type: charset={self._encoding}{self._linebreak}{self._linebreak}')
+                             f'Content-Type: application/json; charset={self._encoding}{self._linebreak}{self._linebreak}')
             header = bytes(header_string, self._encoding)
             self._writer.write(header + content)
 

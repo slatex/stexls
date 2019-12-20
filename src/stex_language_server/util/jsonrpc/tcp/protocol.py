@@ -42,8 +42,8 @@ class TcpReaderStream(protocol.ReaderStream):
             parts = ln.split(':')
             parts = tuple(map(str.lower, map(str.strip, parts)))
             if (len(parts) != 2
-                or parts[0] not in ('content-length', 'content-type')
-                or (parts[0] == 'content-length' and not parts[1].isdigit())):
+                or (parts[0] == 'content-length'
+                    and not parts[1].isdigit())):
                 log.debug('Received line is invalid. Resetting.')
                 content_length = None
                 content_type = None
@@ -52,7 +52,7 @@ class TcpReaderStream(protocol.ReaderStream):
             if setting == 'content-length':
                 content_length = int(value)
                 log.debug('Setting content-length to "%i".', content_length)
-            else:
+            elif setting == 'content-type':
                 content_type = value
                 log.debug('Setting content-type to "%s"', content_type)
         log.debug('Reading "%i" bytes.', content_length)

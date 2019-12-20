@@ -2,7 +2,7 @@
 class JsonRpcException(Exception):
     ' Base for exceptions raised by this module. '
 
-class InternalException(JsonRpcException):
+class InternalErrorException(JsonRpcException):
     ' Exception raised when request returns with internal error. '
 
 class InvalidParamsException(JsonRpcException):

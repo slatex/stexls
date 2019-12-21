@@ -36,7 +36,8 @@ async def start_server(
     dispatcher_factory: Callable[[DispatcherTarget], Dispatcher],
     host: str = 'localhost',
     port: int = 0,
-    started: asyncio.Future = None):
+    started: asyncio.Future = None,
+    connections: asyncio.Queue = None):
     ''' Starts a server at the given host and port.
         Creates a new dispatcher using dispatcher_factory every
         time a new connection is made.
@@ -49,10 +50,19 @@ async def start_server(
         peername = w.get_extra_info('peername')
         log.info('Server accepted connection from %s.', peername)
         protocol = JsonRpcProtocol(r, w)
-        protocol.set_method_provider(dispatcher_factory(protocol))
+        dispatcher = dispatcher_factory(protocol)
+        protocol.set_method_provider(dispatcher)
+        closed = asyncio.Future()
+        if connections is not None:
+            await connections.put({
+                'protocol': protocol,
+                'dispatcher': dispatcher,
+                'peername': peername,
+                'closed': closed})
         try:
             await protocol.run_until_finished()
         finally:
+            closed.set_result(True)
             log.info('Server connection to %s closed.', peername)
     server = await asyncio.start_server(connect, host, port)
     info = server.sockets[0].getsockname()

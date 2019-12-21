@@ -102,6 +102,7 @@ elif args.mode == 'client':
                 print('> ', end='')
                 ln = (await loop.run_in_executor(None, input)).strip()
                 if ln in ('exit', 'quit', 'q'):
+                    client_task.cancel()
                     break
                 if not ln:
                     continue

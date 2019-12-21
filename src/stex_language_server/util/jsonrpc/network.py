@@ -13,6 +13,12 @@ async def open_connection(
     host: str = 'localhost',
     port: int = 0,
     connection: asyncio.Future = None):
+    ''' Creates and connects a client to a given host and port.
+    Returns:
+        Protocol loop awaitable.
+        The created dispatcher can be retrieved by providing and
+        awaiting the connection argument.
+    '''
     reader, writer = await asyncio.open_connection(host, port)
     peername = writer.get_extra_info('peername')
     protocol = JsonRpcProtocol(reader, writer)
@@ -31,6 +37,14 @@ async def start_server(
     host: str = 'localhost',
     port: int = 0,
     started: asyncio.Future = None):
+    ''' Starts a server at the given host and port.
+        Creates a new dispatcher using dispatcher_factory every
+        time a new connection is made.
+    Returns:
+        Server loop awaitable and if given,
+        puts the host and port the server is listening at
+        into <started>
+    '''
     async def connect(r, w):
         peername = w.get_extra_info('peername')
         log.info('Server accepted connection from %s.', peername)

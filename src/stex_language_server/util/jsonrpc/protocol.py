@@ -83,7 +83,7 @@ class JsonRpcProtocol(DispatcherTarget):
                 response = ResponseObject(
                     id, result=result)
             except TypeError as e:
-                log.exception('Method %s(%s) threw possible InvalidParams error.', method, params)
+                log.warning('Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
             except Exception as e:

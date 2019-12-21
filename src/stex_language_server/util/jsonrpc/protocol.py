@@ -24,22 +24,7 @@ class JsonRpcProtocol(DispatcherTarget):
         self.__methods = extract_methods(self)
         self.__requests = {}
         self.__method_provider: MethodProvider = None
-        self.__running_reader_task: asyncio.Future = None
-        self.__stopped = False
-    
-    def stop(self):
-        ' Stopps the protocol. '
-        if self.__stopped:
-            log.warning('JsonRpcProtocol.stop() already called before.')
-        else:
-            log.info('JsonRpcProtocol.stop() called.')
-            self.__running_reader_task.cancel()
-            self.__stop_writer_task()
-    
-    def __stop_writer_task(self):
-        log.info('Stopping writer task')
-        self.__stopped = True
-        self.__writer_queue.put_nowait(None)
+        self.__task_loop: asyncio.Future = None
     
     def set_method_provider(self, provider: MethodProvider):
         ' Sets the protocols method provider used to resolve requests and notifications. '
@@ -48,10 +33,13 @@ class JsonRpcProtocol(DispatcherTarget):
     async def run_until_finished(self):
         ' Runs the protocol until all subtasks finish. '
         log.info('JsonRpcProtocol starting.')
-        self.__running_reader_task = self._reader_task()
-        await asyncio.gather(
-            self.__running_reader_task,
+        self.__task_loop = asyncio.gather(
+            self._reader_task(),
             self._writer_task())
+        try:
+            await self.__task_loop
+        except asyncio.CancelledError:
+            log.info('Stopping JsonRpcProtocol due to cancellation.')
         log.info('JsonRpcProtocol all tasks finished. Exiting.')
 
     async def dispatch(
@@ -162,7 +150,7 @@ class JsonRpcProtocol(DispatcherTarget):
                 await self.__writer_queue.put(responses)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
             log.info('Reader task exiting because of %s.', type(e))
-            self.__stop_writer_task()
+            self.__writer_queue.put_nowait(self)
         log.info('Reader task finished.')
     
     async def _writer_task(self):
@@ -171,10 +159,10 @@ class JsonRpcProtocol(DispatcherTarget):
             while True:
                 log.debug('Writer waiting for message from queue.')
                 message: Union[MessageObject, List[MessageObject]] = await self.__writer_queue.get()
+                if message == self:
+                    log.info('Writer task received stop message. Exiting.')
+                    break
                 if not message:
-                    if self.__stopped:
-                        log.info('Writer task stop flag set. Exiting.')
-                        break
                     log.debug('Writer throwing invalid message away: %s', message)
                 else:
                     log.debug('Writing message: %s', message)

@@ -7,10 +7,12 @@ from .dispatcher import DispatcherTarget
 from .hooks import extract_methods
 from .streams import AsyncReaderStream, WriterStream, JsonStreamWriter, JsonStreamReader
 from .util import validate_json, restore_message
+from .method_provider import MethodProvider
 
 log = logging.getLogger(__name__)
 
 __all__ = ('JsonRpcProtocol',)
+
 
 class JsonRpcProtocol(DispatcherTarget):
     ' This is a implementation for the json-rpc-protocol. '
@@ -21,6 +23,11 @@ class JsonRpcProtocol(DispatcherTarget):
         self.__writer_queue = asyncio.Queue()
         self.__methods = extract_methods(self)
         self.__requests = {}
+        self.__method_provider: MethodProvider = None
+    
+    def set_method_provider(self, provider: MethodProvider):
+        ' Sets the protocols method provider used to resolve requests and notifications. '
+        self.__method_provider = provider
 
     async def run_until_finished(self):
         ' Runs the protocol until all subtasks finish. '
@@ -59,26 +66,15 @@ class JsonRpcProtocol(DispatcherTarget):
         params: Union[list, dict, None],
         id: Union[int, str] = None) -> Optional[ResponseObject]:
         ' Calls the given method with the parameters and generates a response object according to the results. '
-        log.info('Method %s(%s) called with id %s.', method, params, id)
-        fn = self.__methods.get(method)
-        if not fn:
+        log.info('Calling method %s(%s) with id %s.', method, params, id)
+        if not self.__method_provider.is_method(method):
             log.warning('Method %s not found.', method)
             response = ResponseObject(
                 id, error=ErrorObject(ErrorCodes.MethodNotFound, data=method))
         else:
             try:
-                if params is None:
-                    result = fn()
-                elif isinstance(params, list):
-                    result = fn(*params)
-                elif isinstance(params, dict):
-                    result = fn(**params)
-                else:
-                    raise TypeError(f'Invalid params type: {type(params)}')
-                if asyncio.iscoroutine(result):
-                    log.debug('Called method %s returned an coroutine object.', method)
-                    result = await result
-                log.debug('Method %s(%s) called successfully.', method, params)
+                result = await self.__method_provider.call(method, params)
+                log.debug('Method %s(%s) call successful.', method, params)
                 response = ResponseObject(
                     id, result=result)
             except TypeError as e:
@@ -86,7 +82,7 @@ class JsonRpcProtocol(DispatcherTarget):
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
             except Exception as e:
-                log.exception('Method %s(%s) threw an unknown error.', method, params)
+                log.exception('Method %s(%s) raised an unexpected error.', method, params)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
         if id is not None:

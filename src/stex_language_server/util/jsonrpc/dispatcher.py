@@ -5,6 +5,8 @@ import asyncio
 import logging
 import itertools
 from .core import *
+from .hooks import extract_methods
+from .method_provider import MethodProvider
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ class DispatcherTarget:
         raise NotImplementedError()
 
 
-class Dispatcher:
+class Dispatcher(MethodProvider):
     ''' A dispatcher is a hook that allows sending user messages to a connection
         between a client and the server.
         The dispatcher behaves like a normal python object, except that
@@ -40,6 +42,33 @@ class Dispatcher:
         ' Initializes the dispatcher with a target for the messages it dispatches. '
         self.__target = target
         self.__request_id_generator = itertools.count(1)
+        self.__methods = extract_methods(self)
+
+    def is_method(self, method: str):
+        ' Inherited. '
+        return method in self.__methods
+    
+    async def call(self, method: str, params: Optional[Union[list, dict]] = None):
+        ' Inherited. '
+        function = self.__methods[method]
+        log.debug('Resolved method %s: %s', method, function)
+        if not params:
+            log.debug('Calling %s without parameters.', method)
+            result = function()
+        elif isinstance(params, list):
+            log.debug('Calling %s with args.', method)
+            result = function(*params)
+        elif isinstance(params, dict):
+            log.debug('Calling %s with kwargs.', method)
+            result = function(**params)
+        else:
+            raise TypeError(f'Invalid param type {type(params)}')
+        if asyncio.iscoroutine(result):
+            log.debug('Awaiting method result, then returning it.')
+            return await result
+        else:
+            log.debug('Returning method result.')
+            return result
 
     async def request(self, method: str, params: Union[list, dict, None] = None) -> Any:
         ' Sends a request message using the dispatch handler and awaits the results. '
@@ -49,7 +78,7 @@ class Dispatcher:
         return await self.__target.dispatch(message)
 
     async def notification(self, method: str, params: Union[list, dict, None] = None):
-        ' Sends a notification message using the dispatch handler and returns immediatly. '
+        ' Sends a notification message using the dispatch handler and returns immediately. '
         log.info('Dispatching notification %s(%s).', method, params)
         message = NotificationObject(method, params)
         return await self.__target.dispatch(message)

@@ -63,9 +63,16 @@ if args.mode == 'server':
                 return await loop.run_in_executor(pool, functools.partial(worker, float(t)))
     async def main():
         started = asyncio.Future()
-        server_task = asyncio.create_task(start_server(ServerDispatcher, args.host, args.port, started))
+        c = asyncio.Queue()
+        server_task = asyncio.create_task(start_server(ServerDispatcher, args.host, args.port, started, c))
+        async def cc():
+            while True:
+                conn = await c.get()
+                print('COnnected', conn)
+                await conn['closed']
+                print('CLosed')
         print('Server running at:', await started)
-        await server_task
+        await asyncio.gather(server_task, cc())
     asyncio.run(main())
 elif args.mode == 'client':
     class ClientDispatcher(Dispatcher):

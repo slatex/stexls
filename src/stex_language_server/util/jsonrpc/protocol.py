@@ -158,7 +158,7 @@ class JsonRpcProtocol(DispatcherTarget):
                 log.debug('Writer waiting for message from queue.')
                 message: Union[MessageObject, List[MessageObject]] = await self.__writer_queue.get()
                 if not message:
-                    log.debug('Writer throwing invalid message await: %s', message)
+                    log.debug('Writer throwing invalid message awai: %s', message)
                 else:
                     log.debug('Writing message: %s', message)
                     self.__writer.write(message)

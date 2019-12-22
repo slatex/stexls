@@ -1,6 +1,6 @@
 from __future__ import annotations
 import itertools, os, re, copy, antlr4
-from typing import Iterator, Pattern, List
+from typing import Iterator, Pattern, List, Optional
 from antlr4.error.ErrorListener import ErrorListener
 
 from stex_language_server.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer

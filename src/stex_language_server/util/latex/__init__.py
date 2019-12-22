@@ -1,5 +1,5 @@
 
-__all__ = ['parser', 'tokenization']
+__all__ = ['parser', 'tokenizer']
 
 from . import parser
-from . import tokenization
+from . import tokenizer

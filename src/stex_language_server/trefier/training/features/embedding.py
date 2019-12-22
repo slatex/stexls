@@ -4,13 +4,22 @@ from sklearn.decomposition import PCA
 from stex_language_server.util import download
 
 class GloVe:
+    ' Implements transformation of tokens to glove embedding vectors. '
     def __init__(
         self,
         n_components: Optional[int] = None,
         oov_vector: Union['random', 'zero', None] = None,
         word_limit: Optional[int] = None,
-        datadir: str = 'data/',
-        source_dim: int = 50):
+        source_dim: int = 50,
+        datadir: str = 'data/'):
+        ''' Initializes the embedding transform.
+        Parameters:
+            n_components: Performs PCA on the loaded embeddings to fit the given number of components.
+            oov_vector: Method of how a oov token should be treated: 'random' or 'zero' vector or None to ignore.
+            word_limit: Limits the number of words loaded from GloVe.
+            source_dim: Identifier for source dimension of GloVe to load.
+            datadir: Specifies the directory in which the downloaded GloVe embedding should be saved.
+        '''
         files = GloVe.maybe_download_and_extract(datadir)
         for path in files:
             if f'{source_dim}d' in path:
@@ -34,6 +43,12 @@ class GloVe:
         }.get(oov_vector)
 
     def transform(self, x: Iterable[Iterable[str]]) -> List[List[np.ndarray]]:
+        ''' Transforms a list of lists of tokens to their respective GloVe embedding.
+        Parameters:
+            x: List of list of token lexemes.
+        Returns:
+            List of lists of the embeddings for those tokens.
+        '''
         return [
             np.array([
                 self.embeddings.get(word, self.oov_vec)
@@ -44,6 +59,7 @@ class GloVe:
 
     @staticmethod
     def maybe_download_and_extract(downloaddir: str = 'data/'):
+        ' Maybe downloads and extracts pretrained glove embeddings to the specified directory. '
         return download.maybe_download_and_extract(
             "http://nlp.stanford.edu/data/glove.6B.zip",
             save_dir=downloaddir)

@@ -1,214 +1,152 @@
-from __future__ import annotations
+from typing import Tuple, List
+from enum import IntEnum
+from glob import glob
+import os
+import re
+import pickle
+import multiprocessing as mp
 
 from stex_language_server.util import download
+from stex_language_server.util.latex import tokenizer
+
+_TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?')
+_DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')
+
 
 class Label(IntEnum):
-    """ Possible labels. """
+    ' Possible labels. '
     TEXT=0
     TREFI=1
     DEFI=2
 
-
-def _alt_edge_detector(tokens: Iterable[Token]) -> List[bool]:
-    """ Transforms an iterable of tokens to a list of bools that are True on the first token of an adefi or atrefi. """
-    tokens = tuple(tokens)
-    matcher = re.compile(r'm?am?(tr|d)efi+s?').fullmatch
-    alt_token_envs = tuple(any(map(matcher, token.envs)) for token in tokens)
-    f = [alt_token_envs[0]] + [
-        (not p) and n
-        for p, n in zip(alt_token_envs, alt_token_envs[1:])
-    ]
-    return f
-
-def _make_stream(
-    file: str,
-    lang: str,
-    lower: bool,
-    split_into_definitions: bool) -> Union[List[LatexTokenStream], LatexTokenStream]:
-    """ Makes a filetered token stream from a file path for each 'definition' environment in it. """
-    parser = LatexParser(file)
-    if parser is None or not parser.success:
-        return None
-    if split_into_definitions:
-        return [
-            LatexTokenStream(
-                root=stream_root,
-                lang=lang,
-                lower=lower,
-                perform_character_replacements=False,
-                token_filter_fn=_alt_edge_detector
-            )
-            for stream_root
-            in parser.root.finditer('definition')
-            # finditer definition in order to filter out tokens outside of definitions
-        ]
+def load_and_cache(cache: str = '/home/marian/smglom.bin', progress: callable = None):
+    ''' Loads the dataset from cache if it exists,
+        else loads the dataset using load() and writes
+        the cache file with the given path if not None.
+    Returns:
+        Smglom x, y tuple.
+    '''
+    if cache and os.path.exists(cache):
+        with open(cache, 'rb') as file:
+            x, y = pickle.load(file)
+        print('Loaded', len(x), 'files from cache.')
     else:
-        return LatexTokenStream(
-            root=parser.root,
-            lang=lang,
-            lower=lower,
-            perform_character_replacements=False,
-            token_filter_fn=_alt_edge_detector
-        )
+        print('File not cached. Loading...')
+        x, y = load(progress=progress)
+        if cache:
+            write_cache(x, y, path=cache)
+    return x, y
 
-_TREFI_PATTERN = re.compile(r"""[ma]*trefi+s?""")
-_DEFI_PATTERN = re.compile(r"""[ma]*defi+s?""")
+def write_cache(x, y, path: str = '/home/marian/smglom.bin', force: bool = False):
+    ' Helper that writes a (x, y) tuple to a file if it doesn\'t exist. '
+    if not force and os.path.exists(path):
+        raise ValueError(f'File {path} already exists.')
+    with open(path, 'wb') as file:
+        pickle.dump((x, y), file)
 
-def _envs2label(envs: Tuple[str, ...], binary_labels: bool) -> Label:
-    """ Determines label by looking a list of environments. """
+def load(download_dir: str = 'data/', lang: str = 'en', binary: bool = True, progress: callable = None, limit: int = None):
+    ''' Loads smglom repositories as dataset.
+    Parameters:
+        download_dir: Path to where the repositories should be downloaded to and loaded from.
+        lang: Language of smglom files to use.
+        binary: If True, uses binary labels [Text=0, Keyword=1] instead of [Text=0, Trefi=1, Defi=2].
+        progress: Optional progress indicator callable.
+        limit: Limit of the number of files being parsed.
+    Returns:
+        Tuple of list of lists of lexemes and list of lists of integer labels.
+    '''
+    files = [
+        file
+        for folder
+        in maybe_download(dest_dir=download_dir)
+        for file
+        in glob(os.path.join(folder, f'**/*.{lang}.tex'))
+    ]
+    progress = progress or (lambda x: x)
+    x = []
+    y = []
+    with mp.Pool() as pool:
+        for file in progress(pool.imap_unordered(tokenizer.LatexTokenizer.from_file, files[:limit or len(files)])):
+            if file is None:
+                continue
+            tokens, labels = _parse_file(list(file), binary)
+            x.append(tokens)
+            y.append(labels)
+        
+    return x, y
+
+def maybe_download(dest_dir: str = 'data/'):
+    ''' Downloads smglom git repositories and returns the paths to them.
+    Parameters:
+        dest_dir: Root directory to where the repositories should be cloned to.
+    Returns:
+        List of the paths of the downloaded repositories.
+    '''
+    repositories = [
+        "physics",
+        "cs",
+        #"lmfdb",
+        "probability",
+        "measure-theory",
+        "tannakian",
+        "categories",
+        "theresas-playground",
+        "complexity",
+        "arithmetics",
+        "elliptic-curves",
+        "manifolds",
+        "numthy",
+        "identities",
+        "numthyfun",
+        "constants",
+        "analysis",
+        "trigonometry",
+        "numbers",
+        "primes",
+        "linear-algebra",
+        "magic",
+        "functional-analysis",
+        "geometry",
+        "topology",
+        "calculus",
+        "algebra",
+        "graphs",
+        "sets",
+        "mv",
+        "chevahir",
+        "SMGloM"
+    ]
+    save_dir = dest_dir if dest_dir.endswith('/smglom') else os.path.join(dest_dir, 'smglom')
+    print('Saving repositories to', save_dir)
+    paths = []
+    for repo in repositories:
+        try:
+            paths.append(download.maybe_download_git(
+                repo_url=os.path.join('https://gl.mathhub.info/smglom', repo),
+                save_dir=save_dir))
+        except Exception as e:
+            print(f'Download of {repo} failed with:', e)
+    return paths
+
+def _parse_file(tokens: List[tokenizer.LatexToken], binary: bool) -> Tuple[List[str], List[Label]]:
+    ''' Parses a list of latex tokens into a tuple of lexemes and their labels
+    Parameters:
+        tokens: List of latex tokens of a file.
+    Returns:
+        2-Tuple with first member being the lexemes of valid tokens
+        and the second member being their labels
+    '''
+    x = []
+    y = []
+    for lexeme, _, _, envs in tokens:
+        x.append(lexeme)
+        y.append(_envs2label(envs, binary))
+    return x, y
+
+def _envs2label(envs: List[str], binary_labels: bool) -> Label:
+    ' Determines label by looking a list of environments. '
     if any(map(_TREFI_PATTERN.fullmatch, envs)):
         return Label.TREFI
     if any(map(_DEFI_PATTERN.fullmatch, envs)):
         return Label.TREFI if binary_labels else Label.DEFI
     return Label.TEXT
-
-def parse_files(
-    lang: str = 'en',
-    lower: bool = True,
-    split_into_definitions: bool = False,
-    download_dir: str = 'data/',
-    n_jobs: int = 4,
-    show_progress: bool = False) -> Iterator[Iterable[LatexToken]]:
-    """ Downloads all smglom repositories from github and parses the .tex files for the specified language.
-
-    Keyword Arguments:
-        :param lang: Language of files to load. Uses the pattern: "filename.lang.tex".
-        :param lower: Enables token to lowercase transform.
-        :param split_into_definitions: If true, splits token streams into smaller token streams based on the smglom \\begin{definition}...\\end{definition} environments.
-        :param download_dir: Directory to where the git repositories are downloaded.
-        :param n_jobs: Number of processes to use to parse tex files.
-        :param show_progress: Uses tqdm to display loading progress.
-    
-    Returns:
-        List of successfully parsed latex documents.
-        
-    """
-    
-    files = [
-        file
-        for folder
-        in download_smglom.maybe_download(download_dir=download_dir, show_progress=show_progress)
-        for file
-        in glob(path.join(folder, f'**/*.{lang}.tex'))
-    ]
-
-    make_stream = functools.partial(
-        _make_stream,
-        lang=lang,
-        lower=lower,
-        split_into_definitions=split_into_definitions
-    )
-
-    with Pool(n_jobs) as pool:
-        if show_progress:
-            it = tqdm(pool.imap_unordered(make_stream, files))
-        else:
-            it = pool.map(make_stream, files)
-
-        if split_into_definitions:
-            # it contains lists of token streams -> yield recursively
-            for definition_token_streams in filter(None, it):
-                yield from definition_token_streams
-        else:
-            # it only contains token strean -> yield all
-            yield from filter(None, it)
-
-def parse_dataset(
-    document_token_streams: Optional[List[LatexTokenStream]] = None,
-    binary_labels: bool = False,
-    math_token: str = '<math>',
-    lower: bool = True,
-    lang: Optional[str] = None,
-    split_into_definitions: bool = False,
-    show_progress: bool = False) -> Tuple[List[List[str]], List[List[Label]]]:
-    """ Parses tex documents for labels and tokens assuming they are annotated
-    with trefi and defi tags.
-
-    Keyword Arguments:
-        :param documents: List of documents to use for dataset creation. Downloads and parses smglom files, if None.
-        :param binary_labels: If True, aliases TREFI and DEFI tags as a single KEYWORD tag with the ordinal value 1.    
-        :param math_token: String to use instead of math tokens.
-        :param lower: Enables lowercase transform of all tokens.
-        :param lang: Language the files got parsed for. Changes the tokenization process depending on the value.
-        :param split_into_definitions: If enabled, splits documents on smglom 'definition' environments.
-    Returns:
-        Tuple of list of lists of tokens and list of lists of labels.
-    """
-    if document_token_streams is None:
-        document_token_streams = parse_files(
-            lang=lang or 'en',
-            show_progress=show_progress,
-            lower=lower,
-            split_into_definitions=split_into_definitions,
-        )
-
-    labeled_tokens = [
-        [
-            (
-                (math_token
-                if math_token
-                and '$' in token.envs
-                else token.lexeme),
-                _envs2label(
-                    token.envs,
-                    binary_labels
-                )
-            )
-            for token
-            in token_stream
-        ]
-        for token_stream in document_token_streams
-    ]
-
-    list_of_X_y_pairs = [
-        list(zip(*labeled))
-        for labeled in labeled_tokens
-    ]
-
-    X, y = list(zip(*list_of_X_y_pairs))
-
-    return X, y
-
-def maybe_download(
-    dest_dir: str = 'data/'):
-    ' Clones all smglom git repositories into the given destination. '
-    all_repositories = [
-        "smglom/physics",
-        "smglom/cs",
-        "smglom/lmfdb",
-        "smglom/probability",
-        "smglom/measure-theory",
-        "smglom/tannakian",
-        "smglom/categories",
-        "smglom/theresas-playground",
-        "smglom/complexity",
-        "smglom/arithmetics",
-        "smglom/elliptic-curves",
-        "smglom/manifolds",
-        "smglom/numthy",
-        "smglom/identities",
-        "smglom/numthyfun",
-        "smglom/constants",
-        "smglom/analysis",
-        "smglom/trigonometry",
-        "smglom/numbers",
-        "smglom/primes",
-        "smglom/linear-algebra",
-        "smglom/magic",
-        "smglom/functional-analysis",
-        "smglom/geometry",
-        "smglom/topology",
-        "smglom/calculus",
-        "smglom/algebra",
-        "smglom/graphs",
-        "smglom/sets",
-        "smglom/mv",
-        "smglom/chevahir",
-        "smglom/SMGloM"
-    ]
-    return [
-        download.maybe_download_git(
-            repo_url=os.path.join('https://gl.mathhub.info/', repo),
-            save_dir=path.join(dest_dir, '/'.join(repo.split('/')[:-1])))
-        for repo in repositories
-    ]

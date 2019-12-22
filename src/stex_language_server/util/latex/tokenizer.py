@@ -33,6 +33,7 @@ class LatexTokenizer:
         root: parser.Node,
         words: str = DEFAULT_WORDS,
         token_filter: str = DEFAULT_FILTER):
+        self.math_token = '<math>'
         self._words = re.compile(words)
         self._token_filter = re.compile(token_filter)
         # buffer the tokens of the root
@@ -40,9 +41,9 @@ class LatexTokenizer:
 
     def __iter__(self) -> Iterator[LatexToken]:
         for token in self._tokens:
-            if token.envs and '$' is token.envs:
+            if token.envs and '$' in token.envs:
                 yield LatexToken(
-                    token.lexeme,
+                    self.math_token or token.lexeme,
                     token.begin,
                     token.end,
                     token.envs)
@@ -58,9 +59,9 @@ class LatexTokenizer:
                         token.envs)
 
     @staticmethod
-    def from_file(file: Union[str, parser.LatexParser]):
+    def from_file(file: Union[str, parser.LatexParser], lower: bool = True):
         if not isinstance(file, parser.LatexParser):
-            file = parser.LatexParser(file)
+            file = parser.LatexParser(file, lower=lower)
         if not file.success:
             return None
         return LatexTokenizer(file.root)

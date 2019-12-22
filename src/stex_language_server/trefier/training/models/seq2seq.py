@@ -1,118 +1,51 @@
-from __future__ import annotations
-from typing import Union, Optional, List
-
-from keras import models
-from keras.layers import *
-from keras.preprocessing.sequence import pad_sequences
-from keras.callbacks import EarlyStopping, TensorBoard, ReduceLROnPlateau
-
 import json
-import argh
 import sys
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from collections import Counter
-from zipfile import ZipFile
-from tempfile import NamedTemporaryFile
 import pickle
 import re
 import os
+from typing import Union, Optional, List
+from sklearn.model_selection import train_test_split
+from collections import Counter
+from zipfile import ZipFile
+from tempfile import NamedTemporaryFile
 
-from trefier import datasets, keywords, downloads
-from trefier.misc import Evaluation
-from trefier.misc.Cache import Cache
-from trefier.models.base import Model
-from trefier.models.tags import Tag
-from trefier.tokenization.index_tokenizer import IndexTokenizer
-from trefier.tokenization.streams import LatexTokenStream
-from trefier.tokenization.latex import LatexParser
+import tensorflow as tf
+from tensorflow import keras as k
+from tensorflow.keras import models
+from tensorflow.keras import layers
+from tensorflow.keras import callbacks
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+from stex_language_server.util.latex.tokenization import LatexTokenStream
+from stex_language_server.trefier.training.datasets import smglom
+from . import base, tags
 
 __all__ = ['Seq2SeqModel']
 
-
-class Seq2SeqModel(Model):
-    MAJOR_VERSION = 1
-    MINOR_VERSION = 0
-
+class Seq2SeqModel(base.Model):
     def __init__(self):
         super().__init__(
-            predicts_probabilities=True,
-            class_names={0: 'text', 1: 'keyword'},
-            major_version=Seq2SeqModel.MAJOR_VERSION,
-            minor_version=Seq2SeqModel.MINOR_VERSION,
+            prediction_type=base.PredictionType.PROBABILITIES,
+            class_names=['text', 'keyword'],
+            version='3.0'
         )
         self.model = None
 
-    @argh.arg('-e', '--epochs', type=int, help="Number of epochs to train the model for.")
-    @argh.arg('-o', '--optimizer', type=str, help="Name of the keras optimizer to use: adam, sgd, adagrad, rmsprop, etc...")
-    @argh.arg('-n', '--glove_ncomponents', type=int, help="Number of dimensions to reduce original glove embedding to.")
-    @argh.arg('-w', '--glove_word_count', type=int, help="Limit available glove tokens (max 400k).")
-    @argh.arg('-E', '--enable_oov_embedding', help="Enables an extra trainable input embedding.")
-    @argh.arg('-O', '--oov_embedding_dim', type=int, help="Dimensionality of the embedding used for tokens not in glove.")
-    @argh.arg('-p', '--early_stopping_patience', type=int, help="Sets after how many epochs of no change, early stopping should stop training.")
-    @argh.arg('-c', '--capacity', type=int, help="A linear factor for the model's capacity (min 1): Low capacity is less accurate, but high capacity requires a lot of data.")
-    @argh.arg('-d', '--download_dir', type=str, help="Directory to which required training data will be downloaded.")
-    @argh.arg('-t', '--oov_token', type=str, help="Special token used for all tokens not in glove.")
-    @argh.arg('-m', '--math_token', type=str, help="Special token to use for math environments.")
-    @argh.arg('-P', '--enable_pos_tags', help="Enables pos tag feature.")
-    @argh.arg('-G', '--gaussian_noise', type=float, help="Gausian noise amplitude added to embedding vectors.")
-    @argh.arg('-D', '--dense_dropout_percent', type=float, help="Dropout percentage for the two classifying dense layers.")
-    @argh.arg('-R', '--recurrent_dropout_percent', type=float, help="Dropout percentage added to the recurrent layers.")
-    @argh.arg('-b', '--tensorboard', help="Enables tensorboard logging to ~/.logs.")
-    @argh.arg('-r', '--reduce_lr_on_plateau', help="Enables Keras ReduceLRonPlateau callback.")
-    @argh.arg('-a', '--recurrent_activation', help="Activation function for recurrent layers.")
-    @argh.arg('--log_gradients', help="Enables tensorboard gradient logging (requires -b option enabled).")
-    @argh.arg('--normalize_input', help="Enables input normalization.")
-    @argh.arg('-j', '--n_jobs', type=int, help="Number of processes parsing of files may use.")
     def train(
         self,
+        downloaddir: str = 'data/',
+        logdir: Optional[str] = '/tmp/seq2seq/logs/',
+        savedir: Optional[str] = '/tmp/seq2seq/savedir/',
         epochs: int = 1,
-        optimizer: str = 'adam',
-        glove_ncomponents: int = 10,
-        glove_word_count: Optional[int] = 200000,
-        enable_oov_embedding: bool = False,
-        oov_embedding_dim: int = 4,
-        early_stopping_patience: int = 5,
-        capacity: int = 3,
-        download_dir: str = 'data/',
-        oov_token: str = '<oov>',
-        math_token: str = '<math>',
-        enable_pos_tags: bool = False,
-        gaussian_noise: float = 0.1,
-        dense_dropout_percent: float = 0.5,
-        recurrent_dropout_percent: float = 0.1,
-        tensorboard: bool = False,
-        reduce_lr_on_plateau: bool = False,
-        recurrent_activation: str = 'tanh',
-        log_gradients: bool = False,
-        normalize_input: bool = False,
-        n_jobs: int = 6,):
-
-        assert capacity > 0, "Capacity must be at least 1"
+        optimizer: str = 'adam'):
     
-        assert 'seq2seq' not in self.settings
         self.settings['seq2seq'] = {
             'epochs': epochs,
             'optimizer': optimizer,
-            'enable_oov_embedding': enable_oov_embedding,
-            'glove_ncomponents': glove_ncomponents,
-            'glove_word_count': glove_word_count,
-            'oov_embedding_dim': oov_embedding_dim,
-            'early_stopping_patience': early_stopping_patience,
-            'capacity': capacity,
-            'oov_token': oov_token,
-            'math_token': math_token,
-            'gaussian_noise': gaussian_noise,
-            'dense_dropout_percent': dense_dropout_percent,
-            'recurrent_dropout_percent': recurrent_dropout_percent,
-            'enable_pos_tags': enable_pos_tags,
-            'reduce_lr_on_plateau': reduce_lr_on_plateau,
-            'recurrent_activation': recurrent_activation,
-            'normalize_input': normalize_input,
         }
 
-        print("train seq2seq model settings:")
-        print(self.settings['seq2seq'])
+        files = smglom.parse_files()
+        smglom.parse_dataset()
 
         with Cache(
             '/tmp/train-smglom-parser-cache.bin',

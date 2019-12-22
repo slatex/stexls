@@ -200,7 +200,7 @@ class LatexParser(_LatexParserListener):
     def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         assert isinstance(self._stack[-1], Environment)
         if not self._stack[-1].name.lexeme.strip() == str(ctx.TOKEN()).strip():
-            raise Exception(f"Environment unbalanced:"
+            raise Exception(f"In file '{self.file}', environment unbalanced:"
                             f" Expected {self._stack[-1].name.lexeme.strip()} found {str(ctx.TOKEN()).strip()}")
 
     def enterMath(self, ctx: _LatexParser.MathContext):
@@ -208,7 +208,7 @@ class LatexParser(_LatexParserListener):
 
     def exitMath(self, ctx: _LatexParser.MathContext):
         symbol = ctx.MATH_ENV().getSymbol()
-        self._stack[-1].add(MathToken(str(ctx.MATH_ENV()), symbol.start, symbol.stop + 1))
+        self._stack[-1].add(MathToken(symbol.start, symbol.stop + 1, str(ctx.MATH_ENV())))
 
     def enterToken(self, ctx: _LatexParser.TokenContext):
         pass
@@ -251,7 +251,7 @@ class LatexParser(_LatexParserListener):
         ' Returns the text between zero indexed begin and end offsets. '
         return self.source[begin:end]
     
-    def __init__(self, file_or_document: str, ignore_exceptions: bool = False):
+    def __init__(self, file_or_document: str, lower: bool = False, ignore_exceptions: bool = False):
         """ Creates a parser and parses the file.
         Parameters:
             file_or_document: A which is either a path to a latex file or the file's content itself.
@@ -275,6 +275,8 @@ class LatexParser(_LatexParserListener):
                     self.source = ref.read()
             else:
                 self.source = file_or_document
+            if lower:
+                self.source = self.source.lower()
             self._line_lengths = [len(line)+1 for line in self.source.split('\n')]
             lexer = _LatexLexer(antlr4.InputStream(self.source))
             stream = antlr4.CommonTokenStream(lexer)

@@ -79,7 +79,7 @@ def maybe_download_git(repo_url, save_dir='data/'):
 
     return clone_dir
 
-def maybe_download_and_extract(url, silent=False, return_name_of_single_file=True, return_all_extracted_file_names=True, save_dir='data/', cache='cache/'):
+def maybe_download_and_extract(url, silent=False, return_name_of_single_file=True, return_all_extracted_file_names=True, save_dir='data/', cache='/tmp/cache/'):
     """
     :param url: file to download
     :param return_name_of_single_file: if true, returns the name of the file that was extracted

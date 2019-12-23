@@ -6,10 +6,6 @@ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 __all__ = ['PosTagModel']
 
 class PosTagModel:
-    _OK = nltk.download('averaged_perceptron_tagger', quiet=True)
-    if not _OK:
-        raise Exception("Failed to download the averaged perceptron tagger from nltk")
-    
     def __init__(self):
         self.tagger = nltk.tag.PerceptronTagger()
         categories = np.unique(list(self.tagger.tagdict.values()))

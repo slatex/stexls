@@ -53,6 +53,7 @@ class GloVe:
             np.array([
                 self.embeddings.get(word, self.oov_vec)
                 for word in doc
+                if self.oov_vec is not None or word in self.embeddings
             ])
             for doc in x
         ]

@@ -34,11 +34,11 @@ class Model:
             class_names: List of string identifiers for the corresponding labels.
             version: A string with the version of when this model was created.
         """
-        assert isinstance(class_names, dict)
+        assert isinstance(class_names, list)
         assert all(isinstance(x, str) for x in class_names)
 
         self.settings = {
-            'model_class': type(self).__name__,
+            '__class__': type(self).__name__,
             'prediction_type': prediction_type.name,
             'class_names': class_names,
             'version': version

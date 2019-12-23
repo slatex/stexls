@@ -1,11 +1,12 @@
+from typing import Union, Optional, List, Callable
 import json
 import sys
 import pickle
 import re
 import os
-from typing import Union, Optional, List
-from sklearn.model_selection import train_test_split
+import numpy as np
 from collections import Counter
+from sklearn.model_selection import train_test_split
 from zipfile import ZipFile
 from tempfile import NamedTemporaryFile
 
@@ -13,23 +14,96 @@ import tensorflow as tf
 from tensorflow import keras as k
 from tensorflow.keras import models
 from tensorflow.keras import layers
+from tensorflow.keras import regularizers
 from tensorflow.keras import callbacks
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-from stex_language_server.util.latex.tokenization import LatexTokenStream
 from stex_language_server.trefier.training.datasets import smglom
+from stex_language_server.trefier.training.features.embedding import GloVe
+from stex_language_server.trefier.training.features.chisquare import ChiSquareModel
+from stex_language_server.trefier.training.features.tfidf import TfIdfModel
+from stex_language_server.trefier.training.features.keyphraseness import KeyphrasenessModel
+from stex_language_server.trefier.training.features.pos import PosTagModel
 from . import base, tags
 
 __all__ = ['Seq2SeqModel']
+
+_VERSION_MAJOR = 3
+_VERSION_MINOR = 0
 
 class Seq2SeqModel(base.Model):
     def __init__(self):
         super().__init__(
             prediction_type=base.PredictionType.PROBABILITIES,
             class_names=['text', 'keyword'],
-            version='3.0'
+            version=f'{_VERSION_MAJOR}.{_VERSION_MINOR}'
         )
-        self.model = None
+        self.model: tf.keras.models.Sequential = None
+        self.tfidf_model: TfIdfModel = None
+        self.keyphraseness_model: KeyphrasenessModel = None
+        self.pos_tag_model: PosTagModel = None
+        self.glove: GloVe = None
+
+    def _create_data(
+        self,
+        downloaddir: str,
+        glove_n_components: int,
+        val_split: float,
+        test_split: float,
+        progress: Optional[Callable] = None):
+        print('Creating data...')
+        x, y = smglom.load_and_cache(progress=progress)
+        print('Smglom loaded:', len(x), 'samples')
+        x_train, x_valtest, y_train, y_valtest = train_test_split(
+            x, y, test_size=val_split + test_split)
+        x_val, x_test, y_val, y_test = train_test_split(
+            x_valtest, y_valtest, test_size=test_split/(test_split + val_split))
+        print(f'Train/val/test split: {len(x_train)}/{len(x_val)}/{len(x_test)}')
+        self.glove = GloVe(
+            n_components=glove_n_components,
+            oov_vector='random',
+            datadir=downloaddir)
+        self.tfidf_model = TfIdfModel()
+        self.keyphraseness_model = KeyphrasenessModel()
+        self.pos_tag_model = PosTagModel()
+        token_train = pad_sequences(self.glove.transform(x_train), dtype=np.float32)
+        token_val = pad_sequences(self.glove.transform(x_val), dtype=np.float32)
+        token_test = pad_sequences(self.glove.transform(x_test), dtype=np.float32)
+        tfidf_train = np.expand_dims(pad_sequences(self.tfidf_model.fit_transform(x_train), dtype=np.float32), axis=-1)
+        tfidf_val = np.expand_dims(pad_sequences(self.tfidf_model.transform(x_val), dtype=np.float32), axis=-1)
+        tfidf_test = np.expand_dims(pad_sequences(self.tfidf_model.transform(x_test), dtype=np.float32), axis=-1)
+        keyphraseness_train = np.expand_dims(pad_sequences(self.keyphraseness_model.fit_transform(x_train, y_train), dtype=np.float32), axis=-1)
+        keyphraseness_val = np.expand_dims(pad_sequences(self.keyphraseness_model.transform(x_val), dtype=np.float32), axis=-1)
+        keyphraseness_test = np.expand_dims(pad_sequences(self.keyphraseness_model.transform(x_test), dtype=np.float32), axis=-1)
+        pos_train = pad_sequences(self.pos_tag_model.predict(x_train), dtype=np.float32)
+        pos_val = pad_sequences(self.pos_tag_model.predict(x_val), dtype=np.float32)
+        pos_test = pad_sequences(self.pos_tag_model.predict(x_test), dtype=np.float32)
+        y_train = np.expand_dims(pad_sequences(y_train), axis=-1)
+        y_val = np.expand_dims(pad_sequences(y_val), axis=-1)
+        y_test = np.expand_dims(pad_sequences(y_test), axis=-1)
+
+        x_train = {
+            'tokens': token_train,
+            'tfidf': tfidf_train,
+            'keyphraseness': keyphraseness_train,
+            'pos': pos_train,
+        }
+
+        x_val = {
+            'tokens': token_val,
+            'tfidf': tfidf_val,
+            'keyphraseness': keyphraseness_val,
+            'pos': pos_val,
+        }
+
+        x_test = {
+            'tokens': token_test,
+            'tfidf': tfidf_test,
+            'keyphraseness': keyphraseness_test,
+            'pos': pos_test,
+        }
+        
+        return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
     def train(
         self,
@@ -37,136 +111,47 @@ class Seq2SeqModel(base.Model):
         logdir: Optional[str] = '/tmp/seq2seq/logs/',
         savedir: Optional[str] = '/tmp/seq2seq/savedir/',
         epochs: int = 1,
-        optimizer: str = 'adam'):
+        optimizer: str = 'adam',
+        glove_n_components: int = 10,
+        gaussian_noise: float = 0,
+        capacity: int = 1,
+        val_split: float = 0.1,
+        test_split: float = 0.2,
+        l2: float = 0.01,
+        progress: Optional[Callable] = None):
     
         self.settings['seq2seq'] = {
             'epochs': epochs,
             'optimizer': optimizer,
+            'n_components': glove_n_components,
+            'gaussian_noise': gaussian_noise,
+            'capacity': capacity,
+            'val_split': val_split,
+            'test_split': test_split,
+            'l2': l2,
         }
 
-        files = smglom.parse_files()
-        smglom.parse_dataset()
+        embedding_input = layers.Input((None, glove_n_components), name='tokens', dtype=tf.float32)
+        tfidf_input = layers.Input((None, 1), name='tfidf', dtype=tf.float32)
+        keyphraseness_input = layers.Input((None, 1), name='keyphraseness', dtype=tf.float32)
+        pos_input = layers.Input((None, 35), name='pos', dtype=tf.float32)
 
-        with Cache(
-            '/tmp/train-smglom-parser-cache.bin',
-            lambda: list(datasets.smglom.parse_files(lang='en', download_dir=download_dir, n_jobs=n_jobs, show_progress=True))
-        ) as cache:
-            token_streams = cache.data
-        assert token_streams is not None
-        
-        x, y = datasets.smglom.parse_dataset(token_streams, binary_labels=True, math_token=math_token, lang='en')
-        
-        glove_word_index, embedding_matrix, embedding_layer = downloads.glove.load(
-            embedding_dim=50,
-            oov_token=oov_token,
-            num_words=min(glove_word_count, 400000) if glove_word_count else None,
-            make_keras_layer=True,
-            perform_pca=0 < glove_ncomponents < 50,
-            n_components=glove_ncomponents
-        )
+        net_inputs = (embedding_input, tfidf_input, keyphraseness_input, pos_input)
 
-        self.glove_tokenizer = IndexTokenizer(
-            oov_token=oov_token
-        ).fit_on_word_index(
-            glove_word_index
-        )
-
-        if enable_oov_embedding:
-            self.oov_tokenizer = IndexTokenizer(
-                oov_token=oov_token
-            ).fit_on_word_index({
-                word: i+1
-                for i, word in enumerate(
-                    filter(
-                        lambda word: word not in glove_word_index,
-                        IndexTokenizer(oov_token=None).fit_on_sequences(x).word_index
-                    )
-                )
-            })
-
-            print("oov tokenizer:", len(self.oov_tokenizer.word_index), 'are <oov>')
-
-        self.tfidf_model = keywords.tfidf.TfIdfModel()
-        self.keyphraseness_model = keywords.keyphraseness.KeyphrasenessModel()
-
-        if enable_pos_tags:
-            self.pos_tag_model = keywords.pos.PosTagModel()
-
-        # list of all input layers
-        net_inputs = []
-
-        # list of all the transformed input layers that have to be concatenated
-        net_concatenate_inputs = []
-        
-        if enable_oov_embedding:
-            print("Enabling oov token embedding")
-            tokens_oov_input = Input((None,), name='tokens_oov', dtype=np.int32)
-            net_inputs.append(tokens_oov_input)
-            trainable_embedding_layer = Embedding(
-                input_dim=len(self.oov_tokenizer.word_index) + 1,
-                output_dim=oov_embedding_dim,
-                name='trainable_embedding'
-            )
-            embedded_oov_tokens = trainable_embedding_layer(tokens_oov_input)
-            if 0 < gaussian_noise < 1:
-                print("Enable oov gaussian noise", gaussian_noise)
-                embedded_oov_tokens = GaussianNoise(gaussian_noise)(embedded_oov_tokens)
-            net_concatenate_inputs.append(embedded_oov_tokens)
-
-        tokens_glove_input = Input((None,), name='tokens_glove', dtype=np.int32)
-        net_inputs.append(tokens_glove_input)
-        embedded_glove_tokens = embedding_layer(tokens_glove_input)
         if 0 < gaussian_noise < 1:
-            print("Enable glove gaussian noise", gaussian_noise)
-            embedded_glove_tokens = GaussianNoise(gaussian_noise)(embedded_glove_tokens)
-        net_concatenate_inputs.append(embedded_glove_tokens)
-        
-        tfidf_input = Input((None,), name='tfidf', dtype=np.float32)
-        net_inputs.append(tfidf_input)
-        tfidf_transform = Reshape((-1, 1))(tfidf_input)
-        if normalize_input:
-            tfidf_transform = BatchNormalization()(tfidf_transform)
-            print("Enable tfidf batch normalization")
-        net_concatenate_inputs.append(tfidf_transform)
+            embedding_input = layers.GaussianNoise(gaussian_noise)(embedding_input)
 
-        keyphraseness_input = Input((None,), name='keyphraseness', dtype=np.float32)
-        net_inputs.append(keyphraseness_input)
-        keyphraseness_transform = Reshape((-1, 1))(keyphraseness_input)
-        if normalize_input:
-            keyphraseness_transform = BatchNormalization()(keyphraseness_transform)
-            print("Enable keyphraseness batch normalization")
-        net_concatenate_inputs.append(keyphraseness_transform)
+        net = layers.Concatenate()([embedding_input, tfidf_input, keyphraseness_input, pos_input])
+        net = layers.Bidirectional(layers.GRU(16*capacity, return_sequences=True))(net)
+        net = layers.Bidirectional(layers.GRU(16*capacity, return_sequences=True))(net)
+        net = layers.Bidirectional(layers.GRU(16*capacity, return_sequences=True))(net)
+        net = layers.Dense(32*capacity, activation='relu', kernel_regularizer=regularizers.l2(l2))(net)
+        net = layers.BatchNormalization()(net)
+        net = layers.Dense(32*capacity, activation='relu', kernel_regularizer=regularizers.l2(l2))(net)
+        net = layers.BatchNormalization()(net)
+        prediction_layer = layers.Dense(1, activation='sigmoid')(net)
 
-        if enable_pos_tags:
-            print("Enabling pos_tag input")
-            pos_tag_input = Input((None, self.pos_tag_model.num_categories), name='pos_tags', dtype=np.float32)
-            net_inputs.append(pos_tag_input)
-            net_concatenate_inputs.append(pos_tag_input)
-
-        net = Concatenate()(net_concatenate_inputs)
-        if not (0 < recurrent_dropout_percent < 1):
-            recurrent_dropout_percent = 0
-        net = Bidirectional(GRU(16*capacity, activation=recurrent_activation, dropout=recurrent_dropout_percent, return_sequences=True))(net)
-        if recurrent_activation == 'relu':
-            net = BatchNormalization()(net)
-        net = Bidirectional(GRU(16*capacity, activation=recurrent_activation, dropout=recurrent_dropout_percent, return_sequences=True))(net)
-        if recurrent_activation == 'relu':
-            net = BatchNormalization()(net)
-        net = Bidirectional(GRU(16*capacity, activation=recurrent_activation, dropout=recurrent_dropout_percent, return_sequences=True))(net)
-        if recurrent_activation == 'relu':
-            net = BatchNormalization()(net)
-        net = Dense(32*capacity, activation='sigmoid')(net)
-        if 0 < dense_dropout_percent < 1:
-            net = Dropout(dense_dropout_percent)(net)
-        net = Dense(32*capacity, activation='sigmoid')(net)
-        if 0 < dense_dropout_percent < 1:
-            net = Dropout(dense_dropout_percent)(net)
-        prediction_layer = Dense(1, activation='sigmoid')(net)
-
-        self.model = models.Model(
-            inputs=net_inputs,
-            outputs=prediction_layer
-        )
+        self.model = models.Model(inputs=net_inputs, outputs=prediction_layer)
 
         self.model.compile(
             optimizer=optimizer,
@@ -176,191 +161,43 @@ class Seq2SeqModel(base.Model):
 
         self.model.summary()
 
-        train_indices, test_indices = train_test_split(np.arange(len(y)))
-
-        class_counts = np.array(list(dict(sorted(Counter(y_ for y_ in [y[ti] for ti in train_indices] for y_ in y_).items(), key=lambda x: x[0])).values()))
-        class_weights = -np.log(class_counts / np.sum(class_counts))
-        print("training set class counts", class_counts)
-        print("training class weights", class_weights)
-
-        sample_weights = [[class_weights[int(y_)] for y_ in y[i]] for i in train_indices]
-        sample_weights = pad_sequences(sample_weights, maxlen=max(map(len, x)), dtype=np.float32)
+        (x_train, y_train), validation_data, (x_test, y_test) = self._create_data(
+            downloaddir, glove_n_components, val_split=val_split, test_split=test_split, progress=progress)
         
-        original_y = y
-        y = np.expand_dims(pad_sequences(y), axis=-1)
+        class_count_counter = Counter(int(a) for b in y_train for a in b)
+        print("Training set class counts", class_count_counter)
 
-        x_train = {}
-        x_test = {}
+        num_classes = max(class_count_counter.keys()) + 1
+        print('Num classes', num_classes)
 
-        x_glove = pad_sequences(self.glove_tokenizer.transform(x))
-        x_train['tokens_glove'] = x_glove[train_indices]
-        x_test['tokens_glove'] = x_glove[test_indices]
+        class_counts = np.zeros(num_classes, dtype=int)
+        for cl, count in class_count_counter.items():
+            class_counts[cl] = count
 
-        if enable_oov_embedding:
-            x_oov = pad_sequences(self.oov_tokenizer.transform(x))
-            x_train['tokens_oov'] = x_oov[train_indices]
-            x_test['tokens_oov'] = x_oov[test_indices]
-        
-        x_tfidf = self.tfidf_model.fit_transform(x)
-        # if normalize_input:
-        #     self.tfidf_normalizer = StandardScaler()
-        #     x_tfidf = self.tfidf_normalizer.fit_transform(x_tfidf)
-        #     print("Enable tfidf normalizer")
-        x_tfidf = pad_sequences(x_tfidf, dtype=np.float32)
-        x_train['tfidf'] = x_tfidf[train_indices]
-        x_test['tfidf'] = x_tfidf[test_indices]
-        
-        x_keyphraseness = self.keyphraseness_model.fit_transform(x, original_y)
-        # if normalize_input:
-        #     self.keyphraseness_normalizer = StandardScaler()
-        #     x_keyphraseness = self.keyphraseness_normalizer.fit_transform(x_keyphraseness)
-        #     print("Enable keyphraseness normalizer")
-        x_keyphraseness = pad_sequences(x_keyphraseness, dtype=np.float32)
-        x_train['keyphraseness'] = x_keyphraseness[train_indices]
-        x_test['keyphraseness'] = x_keyphraseness[test_indices]
+        self.class_weights = -np.log(class_counts / np.sum(class_counts))
+        print("Training class weights", self.class_weights)
 
-        if enable_pos_tags:
-            x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
-            x_train['pos_tags'] = x_pos_tags[train_indices]
-            x_test['pos_tags'] = x_pos_tags[test_indices]
-        
-        callbacks = [
-            EarlyStopping(patience=early_stopping_patience)
-        ]
-
-        if tensorboard:
-            print(f'Tensorboard enabled: Logging to "{os.path.abspath("./logs")}"')
-            if not enable_oov_embedding:
-                print("Without oov embedding, tensorboard embedding visualization can't be enabled.")
-            callbacks.append(
-                TensorBoard(
-                    log_dir='./logs',
-                    histogram_freq=2 if log_gradients else 1,
-                    batch_size=len(x_train),
-                    write_graph=True,
-                    write_grads=log_gradients,
-                    write_images=False,
-                    # embeddings_freq=3 if enable_oov_embedding else 0,
-                    # embeddings_layer_names=['trainable_embedding'] if enable_oov_embedding else None,
-                    # embeddings_metadata=None,
-                    # embeddings_data=x_test,
-                    update_freq='epoch'
-                )
-            )
-
-        if reduce_lr_on_plateau:
-            print("Reduce learning rate on plateau enabled")
-            callbacks.append(
-                ReduceLROnPlateau(
-                    monitor='val_loss',
-                    factor=0.2,
-                    patience=5,
-                    min_lr=0.001
-                )
-            )
+        sample_weights = np.array([
+            [ self.class_weights[y2] for y2 in y1 ]
+            for y1 in y_train.squeeze() ], dtype=float)
+        print('Training sample weights:', sample_weights.shape)
 
         try:
-            fit_result = self.model.fit(
-                sample_weight=sample_weights,
+            self.fit_result = self.model.fit(
                 epochs=epochs,
-                callbacks=callbacks,
                 x=x_train,
-                y=y[train_indices],
-                validation_data=(
-                    x_test,
-                    y[test_indices],
-                ),
-            )
+                y=y_train,
+                sample_weight=sample_weights,
+                validation_data=validation_data)
         except KeyboardInterrupt:
-            print("Model fitting interrupted by user input: No evaluation will be created.")
-            self.evaluation = None
-            return
+            print('Model fit() interrupted by user input.')
+ 
+        test_sample_weights = np.array([
+            [ self.class_weights[y2] for y2 in y1 ]
+            for y1 in y_test.squeeze() ], dtype=float)
 
-        eval_y_pred_raw = self.model.predict(
-            x_test
-        ).squeeze(axis=-1)
-        
-        eval_y_true, eval_y_pred = zip(*[
-            (true_, pred_)
-            for x_, true_, pred_
-            in zip(x_glove[test_indices], y[test_indices].squeeze(axis=-1), np.round(eval_y_pred_raw).astype(int))
-            for x_, true_, pred_
-            in zip(x_, true_, pred_)
-            if x_ != 0 # remove padding
-        ])
-
-        self.evaluation = Evaluation.Evaluation(fit_result.history)
-
-        self.evaluation.evaluate(np.array(eval_y_true), np.array(eval_y_pred), classes={0: 'text', 1: 'keyword'})
-    
-    @argh.arg('file', type=str, help="Path to file for which you want to make predictions for.")
-    @argh.arg('--ignore_tagged_tokens', help="Disables already tagged token outputs")
-    def predict(
-        self,
-        file: Union[str, LatexParser, LatexTokenStream],
-        ignore_tagged_tokens: bool = False) -> List[Tag]:
-
-        if file is None:
-            raise Exception("Input file may not be None")
-        
-        if not isinstance(file, LatexTokenStream):
-            parsed_file = LatexTokenStream.from_file(file)
-        else:
-            parsed_file = file
-        
-        if parsed_file is None:
-            if isinstance(file, str):
-                raise Exception(f'Failed to parse file "{file}"')
-            else:
-                raise Exception(f'Failed to create token stream from {file}')
-        
-        assert isinstance(parsed_file, LatexTokenStream)
-        
-        x = [[
-            token.lexeme
-            for token
-            in parsed_file
-        ]]
-
-        X = {}
-
-        if hasattr(self, 'glove_tokenizer') and self.glove_tokenizer is not None:
-            x_glove = pad_sequences(self.glove_tokenizer.transform(x))
-            X['tokens_glove'] = x_glove
-        
-        if hasattr(self, 'oov_tokenizer') and self.oov_tokenizer is not None:
-            x_oov = pad_sequences(self.oov_tokenizer.transform(x))
-            X['tokens_oov'] = x_oov
-
-        if hasattr(self, 'tfidf_model') and self.tfidf_model is not None:
-            x_tfidf = self.tfidf_model.transform(x)
-            if hasattr(self, 'tfidf_normalizer') and self.tfidf_normalizer is not None:
-                x_tfidf = self.tfidf_normalizer.transform(x_tfidf)
-            x_tfidf = pad_sequences(x_tfidf, dtype=np.float32)
-            X['tfidf'] = x_tfidf
-
-        if hasattr(self, 'keyphraseness_model') and self.keyphraseness_model is not None:
-            x_keyphraseness = self.keyphraseness_model.transform(x)
-            if hasattr(self, 'keyphraseness_normalizer') and self.keyphraseness_normalizer is not None:
-                x_keyphraseness = self.keyphraseness_normalizer.transform(x_keyphraseness)
-            x_keyphraseness = pad_sequences(x_keyphraseness, dtype=np.float32)
-            X['keyphraseness'] = x_keyphraseness
-        
-        if hasattr(self, 'pos_tag_model') and self.pos_tag_model is not None:
-            x_pos_tags = pad_sequences(self.pos_tag_model.predict(x), dtype=np.float32)
-            X['pos_tags'] = x_pos_tags
-
-        y = self.model.predict(X).squeeze(0).squeeze(-1)
-
-        is_tagged = re.compile(r'[ma]*(tr|d)efi+s?').fullmatch if ignore_tagged_tokens else None
-        
-        return [
-            Tag(pred, token.token_range, token.lexeme)
-            for token, pred
-            in zip(parsed_file, y)
-            if not ignore_tagged_tokens
-            or not any(map(is_tagged, token.envs))
-        ]
+        print('Evaluation of test samples')
+        self.evaluation = self.model.evaluate(x_test, y_test, sample_weight=test_sample_weights)
     
     def save(self, path):
         """ Saves the current state """
@@ -369,179 +206,31 @@ class Seq2SeqModel(base.Model):
                 models.save_model(self.model, ref.name)
                 ref.flush()
                 package.write(ref.name, 'model.hdf5')
-            
-            try:
-                package.writestr('glove_tokenizer.bin', pickle.dumps(self.glove_tokenizer))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "glove_tokenizer".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('oov_tokenizer.bin', pickle.dumps(self.oov_tokenizer))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "oov_tokenizer".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "pos_tag_model".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "tfidf_model".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('tfidf_normalizer.bin', pickle.dumps(self.tfidf_normalizer))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "tfidf_normalizer".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "keyphraseness_model".', flush=True, file=sys.stderr)
-
-            try:
-                package.writestr('keyphraseness_normalizer.bin', pickle.dumps(self.keyphraseness_normalizer))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to save "keyphraseness_normalizer".', flush=True, file=sys.stderr)
-            
-            package.writestr('evaluation.bin', pickle.dumps(self.evaluation))
-            
-            package.writestr('settings.json', json.dumps(self.settings, default=lambda x: x.__dict__).encode('utf-8'))
-            
-            package.writestr('version', f'{self.version["major"]}.{self.version["minor"]}'.encode('utf-8'))
+            package.writestr('glove.bin', pickle.dumps(self.glove))
+            package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+            package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+            package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
+            package.writestr('settings.json', json.dumps(self.settings))
 
     @staticmethod
-    def load(path):
+    def load(path) -> 'Seq2SeqModel':
         self = Seq2SeqModel()
         """ Loads the model from file """
-        with ZipFile(path) as package:
+        with ZipFile(path, 'r') as package:
+            self.settings = json.loads(package.read('settings.json'))
+            if self.settings['__class__'] != Seq2SeqModel.__name__:
+                raise ValueError(f'Expected {Seq2SeqModel.__name__}, '
+                                 f'but found {self.settings["__class__"]}')
+            if self.settings['version'].split('.')[0] != _VERSION_MAJOR:
+                raise ValueError('Major version mismatch: '
+                                f'{self.settings["version"]} vs. {_VERSION_MAJOR}.{_VERSION_MINOR}')
+            self.glove = pickle.loads(package.read('glove.bin'))
+            self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
+            self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
+            self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
             with NamedTemporaryFile() as ref:
                 ref.write(package.read('model.hdf5'))
                 ref.flush()
                 self.model = models.load_model(ref.name)
-            
             assert self.model is not None
-
-            try:
-                self.glove_tokenizer = pickle.loads(package.read('glove_tokenizer.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "glove_tokenizer."', flush=True, file=sys.stderr)
-            
-            try:
-                self.oov_tokenizer = pickle.loads(package.read('oov_tokenizer.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "oov_tokenizer."', flush=True, file=sys.stderr)
-
-            try:
-                self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "pos_tag_model."', flush=True, file=sys.stderr)
-
-            try:
-                self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "tfidf_model."', flush=True, file=sys.stderr)
-
-            try:
-                self.tfidf_normalizer = pickle.loads(package.read('tfidf_normalizer.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "tfidf_normalizer."', flush=True, file=sys.stderr)
-
-            try:
-                self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "keyphraseness_model."', flush=True, file=sys.stderr)
-
-            try:
-                self.keyphraseness_normalizer = pickle.loads(package.read('keyphraseness_normalizer.bin'))
-            except Exception as e:
-                print(str(e), flush=True, file=sys.stderr)
-                print('Warning: Failed to load "keyphraseness_normalizer."', flush=True, file=sys.stderr)
-
-            self.evaluation = pickle.loads(package.read('evaluation.bin'))
-            
-            self.settings = json.loads(package.read('settings.json').decode('utf-8'))
-            
-            self.version = {}
-            self.version['major'], self.version['minor'] = map(int, package.read('version').decode('utf-8').split('.'))
-            
-            if self.version['major'] != Seq2SeqModel.MAJOR_VERSION or self.version['minor'] < Seq2SeqModel.MINOR_VERSION:
-                raise Exception(
-                    'Loaded model minor version mismatch: '
-                    f'Loaded {self.version["major"]}.{self.version["minor"]}, '
-                    f'but current version is {Seq2SeqModel.MAJOR_VERSION}.{Seq2SeqModel.MINOR_VERSION}.')
-
         return self
-
-if __name__ == '__main__':
- 
-    global model
- 
-    model = Seq2SeqModel()
- 
-    from trefier.app.cli import CLI, CLIRestartException, CLIExitException
-
-    class Seq2SeqCli(CLI):
-        def run(self, *extra_commands):
-            super().run([
-                self.load,
-                self.show_evaluation,
-                self.reset,
-                self.show_keras_model_summary,
-                super().exit,
-                *extra_commands
-            ])
-        
-        @argh.arg("path", type=str, help="Path to a saved model file.")
-        def load(self, path: str):
-            """ Load a specific Seq2SeqModel from file. """
-            global model
-            model = Seq2SeqModel.load(path)
-            if model is None:
-                return "> Failed to load model from path %s" % path
-            return "> Model loaded from %s" % path
-        
-        def show_evaluation(self):
-            """ Plot evaluation of currently trained model. """
-            try:
-                model.evaluation.plot()
-                return "> Showing evaluation"
-            except:
-                print("> Failed to plot model evaluation: Maybe the model didn't load or isn't trained yet.", file=sys.stderr, flush=True)
-
-        def reset(self):
-            """ Resets the currently loaded model. """
-            global model
-            model = Seq2SeqModel()
-            return "> Model reset"
-        
-        def show_keras_model_summary(self):
-            """ Prints the model summary to stdout. """
-            try:
-                model.model.summary()
-            except Exception as e:
-                print("Error: %s" % str(e), file=sys.stderr, flush=True)
-
-    @argh.arg('path', help="Path to file.")
-    @argh.arg('--ignore_tagged_tokens', help="If enabeld, tokens that already have a tag are not written to the output.")
-    def predict(
-        path: str,
-        ignore_tagged_tokens: bool = False):
-        """ Reads the file from the given path and returns predicted tags """
-        return model.predict(path, ignore_tagged_tokens=ignore_tagged_tokens)
-
-    Seq2SeqCli().run(model.train, model.save, predict)

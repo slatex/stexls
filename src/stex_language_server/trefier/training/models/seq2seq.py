@@ -184,13 +184,19 @@ class Seq2SeqModel(base.Model):
             for y1 in y_train.squeeze() ], dtype=float)
         print('Training sample weights:', sample_weights.shape)
 
+        cb = []
+        if logdir:
+            tb = callbacks.TensorBoard(logdir, hist_freq=5)
+            cb.append(tb)
+
         try:
             self.fit_result = self.model.fit(
                 epochs=epochs,
                 x=x_train,
                 y=y_train,
                 sample_weight=sample_weights,
-                validation_data=validation_data)
+                validation_data=validation_data,
+                callbacks=cb)
         except KeyboardInterrupt:
             print('Model fit() interrupted by user input.')
 

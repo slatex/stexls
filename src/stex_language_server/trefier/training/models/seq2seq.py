@@ -50,9 +50,10 @@ class Seq2SeqModel(base.Model):
         glove_n_components: int,
         val_split: float,
         test_split: float,
+        cachedir: str = None,
         progress: Optional[Callable] = None):
         print('Creating data...')
-        x, y = smglom.load_and_cache(progress=progress)
+        x, y = smglom.load_and_cache(cache=cachedir, progress=progress)
         print('Smglom loaded:', len(x), 'samples')
         x_train, x_valtest, y_train, y_valtest = train_test_split(
             x, y, test_size=val_split + test_split)
@@ -110,6 +111,7 @@ class Seq2SeqModel(base.Model):
         downloaddir: str = 'data/',
         logdir: Optional[str] = '/tmp/seq2seq/logs/',
         savedir: Optional[str] = '/tmp/seq2seq/savedir/',
+        cachedir: Optional[str] = '.',
         epochs: int = 1,
         optimizer: str = 'adam',
         glove_n_components: int = 10,
@@ -162,7 +164,7 @@ class Seq2SeqModel(base.Model):
         self.model.summary()
 
         (x_train, y_train), validation_data, (x_test, y_test) = self._create_data(
-            downloaddir, glove_n_components, val_split=val_split, test_split=test_split, progress=progress)
+            downloaddir, glove_n_components, cachedir=cachedir, val_split=val_split, test_split=test_split, progress=progress)
         
         class_count_counter = Counter(int(a) for b in y_train for a in b)
         print("Training set class counts", class_count_counter)
@@ -277,3 +279,27 @@ class Seq2SeqModel(base.Model):
                 self.model = models.load_model(ref.name)
             assert self.model is not None
         return self
+
+
+if __name__ == '__main__':
+    from stex_language_server.util.cli import Cli, command, Arg
+
+    @command(
+        epochs=Arg('--epochs', default=1, type=int, help='Number of epochs to train for.'),
+        savedir=Arg('--savedir', default='.', help='Directory where the finished model is saved to.'),
+        downloaddir=Arg('--downloaddir', default='.', help='Directory where downloads are saved to.'),
+        logdir=Arg('--logdir', default='.', help='Directory for tensorboard logs.'),
+        cachedir=Arg('--cachedir', default='.', help='Directory for dataset cache.'))
+    def train(epochs: int, savedir: str, downloaddir: str, logdir: str, cachedir: str):
+        self = Seq2SeqModel()
+        self.train(downloaddir=downloaddir, logdir=logdir, savedir=savedir, epochs=epochs)
+    
+    @command(
+        file=Arg('--file', required=True, help='File to create predictions for.'),
+        model=Arg('--model', required=True, help='Path to model to load.'))
+    def predict(file: str, model: str):
+        self = Seq2SeqModel.load(model)
+        print(self.predict(file))
+    
+    cli = Cli([train, predict], 'Trains a seq2seq model or creates tags for a file.')
+    cli.dispatch()

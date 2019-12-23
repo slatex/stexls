@@ -59,7 +59,7 @@ class LatexTokenizer:
                         token.envs)
 
     @staticmethod
-    def from_file(file: Union[str, parser.LatexParser], lower: bool = True):
+    def from_file(file: Union[str, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
         if not isinstance(file, parser.LatexParser):
             file = parser.LatexParser(file, lower=lower)
         if not file.success:

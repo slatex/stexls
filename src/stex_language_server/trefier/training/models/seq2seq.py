@@ -2,6 +2,7 @@ from typing import Union, Optional, List, Callable
 import json
 import pickle
 import os
+import datetime
 import numpy as np
 from collections import Counter
 from sklearn.model_selection import train_test_split
@@ -16,6 +17,7 @@ from tensorflow.keras import regularizers
 from tensorflow.keras import callbacks
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
+from stex_language_server.util.latex.tokenizer import LatexTokenizer
 from stex_language_server.trefier.training.datasets import smglom
 from stex_language_server.trefier.training.features.embedding import GloVe
 from stex_language_server.trefier.training.features.chisquare import ChiSquareModel
@@ -190,40 +192,79 @@ class Seq2SeqModel(base.Model):
         except KeyboardInterrupt:
             print('Model fit() interrupted by user input.')
 
-        if savedir:
-            os.makedirs(savedir, exist_ok=True)
-            models.save_model(self.model, os.path.join(savedir, '%')
- 
         test_sample_weights = np.array([
             [ self.class_weights[y2] for y2 in y1 ]
             for y1 in y_test.squeeze() ], dtype=float)
 
         print('Evaluation of test samples')
         self.evaluation = self.model.evaluate(x_test, y_test, sample_weight=test_sample_weights)
+
+        if savedir:
+            os.makedirs(savedir, exist_ok=True)
+            now = datetime.datetime.now()
+            filename = now.strftime('%y-%m-%d %H:%M:%S.model')
+            filepath = os.path.join(savedir, filename)
+            print('Saving model to', filepath)
+            self.save(filepath)
     
+    def predict(self, *files: str, threshold: float = 0.5) -> List[List[tags.Tag]]:
+        documents = []
+        all_tokens = []
+        for tokenizer, file in zip(map(LatexTokenizer.from_file, files), files):
+            if tokenizer is None:
+                print('Skipping file', file)
+                continue
+            tokens = list(tokenizer)
+            all_tokens.append(tokens)
+            lexemes = [t.lexeme for t in tokens]
+            print(file, 'has', len(lexemes), 'tokens.')
+            documents.append(lexemes)
+        inputs = {
+            'tokens': pad_sequences(self.glove.transform(documents), dtype=np.float32),
+            'keyphraseness': np.expand_dims(pad_sequences(self.keyphraseness_model.transform(documents), dtype=np.float32), axis=-1),
+            'tfidf': np.expand_dims(pad_sequences(self.tfidf_model.transform(documents), dtype=np.float32), axis=-1),
+            'pos': pad_sequences(self.pos_tag_model.predict(documents), dtype=np.float32),
+        }
+        for k, v in inputs.items():
+            print('Prediction input key', k, 'values shape', v.shape)
+        return [
+            [
+                tags.Tag(int(pred[0] > threshold), token.begin, token.end)
+                for pred, token in zip(doc[-len(tokens):], tokens)
+            ]
+            for doc, tokens in zip(self.model.predict(inputs), all_tokens)
+        ]
+
     def save(self, path):
         """ Saves the current state """
         with ZipFile(path, mode='w') as package:
-            with NamedTemporaryFile() as ref:
-                models.save_model(self.model, ref.name)
-                ref.flush()
-                package.write(ref.name, 'model.hdf5')
+            print('Creating zip package:', path)
+            tmpfile = NamedTemporaryFile(suffix='.h5')
+            print('Temporarily saving keras model to', tmpfile.name)
+            models.save_model(self.model, tmpfile.name)
+            print('Adding', tmpfile.name, 'to package as model.h5')
+            package.write(tmpfile.name, 'model.h5')
+            print('Adding glove.bin', len(pickle.dumps(self.glove)), 'bytes.')
             package.writestr('glove.bin', pickle.dumps(self.glove))
+            print('Adding tfidf_model.bin', len(pickle.dumps(self.tfidf_model)), 'bytes.')
             package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
+            print('Adding keyphraseness_model.bin', len(pickle.dumps(self.keyphraseness_model)), 'bytes.')
             package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
+            print('Adding pos_tag_model.bin', len(pickle.dumps(self.pos_tag_model)), 'bytes.')
             package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
+            print('Adding settings.json', len(json.dumps(self.settings, default=lambda x: x.__dict__)), 'characters.')
             package.writestr('settings.json', json.dumps(self.settings, default=lambda x: x.__dict__))
 
     @staticmethod
     def load(path) -> 'Seq2SeqModel':
         self = Seq2SeqModel()
-        """ Loads the model from file """
+        ' Loads the model from file '
         with ZipFile(path, 'r') as package:
             self.settings = json.loads(package.read('settings.json'))
             if self.settings['__class__'] != Seq2SeqModel.__name__:
                 raise ValueError(f'Expected {Seq2SeqModel.__name__}, '
                                  f'but found {self.settings["__class__"]}')
-            if self.settings['version'].split('.')[0] != _VERSION_MAJOR:
+            if int(self.settings['version'].split('.')[0]) != _VERSION_MAJOR:
                 raise ValueError('Major version mismatch: '
                                 f'{self.settings["version"]} vs. {_VERSION_MAJOR}.{_VERSION_MINOR}')
             self.glove = pickle.loads(package.read('glove.bin'))
@@ -231,7 +272,7 @@ class Seq2SeqModel(base.Model):
             self.keyphraseness_model = pickle.loads(package.read('keyphraseness_model.bin'))
             self.pos_tag_model = pickle.loads(package.read('pos_tag_model.bin'))
             with NamedTemporaryFile() as ref:
-                ref.write(package.read('model.hdf5'))
+                ref.write(package.read('model.h5'))
                 ref.flush()
                 self.model = models.load_model(ref.name)
             assert self.model is not None

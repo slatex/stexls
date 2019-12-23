@@ -1,8 +1,6 @@
 from typing import Union, Optional, List, Callable
 import json
-import sys
 import pickle
-import re
 import os
 import numpy as np
 from collections import Counter
@@ -191,6 +189,10 @@ class Seq2SeqModel(base.Model):
                 validation_data=validation_data)
         except KeyboardInterrupt:
             print('Model fit() interrupted by user input.')
+
+        if savedir:
+            os.makedirs(savedir, exist_ok=True)
+            models.save_model(self.model, os.path.join(savedir, '%')
  
         test_sample_weights = np.array([
             [ self.class_weights[y2] for y2 in y1 ]
@@ -210,7 +212,7 @@ class Seq2SeqModel(base.Model):
             package.writestr('tfidf_model.bin', pickle.dumps(self.tfidf_model))
             package.writestr('keyphraseness_model.bin', pickle.dumps(self.keyphraseness_model))
             package.writestr('pos_tag_model.bin', pickle.dumps(self.pos_tag_model))
-            package.writestr('settings.json', json.dumps(self.settings))
+            package.writestr('settings.json', json.dumps(self.settings, default=lambda x: x.__dict__))
 
     @staticmethod
     def load(path) -> 'Seq2SeqModel':

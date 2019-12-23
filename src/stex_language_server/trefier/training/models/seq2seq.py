@@ -50,10 +50,10 @@ class Seq2SeqModel(base.Model):
         glove_n_components: int,
         val_split: float,
         test_split: float,
-        cachedir: str = None,
+        smglomcache: Optional[str],
         progress: Optional[Callable] = None):
         print('Creating data...')
-        x, y = smglom.load_and_cache(cache=cachedir, progress=progress)
+        x, y = smglom.load_and_cache(cache=smglomcache, progress=progress)
         print('Smglom loaded:', len(x), 'samples')
         x_train, x_valtest, y_train, y_valtest = train_test_split(
             x, y, test_size=val_split + test_split)
@@ -108,10 +108,10 @@ class Seq2SeqModel(base.Model):
 
     def train(
         self,
-        downloaddir: str = 'data/',
+        downloaddir: str = './data/',
         logdir: Optional[str] = '/tmp/seq2seq/logs/',
         savedir: Optional[str] = '/tmp/seq2seq/savedir/',
-        cachedir: Optional[str] = '.',
+        smglomcache: Optional[str] = './smglom.bin',
         epochs: int = 1,
         optimizer: str = 'adam',
         glove_n_components: int = 10,
@@ -164,7 +164,7 @@ class Seq2SeqModel(base.Model):
         self.model.summary()
 
         (x_train, y_train), validation_data, (x_test, y_test) = self._create_data(
-            downloaddir, glove_n_components, cachedir=cachedir, val_split=val_split, test_split=test_split, progress=progress)
+            downloaddir, glove_n_components, smglomcache=smglomcache, val_split=val_split, test_split=test_split, progress=progress)
         
         class_count_counter = Counter(int(a) for b in y_train for a in b)
         print("Training set class counts", class_count_counter)
@@ -186,7 +186,7 @@ class Seq2SeqModel(base.Model):
 
         cb = []
         if logdir:
-            tb = callbacks.TensorBoard(logdir, hist_freq=5)
+            tb = callbacks.TensorBoard(logdir, histogram_freq=5)
             cb.append(tb)
 
         try:
@@ -292,13 +292,13 @@ if __name__ == '__main__':
 
     @command(
         epochs=Arg('--epochs', default=1, type=int, help='Number of epochs to train for.'),
-        savedir=Arg('--savedir', default='.', help='Directory where the finished model is saved to.'),
-        downloaddir=Arg('--downloaddir', default='.', help='Directory where downloads are saved to.'),
-        logdir=Arg('--logdir', default='.', help='Directory for tensorboard logs.'),
-        cachedir=Arg('--cachedir', default='.', help='Directory for dataset cache.'))
-    def train(epochs: int, savedir: str, downloaddir: str, logdir: str, cachedir: str):
+        savedir=Arg('--savedir', default='/tmp/seq2seq/savedir', help='Directory where the finished model is saved to.'),
+        downloaddir=Arg('--downloaddir', default='/tmp/seq2seq/downloads', help='Directory where downloads are saved to.'),
+        logdir=Arg('--logdir', default='/tmp/seq2seq/logs', help='Directory for tensorboard logs.'),
+        smglomcache=Arg('--smglomcache', default='./smglom.bin', help='Smglom cache file to use.'))
+    def train(epochs: int, savedir: str, downloaddir: str, logdir: str, smglomcache: str):
         self = Seq2SeqModel()
-        self.train(downloaddir=downloaddir, logdir=logdir, savedir=savedir, epochs=epochs)
+        self.train(downloaddir=downloaddir, logdir=logdir, savedir=savedir, epochs=epochs, smglomcache=smglomcache)
     
     @command(
         file=Arg('--file', required=True, help='File to create predictions for.'),

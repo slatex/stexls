@@ -108,10 +108,10 @@ class Seq2SeqModel(base.Model):
 
     def train(
         self,
-        downloaddir: str = './data/',
+        downloaddir: str = '/tmp/seq2seq/data/',
         logdir: Optional[str] = '/tmp/seq2seq/logs/',
         savedir: Optional[str] = '/tmp/seq2seq/savedir/',
-        smglomcache: Optional[str] = './smglom.bin',
+        smglomcache: Optional[str] = '/tmp/seq2seq/smglom.bin',
         epochs: int = 1,
         optimizer: str = 'adam',
         glove_n_components: int = 10,
@@ -295,7 +295,7 @@ if __name__ == '__main__':
         savedir=Arg('--savedir', default='/tmp/seq2seq/savedir', help='Directory where the finished model is saved to.'),
         downloaddir=Arg('--downloaddir', default='/tmp/seq2seq/downloads', help='Directory where downloads are saved to.'),
         logdir=Arg('--logdir', default='/tmp/seq2seq/logs', help='Directory for tensorboard logs.'),
-        smglomcache=Arg('--smglomcache', default='./smglom.bin', help='Smglom cache file to use.'))
+        smglomcache=Arg('--smglomcache', default='/tmp/seq2seq/smglom.bin', help='Smglom cache file to use.'))
     def train(epochs: int, savedir: str, downloaddir: str, logdir: str, smglomcache: str):
         self = Seq2SeqModel()
         self.train(downloaddir=downloaddir, logdir=logdir, savedir=savedir, epochs=epochs, smglomcache=smglomcache)

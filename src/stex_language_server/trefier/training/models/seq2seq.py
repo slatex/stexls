@@ -186,7 +186,7 @@ class Seq2SeqModel(base.Model):
 
         cb = []
         if logdir:
-            tb = callbacks.TensorBoard(logdir, histogram_freq=5)
+            tb = callbacks.TensorBoard(logdir, write_graph=True, histogram_freq=5)
             cb.append(tb)
 
         try:
@@ -210,7 +210,7 @@ class Seq2SeqModel(base.Model):
         if savedir:
             os.makedirs(savedir, exist_ok=True)
             now = datetime.datetime.now()
-            filename = now.strftime('%y-%m-%d %H:%M:%S.model')
+            filename = now.strftime('%y-%m-%d.%H:%M:%S.model')
             filepath = os.path.join(savedir, filename)
             print('Saving model to', filepath)
             self.save(filepath)

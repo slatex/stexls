@@ -1,12 +1,14 @@
 from typing import Optional, Callable
 import asyncio
 import logging
+from .streams import AsyncIoReaderStream, AsyncIoWriterStream
 from .protocol import JsonRpcProtocol
 from .dispatcher import Dispatcher, DispatcherTarget
 
 log = logging.getLogger(__name__)
 
 __all__ = ['open_connection', 'start_server']
+
 
 async def open_connection(
     dispatcher_factory: Callable[[DispatcherTarget], Dispatcher],
@@ -21,7 +23,9 @@ async def open_connection(
     '''
     reader, writer = await asyncio.open_connection(host, port)
     peername = writer.get_extra_info('peername')
-    protocol = JsonRpcProtocol(reader, writer)
+    protocol = JsonRpcProtocol(
+        AsyncIoReaderStream(reader),
+        AsyncIoWriterStream(writer))
     dispatcher = dispatcher_factory(protocol)
     protocol.set_method_provider(dispatcher)
     log.info('Client connected to %s.', peername)
@@ -46,10 +50,12 @@ async def start_server(
         puts the host and port the server is listening at
         into <started>
     '''
-    async def connect(r, w):
-        peername = w.get_extra_info('peername')
+    async def connect(reader, writer):
+        peername = writer.get_extra_info('peername')
         log.info('Server accepted connection from %s.', peername)
-        protocol = JsonRpcProtocol(r, w)
+        protocol = JsonRpcProtocol(
+            AsyncIoReaderStream(reader),
+            AsyncIoWriterStream(writer))
         dispatcher = dispatcher_factory(protocol)
         protocol.set_method_provider(dispatcher)
         closed = asyncio.Future()

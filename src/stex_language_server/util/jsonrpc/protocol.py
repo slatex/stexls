@@ -5,7 +5,7 @@ import logging
 from .core import *
 from .dispatcher import DispatcherTarget
 from .hooks import extract_methods
-from .streams import AsyncReaderStream, WriterStream, JsonStreamWriter, JsonStreamReader
+from .streams import JsonStreamReader, JsonStreamWriter, AsyncReaderStream, AsyncWriterStream
 from .util import validate_json, restore_message
 from .method_provider import MethodProvider
 
@@ -17,9 +17,9 @@ __all__ = ('JsonRpcProtocol',)
 class JsonRpcProtocol(DispatcherTarget):
     ' This is a implementation for the json-rpc-protocol. '
     def __init__(
-        self, reader: AsyncReaderStream, writer: WriterStream):
-        self.__reader = JsonStreamReader(reader)
-        self.__writer = JsonStreamWriter(writer)
+        self, reader: AsyncReaderStream, writer: AsyncWriterStream, linebreak: str = '\r\n', encoding: str = 'utf-8'):
+        self.__reader = JsonStreamReader(reader, linebreak=linebreak, encoding=encoding)
+        self.__writer = JsonStreamWriter(writer, linebreak=linebreak, encoding=encoding)
         self.__writer_queue = asyncio.Queue()
         self.__methods = extract_methods(self)
         self.__requests = {}
@@ -166,7 +166,7 @@ class JsonRpcProtocol(DispatcherTarget):
                     log.debug('Writer throwing invalid message away: %s', message)
                 else:
                     log.debug('Writing message: %s', message)
-                    self.__writer.write(message)
+                    await self.__writer.write(message)
         except asyncio.CancelledError:
             log.debug('Writer task stopped because of cancellation event.')
         log.info('Writer task finished.')

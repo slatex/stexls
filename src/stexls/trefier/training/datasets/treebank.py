@@ -1,6 +1,6 @@
 
-from stex_language_server.util import download
-from stex_language_server.util.parsing.
+from stexls.util import download
+from stexls.util.parsing.
 
 __all__ = ['load']
 

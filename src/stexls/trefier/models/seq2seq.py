@@ -17,13 +17,13 @@ from tensorflow.keras import regularizers
 from tensorflow.keras import callbacks
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-from stex_language_server.util.latex.tokenizer import LatexTokenizer
-from stex_language_server.trefier.training.datasets import smglom
-from stex_language_server.trefier.training.features.embedding import GloVe
-from stex_language_server.trefier.training.features.chisquare import ChiSquareModel
-from stex_language_server.trefier.training.features.tfidf import TfIdfModel
-from stex_language_server.trefier.training.features.keyphraseness import KeyphrasenessModel
-from stex_language_server.trefier.training.features.pos import PosTagModel
+from stexls.util.latex.tokenizer import LatexTokenizer
+from stexls.trefier.training.datasets import smglom
+from stexls.trefier.training.features.embedding import GloVe
+from stexls.trefier.training.features.chisquare import ChiSquareModel
+from stexls.trefier.training.features.tfidf import TfIdfModel
+from stexls.trefier.training.features.keyphraseness import KeyphrasenessModel
+from stexls.trefier.training.features.pos import PosTagModel
 from . import base, tags
 
 __all__ = ['Seq2SeqModel']
@@ -288,7 +288,7 @@ class Seq2SeqModel(base.Model):
 
 
 if __name__ == '__main__':
-    from stex_language_server.util.cli import Cli, command, Arg
+    from stexls.util.cli import Cli, command, Arg
 
     @command(
         epochs=Arg('--epochs', default=1, type=int, help='Number of epochs to train for.'),

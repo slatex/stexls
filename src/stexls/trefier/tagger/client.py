@@ -2,12 +2,12 @@
 __all__ = ['TaggerClient']
 import asyncio
 import logging
-from stex_language_server.util.cli import Cli, Arg, command
-from stex_language_server.util.jsonrpc import tcp
-from stex_language_server.util.jsonrpc import dispatcher
-from stex_language_server.util.jsonrpc.hooks import request, notification
+from stexls.util.cli import Cli, Arg, command
+from stexls.util.jsonrpc import tcp
+from stexls.util.jsonrpc import dispatcher
+from stexls.util.jsonrpc.hooks import request, notification
 
-from stex_language_server.trefier.models.seq2seq import Seq2SeqModel
+from stexls.trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
 

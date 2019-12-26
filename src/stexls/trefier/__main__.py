@@ -1,7 +1,7 @@
 import os
-from stex_language_server.util.cli import Cli, Arg, command
-from stex_language_server.tagger.client import Client
-from stex_language_server.tagger.server import Server
+from stexls.util.cli import Cli, Arg, command
+from stexls.tagger.client import Client
+from stexls.tagger.server import Server
 
 
 @command(

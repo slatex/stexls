@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Union, Iterable, List
 import numpy as np
 from sklearn.decomposition import PCA
-from stex_language_server.util import download
+from stexls.util import download
 
 class GloVe:
     ' Implements transformation of tokens to glove embedding vectors. '

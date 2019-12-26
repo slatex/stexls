@@ -17,10 +17,10 @@ parser.add_argument('--loglevel', default='warning', type=lambda x: getattr(logg
 args = parser.parse_args()
 
 logging.basicConfig(level=args.loglevel)
-from stex_language_server.util.jsonrpc.tcp import start_server, open_connection
-from stex_language_server.util.jsonrpc.dispatcher import Dispatcher
-from stex_language_server.util.jsonrpc.hooks import request, notification, method
-from stex_language_server.util.jsonrpc.protocol import JsonRpcProtocol
+from stexls.util.jsonrpc.tcp import start_server, open_connection
+from stexls.util.jsonrpc.dispatcher import Dispatcher
+from stexls.util.jsonrpc.hooks import request, notification, method
+from stexls.util.jsonrpc.protocol import JsonRpcProtocol
 
 if args.mode == 'server':
     class ServerDispatcher(Dispatcher):

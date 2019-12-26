@@ -3,9 +3,9 @@ import itertools, os, re, copy, antlr4
 from typing import Iterator, Pattern, List, Optional, Tuple
 from antlr4.error.ErrorListener import ErrorListener
 
-from stex_language_server.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer
-from stex_language_server.util.latex.grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
-from stex_language_server.util.latex.grammar.out.LatexParser import LatexParser as _LatexParser
+from stexls.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer
+from stexls.util.latex.grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
+from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParser
 
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']

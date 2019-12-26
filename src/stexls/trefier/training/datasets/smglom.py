@@ -6,8 +6,8 @@ import re
 import pickle
 import multiprocessing as mp
 
-from stex_language_server.util import download
-from stex_language_server.util.latex import tokenizer
+from stexls.util import download
+from stexls.util.latex import tokenizer
 
 _TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?')
 _DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')

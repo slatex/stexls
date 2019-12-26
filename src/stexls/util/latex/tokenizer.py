@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from typing import Optional, Callable, Iterable, List, Iterator, Tuple, Union
-from stex_language_server.util.latex import parser
+from stexls.util.latex import parser
 
 __all__ = ['LatexTokenizer', 'LatexToken']
 

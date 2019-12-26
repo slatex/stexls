@@ -3,14 +3,14 @@ __all__ = ['TaggerServer']
 import asyncio
 import logging
 import sys
-from stex_language_server.util.cli import Cli, Arg, command
-from stex_language_server.util.jsonrpc import dispatcher
-from stex_language_server.util.jsonrpc.tcp import start_server
-from stex_language_server.util.jsonrpc.hooks import method
-from stex_language_server.util.jsonrpc.protocol import JsonRpcProtocol
-from stex_language_server.util.jsonrpc.streams import AsyncBufferedReaderStream, AsyncBufferedWriterStream
+from stexls.util.cli import Cli, Arg, command
+from stexls.util.jsonrpc import dispatcher
+from stexls.util.jsonrpc.tcp import start_server
+from stexls.util.jsonrpc.hooks import method
+from stexls.util.jsonrpc.protocol import JsonRpcProtocol
+from stexls.util.jsonrpc.streams import AsyncBufferedReaderStream, AsyncBufferedWriterStream
 
-from stex_language_server.trefier.models.seq2seq import Seq2SeqModel
+from stexls.trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
 model = None

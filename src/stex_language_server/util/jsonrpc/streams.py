@@ -73,16 +73,25 @@ class AsyncWriterStream:
     async def write(self, data: bytes):
         ' Writes all the bytes provided. '
         raise NotImplementedError()
-
+    
 
 class AsyncBufferedWriterStream(AsyncWriterStream):
-    def __init__(self, stream: io.BufferedWriter):
+    ' Adapts io.BufferedWriter. '
+    def __init__(self, stream: io.BufferedWriter, force_flush: bool = True):
+        ''' Creates an async writer stream with an underlying io.BufferedWriter.
+        Parameters:
+            stream: The stream object to use.
+            force_flush: Enables flushing the stream after each write.
+        '''
         self._stream = stream
+        self._force_flush = force_flush
 
     async def write(self, data: bytes):
         written = 0
         while written < len(data):
             written += self._stream.write(data[written:])
+        if self._force_flush:
+            self._stream.flush()
 
 
 class AsyncIoWriterStream(AsyncWriterStream):
@@ -177,6 +186,12 @@ class JsonStreamWriter:
         self,
         setting: str,
         value: str):
+        ''' Sends a single line of the header, consisting of a string for
+            the setting and a string for the value of the setting.
+        Parameters:
+            setting: Name of the setting to add to the header.
+            value: Value of the setting.
+        '''
         log.debug('Json writer sending header "%s" with value "%s".', setting, value)
         setting = bytes(setting, self._encoding)
         value = bytes(' ' + value, self._encoding)
@@ -184,9 +199,15 @@ class JsonStreamWriter:
         await self._stream.write(data)
 
     async def end_header(self):
+        ' Sends the header terminator string. '
         await self._stream.write(self._linebreak)
 
     async def write(self, o: Any):
+        ''' Writes a json serializable object to the underlying stream
+            using the provided encoding.
+        Parameters:
+            o: The json serializable object to write.
+        '''
         content = json.dumps(o, default=lambda x: x.__dict__)
         content = bytes(content, self._encoding)
         await self.send_header(setting='Content-Length', value=str(len(content)))

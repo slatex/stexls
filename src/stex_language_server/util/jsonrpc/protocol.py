@@ -109,15 +109,15 @@ class JsonRpcProtocol(DispatcherTarget):
         log.debug('Handling message: %s', message)
         invalid = validate_json(message)
         if invalid is not None:
-            log.debug('Message handled is invalid: %s', invalid)
+            log.debug('Message handled is invalid, creating response: %s', invalid)
             return invalid
         message = restore_message(message)
         log.debug('Restored original message from json: %s', message)
         if isinstance(message, RequestObject):
-            log.debug('Calling request (%i) method %s.', message.id, message.method)
+            log.info('Calling request "%i" method "%s".', message.id, message.method)
             return await self.call(message.method, getattr(message, 'params', None), message.id)
         elif isinstance(message, NotificationObject):
-            log.debug('Calling notification method %s.', message.method)
+            log.info('Calling notification method "%s".', message.method)
             await self.call(message.method, getattr(message, 'params', None))
         elif isinstance(message, ResponseObject):
             request: asyncio.Future = self.__requests.get(getattr(message, 'id', None))
@@ -126,10 +126,10 @@ class JsonRpcProtocol(DispatcherTarget):
             else:
                 del self.__requests[message.id]
                 if hasattr(message, 'error'):
-                    log.warning('Resolving request %i with error: %s', message.id, message.error)
+                    log.warning('Resolving request "%i" with error: %s', message.id, message.error)
                     request.set_exception(message.error.to_exception())
                 else:
-                    log.debug('Resolving request %i with result: %s', message.id, message.result)
+                    log.info('Resolving id "%i".', message.id)
                     request.set_result(message.result)
                 
     async def _reader_task(self):
@@ -145,10 +145,13 @@ class JsonRpcProtocol(DispatcherTarget):
                 message = await self.__reader.read(header)
                 log.debug('Message content received: %s', message)
                 responses = await self._handle_message_or_batch(message)
-                log.debug('Sending responses to the writer task: %s', responses)
-                await self.__writer_queue.put(responses)
+                if not responses:
+                    log.debug('Reader generated empty response.')
+                else:
+                    log.debug('Reader sending responses to the writer task: %s', responses)
+                    await self.__writer_queue.put(responses)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
-            log.info('Reader task exiting because of %s.', type(e))
+            log.debug('Reader task exiting because of %s.', type(e))
             self.__writer_queue.put_nowait(self)
         log.info('Reader task finished.')
     

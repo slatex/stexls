@@ -1,3 +1,5 @@
+''' The location module contains simple structures that
+represent positions or ranges in files. '''
 from __future__ import annotations
 from typing import Union, Optional, List
 

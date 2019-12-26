@@ -1,3 +1,5 @@
+''' This module contains methods for downloading and extracting
+files or git repositories. '''
 import sys
 import os
 from os import listdir
@@ -16,23 +18,31 @@ from .git import clone
 __all__ = ['maybe_download_git', 'maybe_download_and_extract']
 
 class Downloader:
+    ' Contains the state of a download operation. '
     def __init__(self, url, download_location):
+        ''' Initializes the downloader with url and destination location.
+            Also initializes a finished flag to false, which is set to Trueu
+            after the download has finished.
+        Parameters:
+            url: Url to download.
+            download_location: Location to where the files should be saved.
+        '''
         self.url = url
         self.download_location = download_location
         self.finished = False
     
     @property
     def content_length(self):
-        """ Attempts to download the size of the url. """
+        ' Attempts to download the size of the url. '
         with urllib.request.urlopen(self.url) as response:
             sz = response.headers['Content-Length']
             return int(sz) if sz else None
     
     def download(self, blocksize: int = 4096):
-        """ Opens the url and downloads the file.
+        ''' Opens the url and downloads the file.
         Returns:
             Iterator of downloaded chunksizes.
-        """
+        '''
         if self.finished:
             raise Exception(f"File {self.download_location} already downloaded?")
         begin = datetime.datetime.now()
@@ -51,12 +61,13 @@ class Downloader:
 
 
 def maybe_download_git(repo_url, save_dir='data/'):
-    """
-    :param repo_url: git repository to download
-    :param save_dir: path to save directory
-    :returns: path to the folder where the repo was cloned into
-    """
-   
+    ''' Downloads a git repository if it doesn't exist.
+    Parameters:
+        repo_url: git repository to download
+        save_dir: path to save directory
+    Returns:
+        Path to the folder where the repo was cloned into
+    '''
     # name the repo from the url
     repo_name = splitext(repo_url)[0].split("/")[-1]
     
@@ -80,14 +91,15 @@ def maybe_download_git(repo_url, save_dir='data/'):
     return clone_dir
 
 def maybe_download_and_extract(url, silent=False, return_name_of_single_file=True, return_all_extracted_file_names=True, save_dir='data/', cache='/tmp/cache/'):
-    """
-    :param url: file to download
-    :param return_name_of_single_file: if true, returns the name of the file that was extracted
-    :param return_all_extracted_file_names: returns at least one and all extracted files
-    :param save_dir: path to save directory
-    :return: path to the folder where the url was extracted to (changes according to arguments)
-    """
-
+    ''' Downloads any file and extracts it if it is a .zip, .tar.gz or .gz file.
+    Parameters:
+        url: file to download
+        return_name_of_single_file: if true, returns the name of the file that was extracted
+        return_all_extracted_file_names: returns at least one and all extracted files
+        save_dir: path to save directory
+    Returns:
+        Path to the folder where the url was extracted to (changes according to arguments)
+    '''
     # silent print function
     def sprint(*msg, endln=False, flush=True):
         if not silent:

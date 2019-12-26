@@ -1,3 +1,8 @@
+''' This is an important module which
+takes a parsed latex file using the stex.util.latex.parser.LatexParser
+and parses the parse tree into it's more useful tokens, preserving
+environment, location and parse tree structure.
+'''
 from __future__ import annotations
 import re
 from typing import Optional, Callable, Iterable, List, Iterator, Tuple, Union
@@ -10,13 +15,24 @@ DEFAULT_WORDS = r'''(?:[\w\d_]|(?<!^)\-|\{\\ss\}|\\ss|\\\"(?:a|A|o|O|u|U|s|S))+(
 DEFAULT_FILTER = r'''\s+|\@|\#|\^|\*|\_|\+|\=|\[|\]|\\|\/|\>|\<|\{|\}'''
 
 class LatexToken:
+    ''' A lexical token, which inherited the location and environment
+        data from it's latex parent token.
+    '''
     def __init__(self, lexeme: str, begin: int, end: int, envs: tuple):
+        ''' Initializes the token.
+        Parameters:
+            lexeme: Actual string of the token.
+            begin: 0 indexed begin offset in the original file.
+            end: 0 indexed end offset in the original file.
+            envs: Latex environment information at the token's position.
+        '''
         self.lexeme = lexeme
         self.begin = begin
         self.end = end
         self.envs = envs
     
     def __iter__(self):
+        ' Yields the members, imitating a tuple. '
         yield self.lexeme
         yield self.begin
         yield self.end
@@ -40,6 +56,7 @@ class LatexTokenizer:
         self._tokens: List[parser.Token] = list(root.tokens)
 
     def __iter__(self) -> Iterator[LatexToken]:
+        ' Parses the lexical tokens in the file and yields them. '
         for token in self._tokens:
             if token.envs and '$' in token.envs:
                 yield LatexToken(
@@ -60,6 +77,7 @@ class LatexTokenizer:
 
     @staticmethod
     def from_file(file: Union[str, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
+        ' Creates this tokenizer directly from a file, parsing it beforehand. '
         if not isinstance(file, parser.LatexParser):
             file = parser.LatexParser(file, lower=lower)
         if not file.success:

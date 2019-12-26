@@ -163,6 +163,13 @@ class InlineEnvironment(Environment):
 
 
 class LatexParser(_LatexParserListener):
+    ''' Implements the antlr4 methods for parsing a latex file.
+        Various information about the parsed file is also stored.
+        Most importantly the root member, which contains the document root
+        node, from which all other tokens and environments can be queried.
+        Success and error information as well as position and offset
+        transformation data is also stored.
+    '''
     def enterMain(self, ctx: _LatexParser.MainContext):
         self._stack.append(Node(ctx.start.start, ctx.stop.stop + 1))
 
@@ -252,20 +259,28 @@ class LatexParser(_LatexParserListener):
         return self.source[begin:end]
     
     def __init__(self, file_or_document: str, lower: bool = False, ignore_exceptions: bool = False):
-        """ Creates a parser and parses the file.
+        ''' Creates a parser and parses the file.
+            Initializes also the following members:
+                file: Path to the file that was parsed, None if the file_or_document argument was not a file.
+                success: Parsing succes status flag.
+                source: The actual text of the loaded file or equal to file_or_document, if not a file.
+                exception: Stored exception if ignore_exceptions was set.
+                root: Node of the document's parse tree.
+                syntax_errors: List of all syntax erros which occured during parsing.
         Parameters:
             file_or_document: A which is either a path to a latex file or the file's content itself.
+            lower: Enables calling lower() on the file source text.
             ignore_exceptions:
                 If enabled, exceptions thrown during parsing
                 will be stored in self.exceptions instead of raising.
-        """
-        self.file = None
-        self.success = False
+        '''
+        self.file: Optional[str] = None
+        self.success: bool = False
         self._stack = []
-        self.source = None
-        self.exception = None
-        self.root = None
-        self.syntax_errors = None
+        self.source: str = None
+        self.exception: Optional[Exception] = None
+        self.root: Optional[Node] = None
+        self.syntax_errors: List[SyntaxErrorInformation] = None
         try:
             if file_or_document is None:
                 raise ValueError('file_or_document must not be None')
@@ -306,6 +321,7 @@ class SyntaxErrorInformation:
             file: Optional path to a file.
             line: The zero indexed line the error occured on.
             character: The zero indexed character the error occured on.
+            message: Error information message.
         '''
         self.file = file
         self.line = line

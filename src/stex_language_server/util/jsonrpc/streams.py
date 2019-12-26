@@ -41,17 +41,21 @@ class AsyncBufferedReaderStream(AsyncReaderStream):
         self._buffer = b''
 
     async def readuntil(self, separator: bytes = b'\n') -> bytes:
+        loop = asyncio.get_event_loop()
         while separator not in self._buffer:
-            data = self._stream.read1()
+            log.debug('AsyncBufferedReader waiting for bytes to read.')
+            data = await loop.run_in_executor(None, self._stream.read1())
             if not data:
                 return b''
             self._buffer += data
         line, self._buffer = self._buffer.split(separator, maxsplit=1)
+        log.debug('AsyncBufferedReader received line (length: %i, buffer len: %i).', len(line), len(self._buffer))
         return line + separator
     
     async def read(self, count: int = -1) -> bytes:
         loop = asyncio.get_event_loop()
         partial = functools.partial(self._stream.read, count)
+        log.debug9('AsyncBufferedReader waiting for %i bytes.', count)
         data = await loop.run_in_executor(None, partial)
         return data
 

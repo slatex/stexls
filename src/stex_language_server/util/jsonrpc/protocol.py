@@ -109,7 +109,7 @@ class JsonRpcProtocol(DispatcherTarget):
         log.debug('Handling message: %s', message)
         invalid = validate_json(message)
         if invalid is not None:
-            log.debug('Message handled is invalid, creating response: %s', invalid)
+            log.debug('Handled message is invalid, creating response: %s', invalid)
             return invalid
         message = restore_message(message)
         log.debug('Restored original message from json: %s', message)

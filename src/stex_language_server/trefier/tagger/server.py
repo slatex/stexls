@@ -2,10 +2,13 @@
 __all__ = ['TaggerServer']
 import asyncio
 import logging
+import sys
 from stex_language_server.util.cli import Cli, Arg, command
-from stex_language_server.util.jsonrpc import tcp
 from stex_language_server.util.jsonrpc import dispatcher
+from stex_language_server.util.jsonrpc.tcp import start_server
 from stex_language_server.util.jsonrpc.hooks import method
+from stex_language_server.util.jsonrpc.protocol import JsonRpcProtocol
+from stex_language_server.util.jsonrpc.streams import AsyncBufferedReaderStream, AsyncBufferedWriterStream
 
 from stex_language_server.trefier.models.seq2seq import Seq2SeqModel
 
@@ -58,17 +61,42 @@ if __name__ == '__main__':
         host=Arg(default='localhost', help='Hostname to bind server to.'),
         port=Arg(type=int, default=0, help='Port to bind server on.'),
         loglevel=Arg(default='WARNING', help='Logger loglevel: DEBUG, INFO, WARNING, ERROR, CRITICAL'))
-    def server(host: str, port: int, loglevel: str = 'WARNING'):
+    async def tcp(host: str, port: int, loglevel: str = 'WARNING'):
+        ''' Creates a tcp socket server that communicates using json-rcp.
+            When the server started accepting messages, a line
+            with <hostname>:<port> will be printed to stdout.
+        Parameters:
+            host: The hostname the server will be launched on.
+            port: The port the socket should bind to. 0 for any free port.
+            loglevel: Logging loglevel (CRITICAL, ERROR, WARNING, INFO, DEBUG).
+        '''
         logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
-        async def async_wrapper():
-            log.info('server(%s, %i) called.', host, port)
-            started = asyncio.Future()
-            server = asyncio.create_task(
-                tcp.start_server(TaggerServer, host=host, port=port, started=started))
-            info = await started
-            print('{}:{}'.format(*info))
-            await server
-        return asyncio.run(async_wrapper())
+        log.info('Creating tcp server at %s:%i.', host, port)
+        started = asyncio.Future()
+        server = asyncio.create_task(
+            start_server(TaggerServer, host=host, port=port, started=started))
+        info = await started
+        print('{}:{}'.format(*info), flush=True)
+        await server
+
+    @command(
+        loglevel=Arg(default='WARNING', help='Logger loglevel: DEBUG, INFO, WARNING, ERROR, CRITICAL'))
+    async def stdio(loglevel: str = 'WARNING'):
+        ''' Creates a json-rpc server that listens listens for messages
+            using stdin and writes respones to stdout.
+            Therefore, only a single client can be connected to this server.
+        Parameters:
+            loglevel: Logging loglevel (CRITICAL, ERROR, WARNING, INFO, DEBUG).
+        '''
+        logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
+        log.info('Creating json-rpc server using stdin and stdout streams.')
+        connection = JsonRpcProtocol(
+            AsyncBufferedReaderStream(sys.stdin.buffer),
+            AsyncBufferedWriterStream(sys.stdout.buffer))
+        server = TaggerServer(connection)
+        connection.set_method_provider(server)
+        await connection.run_until_finished()
         
-    cli = Cli([server], description='Trefier tagger server program.')
-    cli.dispatch()
+    cli = Cli([tcp, stdio], description='Trefier tagger server cli.')
+    asyncio.run(cli.dispatch())
+    log.info('Server stopped.')

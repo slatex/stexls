@@ -15,6 +15,7 @@ def validate_json(o: object) -> Optional[ResponseObject]:
     log.debug('Validating object: %s', o)
     if not isinstance(o, dict) or o.get('jsonrpc') != '2.0':
         log.warning('Validated object not a dict or does\'t contain "jsonrpc" member.')
+        log.debug(o)
         return ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest))
     is_request = isinstance(o.get('id'), (int, str)) and 'method' in o
     is_notification = 'id' not in o and 'method' in o
@@ -29,6 +30,7 @@ def validate_json(o: object) -> Optional[ResponseObject]:
         log.warning(
             'Json object is not uniquely request (%s), notification (%s) or response (%s).',
             is_request, is_notification, is_request)
+        log.debug(o)
         return ResponseObject(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
 
 def restore_message(o: object) -> MessageObject:

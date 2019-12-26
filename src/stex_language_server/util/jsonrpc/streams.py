@@ -1,4 +1,4 @@
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Dict
 import io
 import sys
 import asyncio
@@ -107,8 +107,13 @@ class JsonStreamReader:
         self._linebreak = bytes(linebreak, encoding)
         self._encoding = encoding
     
-    async def header(self) -> dict:
-        ' Reads a header from stream until the terminator line is reached. '
+    async def header(self) -> Dict[str, str]:
+        ''' Reads a header from stream until the terminator line is reached.
+            Raises an EOFError if eof is encountered during read.
+        Returns:
+            Dictionary of string with the name of the header option
+            to a string with the value of the header option.
+        '''
         header = {}
         while True:
             log.debug('Start reading until linebreak (%s).', self._linebreak)
@@ -126,8 +131,15 @@ class JsonStreamReader:
             log.debug('Setting header setting "%s" to "%s"', setting, value)
             header[setting.lower()] = value
 
-    async def read(self, header: dict) -> Union[dict, list, str, float, int, bool, None]:
-        ' Reads data according to the header from stream and parses the content as json and returns it. '
+    async def read(self, header: Dict[str, str]) -> Union[dict, list, str, float, int, bool, None]:
+        ''' Reads data according to the header from stream and parses the content as json and returns it.
+            If eof is encountered while reading, an EOFError is raised.
+            May raise unicode decode or json decode errors if the messages are invalid.
+        Parameters:
+            header: Dict of header parameters and values.
+        Returns:
+            A valid json object.
+        '''
         content_length: int = int(header['content-length'])
         log.debug('Header content length is %i.', content_length)
         content_type: Optional[str] = header.get('content-type')
@@ -138,6 +150,8 @@ class JsonStreamReader:
                 log.debug('Setting content charset to "%s', charset)
         log.debug('Json reader reading %i bytes.', content_length)
         content: bytes = await self._stream.read(content_length)
+        if not content:
+            raise EOFError()
         content = content.decode(charset)
         log.debug('Content received: %s', content)
         obj = json.loads(content)

@@ -38,7 +38,7 @@ class Dispatcher(MethodProvider):
         the called methods are done somewhere different and have to wait
         until the message is send, handled and the response returned.
     '''
-    def __init__(self, target: DispatcherTarget):
+    def __init__(self, target: DispatcherTarget = None):
         ' Initializes the dispatcher with a target for the messages it dispatches. '
         self.__target = target
         self.__request_id_generator = itertools.count(1)

@@ -12,10 +12,10 @@ log = logging.getLogger(__name__)
 __all__ = (
     'AsyncReaderStream',
     'AsyncBufferedReaderStream',
-    'AsyncIoStreamReader',
+    'AsyncIoReaderStream',
     'AsyncWriterStream',
     'AsyncBufferedWriterStream',
-    'AsyncIoStreamWriter',
+    'AsyncIoWriterStream',
     'JsonStreamReader',
     'JsonStreamWriter'
 )

@@ -189,8 +189,8 @@ class JsonStreamWriter:
     async def write(self, o: Any):
         content = json.dumps(o, default=lambda x: x.__dict__)
         content = bytes(content, self._encoding)
-        log.debug('JsonWriterStream sending content (%i bytes).', len(content))
         await self.send_header(setting='Content-Length', value=str(len(content)))
         await self.send_header(setting='Content-Type', value=self._content_type)
         await self.end_header()
+        log.debug('JsonWriterStream sending content (%i bytes).', len(content))
         await self._stream.write(content)

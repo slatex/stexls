@@ -1,3 +1,14 @@
+''' This module contains a simple implementation for a
+    cli argument parser parser.
+    Simply decorate functions with @command
+    and pass Arg instanes to this decorator in order
+    to make functions parsable by this parser.
+    Giving @command-decorated functions to a Cli() instances
+    as a command, automatically builds a cli interface that
+    executes the commands with the given parameters when
+    dispatch() is called.
+'''
+from typing import Any
 import sys
 import inspect
 import functools
@@ -54,7 +65,13 @@ def command(**kwargs):
     return decorator
 
 class Cli:
-    def __init__(self, commands, description:str):
+    ' The cli binds a list of commands together and makes them executable by dispatching an argv.'
+    def __init__(self, commands, description: str = None):
+        ''' Initializes the internal argument parsers using the provided commands.
+        Parameters:
+            commands: List of commands decorated with the @command decorator from this module.
+            description: An optional description for this cli.
+        '''
         self.parser = argparse.ArgumentParser(
             description=description,
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -88,7 +105,13 @@ class Cli:
             for param_name, conf in command.cli_cmd_config.items():
                 sub_command.add_argument(*conf.args, **conf.kwargs)
 
-    def dispatch(self, argv:list=None):
+    def dispatch(self, argv: list = None) -> Any:
+        ''' Executes the given argument vector.
+        Parameters:
+            argv: List of command and arguments to execute.
+        Returns:
+            The return value of the executed command.
+        '''
         args = self.parser.parse_args(argv)
         command = self.command_index.get(args._command)
         if command is None:

@@ -80,8 +80,7 @@ class JsonRpcProtocol(DispatcherTarget):
             try:
                 result = await self.__method_provider.call(method, params)
                 log.debug('Method %s(%s) call successful.', method, params)
-                response = ResponseObject(
-                    id, result=result)
+                response = ResponseObject(id, result=result)
             except TypeError as e:
                 log.warning('Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
                 response = ResponseObject(

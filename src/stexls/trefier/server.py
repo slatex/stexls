@@ -1,5 +1,11 @@
-''' Implements the server part of the "Tagger Server Protocol" '''
-__all__ = ['TaggerServer']
+''' Implements the server side of the tagger using the json rpc protocol.
+    This module contains the dispatcher which provides the methods
+    for a JsonRpcProtocol.
+    Furthermore, if this module is run as __main__, it can
+    start a server using tcp or read and write json-rpc messages directly
+    from stdin/out.
+'''
+__all__ = ['TaggerServerDispatcher']
 import asyncio
 import logging
 import sys
@@ -15,7 +21,7 @@ from stexls.trefier.models.seq2seq import Seq2SeqModel
 log = logging.getLogger(__name__)
 model = None
 
-class TaggerServer(dispatcher.Dispatcher):
+class TaggerServerDispatcher(dispatcher.Dispatcher):
     @method
     def load_model(self, path: str, force: bool = False):
         global model
@@ -74,7 +80,7 @@ if __name__ == '__main__':
         log.info('Creating tcp server at %s:%i.', host, port)
         started = asyncio.Future()
         server = asyncio.create_task(
-            start_server(TaggerServer, host=host, port=port, started=started))
+            start_server(TaggerServerDispatcher, host=host, port=port, started=started))
         info = await started
         print('{}:{}'.format(*info), flush=True)
         await server
@@ -93,10 +99,10 @@ if __name__ == '__main__':
         connection = JsonRpcProtocol(
             AsyncBufferedReaderStream(sys.stdin.buffer),
             AsyncBufferedWriterStream(sys.stdout.buffer))
-        server = TaggerServer(connection)
+        server = TaggerServerDispatcher(connection)
         connection.set_method_provider(server)
         await connection.run_until_finished()
         
-    cli = Cli([tcp, stdio], description='Trefier tagger server cli.')
+    cli = Cli([tcp, stdio], description=__doc__)
     asyncio.run(cli.dispatch())
     log.info('Server stopped.')

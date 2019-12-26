@@ -177,7 +177,7 @@ class JsonStreamWriter:
         self,
         setting: str,
         value: str):
-        log.debug('Json writer sending header "%s" with value "%s"', setting, value)
+        log.debug('Json writer sending header "%s" with value "%s".', setting, value)
         setting = bytes(setting, self._encoding)
         value = bytes(' ' + value, self._encoding)
         data = setting + self._separator + value + self._linebreak

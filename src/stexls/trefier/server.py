@@ -6,9 +6,11 @@
     from stdin/out.
 '''
 __all__ = ['TaggerServerDispatcher']
+from typing import List
 import asyncio
 import logging
 import sys
+from stexls.trefier.models.tags import Tag
 from stexls.util.cli import Cli, Arg, command
 from stexls.util.jsonrpc import dispatcher
 from stexls.util.jsonrpc.tcp import start_server
@@ -22,8 +24,20 @@ log = logging.getLogger(__name__)
 model = None
 
 class TaggerServerDispatcher(dispatcher.Dispatcher):
+    ''' This is the interface the tagger server implements. '''
     @method
     def load_model(self, path: str, force: bool = False):
+        ''' Loads a model into global memory.
+        Parameters:
+            path: Path to the model to load.
+            force: Enables replacing an already loaded model.
+        Return:
+            True. Because a request needs a respose.
+            Raises an exception if something goes wrong.
+        Raises:
+            ValueError if an model is already loaded
+            but force is not set.
+        '''
         global model
         log.info('load_model(%s) called.', path)
         log.debug('Attempting to load model from "%s"', path)
@@ -39,9 +53,21 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
         except:
             log.exception('Failed to load model from "%s"', path)
             raise
+        if model is None:
+            log.error('load_model(%s) returned None because of unknown reason.')
+            raise ValueError('Failed to load model because of unknown reason.')
     
     @method
-    def predict(self, *files: str):
+    def predict(self, *files: str) -> List[List[Tag]]
+        ''' Creates predictions for every given file or string.
+        Parameters:
+            files: List of files or strings to create predictions for.
+        Returns:
+            List of tags for each file provided.
+        Raises:
+            Value error if no model is loaded.
+        '''
+
         log.info('predict() called.')
         if model is None:
             raise ValueError('No model loaded.')
@@ -55,7 +81,8 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             raise
 
     @method
-    def get_info(self):
+    def get_info(self) -> dict:
+        ' Gets info about loaded model, raise ValueError if no model loaded. '
         log.info('get_info() called.')
         if model is None:
             raise ValueError('No model loaded.')

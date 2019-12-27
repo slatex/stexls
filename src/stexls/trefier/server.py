@@ -58,7 +58,7 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             raise ValueError('Failed to load model because of unknown reason.')
     
     @method
-    def predict(self, *files: str) -> List[List[Tag]]
+    def predict(self, *files: str) -> List[List[Tag]]:
         ''' Creates predictions for every given file or string.
         Parameters:
             files: List of files or strings to create predictions for.

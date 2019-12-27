@@ -1,6 +1,7 @@
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 from enum import IntEnum
 from glob import glob
+import sys
 import os
 import re
 import pickle
@@ -19,10 +20,14 @@ class Label(IntEnum):
     TREFI=1
     DEFI=2
 
-def load_and_cache(cache: str = '/home/marian/smglom.bin', progress: callable = None):
+def load_and_cache(*args, cache: str = '/home/marian/smglom.bin', **kwargs):
     ''' Loads the dataset from cache if it exists,
         else loads the dataset using load() and writes
         the cache file with the given path if not None.
+    Parameters:
+        cache: Filename of the cache that will be generated.
+        args: Forwarded to load(*args, **kwargs)
+        kwargs: Forwarded to load(*args, **kwargs)
     Returns:
         Smglom x, y tuple.
     '''
@@ -32,7 +37,7 @@ def load_and_cache(cache: str = '/home/marian/smglom.bin', progress: callable = 
         print('Loaded', len(x), 'files from cache.')
     else:
         print('File not cached. Loading...')
-        x, y = load(progress=progress)
+        x, y = load(*args, **kwargs)
         if cache:
             write_cache(x, y, path=cache)
     return x, y
@@ -44,8 +49,14 @@ def write_cache(x, y, path: str = '/home/marian/smglom.bin', force: bool = False
     with open(path, 'wb') as file:
         pickle.dump((x, y), file)
 
-def load(download_dir: str = 'data/', lang: str = 'en', binary: bool = True, progress: callable = None, limit: int = None):
-    ''' Loads smglom repositories as dataset.
+def load(
+    download_dir: str = 'data/',
+    lang: str = 'en',
+    binary: bool = True,
+    progress: Callable = None,
+    limit: int = None) -> Tuple[List[List[str]], List[List[int]]]:
+    ''' Loads smglom repositories as dataset. Files that fail to parse
+        or parse with no tokens are ignored.
     Parameters:
         download_dir: Path to where the repositories should be downloaded to and loaded from.
         lang: Language of smglom files to use.
@@ -58,27 +69,35 @@ def load(download_dir: str = 'data/', lang: str = 'en', binary: bool = True, pro
     files = [
         file
         for folder
-        in maybe_download(dest_dir=download_dir)
+        in maybe_download(download_dir=download_dir)
         for file
         in glob(os.path.join(folder, f'**/*.{lang}.tex'))
     ]
-    progress = progress or (lambda x: x)
+    files = files[:limit or len(files)]
     x = []
     y = []
     with mp.Pool() as pool:
-        for file in progress(pool.imap_unordered(tokenizer.LatexTokenizer.from_file, files[:limit or len(files)])):
-            if file is None:
-                continue
-            tokens, labels = _parse_file(list(file), binary)
-            x.append(tokens)
-            y.append(labels)
-        
+        print('Parsing', len(files), 'files.')
+        if progress:
+            it = progress(pool.imap_unordered(tokenizer.LatexTokenizer.from_file, files))
+        else:
+            it = pool.map(tokenizer.LatexTokenizer.from_file, files)
+        for i, latex_tokens in filter(None, enumerate(it)):
+            tokens, labels = _parse_file(list(latex_tokens), binary)
+            if not tokens:
+                print('File', '"?"' if progress else files[i], 'failed to generate tokens.', file=sys.stderr)
+            elif len(tokens) != len(labels):
+                raise RuntimeError('Unexpected lengths for tokens (%i) and labels (%i).' % (len(tokens), len(labels)))
+            else:
+                x.append(tokens)
+                y.append(labels)
     return x, y
 
-def maybe_download(dest_dir: str = 'data/'):
+def maybe_download(download_dir: str) -> List[str]:
     ''' Downloads smglom git repositories and returns the paths to them.
     Parameters:
-        dest_dir: Root directory to where the repositories should be cloned to.
+        download_dir: Root directory to where the repositories should be cloned to.
+            Appends 'smglom' automatically if not already at the end of the path.
     Returns:
         List of the paths of the downloaded repositories.
     '''
@@ -116,16 +135,16 @@ def maybe_download(dest_dir: str = 'data/'):
         "chevahir",
         "SMGloM"
     ]
-    save_dir = dest_dir if dest_dir.endswith('/smglom') else os.path.join(dest_dir, 'smglom')
-    print('Saving repositories to', save_dir)
+    download_dir = download_dir if download_dir.endswith('/smglom') else os.path.join(download_dir, 'smglom')
+    print('Saving repositories to', download_dir)
     paths = []
     for repo in repositories:
         try:
             paths.append(download.maybe_download_git(
                 repo_url=os.path.join('https://gl.mathhub.info/smglom', repo),
-                save_dir=save_dir))
+                save_dir=download_dir))
         except Exception as e:
-            print(f'Download of {repo} failed with:', e)
+            print(f'Download of {repo} failed with:', e, file=sys.stderr)
     return paths
 
 def _parse_file(tokens: List[tokenizer.LatexToken], binary: bool) -> Tuple[List[str], List[Label]]:

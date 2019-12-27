@@ -28,7 +28,7 @@ from . import base, tags
 
 __all__ = ['Seq2SeqModel']
 
-_VERSION_MAJOR = 3
+_VERSION_MAJOR = 1
 _VERSION_MINOR = 0
 
 class Seq2SeqModel(base.Model):
@@ -46,14 +46,17 @@ class Seq2SeqModel(base.Model):
 
     def _create_data(
         self,
-        downloaddir: str,
+        download_dir: str,
         glove_n_components: int,
         val_split: float,
         test_split: float,
-        smglomcache: Optional[str],
+        cache_dir: str = None,
         progress: Optional[Callable] = None):
         print('Creating data...')
-        x, y = smglom.load_and_cache(cache=smglomcache, progress=progress)
+        x, y = smglom.load_and_cache(
+            cache=os.path.join(cache_dir, 'smglom.bin'),
+            download_dir=download_dir,
+            progress=progress)
         print('Smglom loaded:', len(x), 'samples')
         x_train, x_valtest, y_train, y_valtest = train_test_split(
             x, y, test_size=val_split + test_split)
@@ -63,7 +66,8 @@ class Seq2SeqModel(base.Model):
         self.glove = GloVe(
             n_components=glove_n_components,
             oov_vector='random',
-            datadir=downloaddir)
+            download_dir=cache_dir,
+            extract_dir=download_dir)
         self.tfidf_model = TfIdfModel()
         self.keyphraseness_model = KeyphrasenessModel()
         self.pos_tag_model = PosTagModel()
@@ -108,10 +112,10 @@ class Seq2SeqModel(base.Model):
 
     def train(
         self,
-        downloaddir: str = '/tmp/seq2seq/data/',
-        logdir: Optional[str] = '/tmp/seq2seq/logs/',
-        savedir: Optional[str] = '/tmp/seq2seq/savedir/',
-        smglomcache: Optional[str] = '/tmp/seq2seq/smglom.bin',
+        download_dir: str = '/tmp/seq2seq/downloads/',
+        cache_dir: Optional[str] = '/tmp/seq2seq/cache/',
+        log_dir: Optional[str] = '/tmp/seq2seq/logs/',
+        save_dir: Optional[str] = '/tmp/seq2seq/models',
         epochs: int = 1,
         optimizer: str = 'adam',
         glove_n_components: int = 10,
@@ -164,7 +168,12 @@ class Seq2SeqModel(base.Model):
         self.model.summary()
 
         (x_train, y_train), validation_data, (x_test, y_test) = self._create_data(
-            downloaddir, glove_n_components, smglomcache=smglomcache, val_split=val_split, test_split=test_split, progress=progress)
+            download_dir=download_dir,
+            glove_n_components=glove_n_components,
+            val_split=val_split,
+            test_split=test_split,
+            cache_dir=cache_dir,
+            progress=progress)
         
         class_count_counter = Counter(int(a) for b in y_train for a in b)
         print("Training set class counts", class_count_counter)
@@ -185,8 +194,8 @@ class Seq2SeqModel(base.Model):
         print('Training sample weights:', sample_weights.shape)
 
         cb = []
-        if logdir:
-            tb = callbacks.TensorBoard(logdir, write_graph=True, histogram_freq=5)
+        if log_dir:
+            tb = callbacks.TensorBoard(log_dir, write_graph=True, histogram_freq=5)
             cb.append(tb)
 
         try:
@@ -207,11 +216,11 @@ class Seq2SeqModel(base.Model):
         print('Evaluation of test samples')
         self.evaluation = self.model.evaluate(x_test, y_test, sample_weight=test_sample_weights)
 
-        if savedir:
-            os.makedirs(savedir, exist_ok=True)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
             now = datetime.datetime.now()
             filename = now.strftime('%y-%m-%d.%H:%M:%S.model')
-            filepath = os.path.join(savedir, filename)
+            filepath = os.path.join(save_dir, filename)
             print('Saving model to', filepath)
             self.save(filepath)
     
@@ -291,21 +300,27 @@ if __name__ == '__main__':
     from stexls.util.cli import Cli, command, Arg
 
     @command(
-        epochs=Arg('--epochs', default=1, type=int, help='Number of epochs to train for.'),
-        savedir=Arg('--savedir', default='/tmp/seq2seq/savedir', help='Directory where the finished model is saved to.'),
-        downloaddir=Arg('--downloaddir', default='/tmp/seq2seq/downloads', help='Directory where downloads are saved to.'),
-        logdir=Arg('--logdir', default='/tmp/seq2seq/logs', help='Directory for tensorboard logs.'),
-        smglomcache=Arg('--smglomcache', default='/tmp/seq2seq/smglom.bin', help='Smglom cache file to use.'))
-    def train(epochs: int, savedir: str, downloaddir: str, logdir: str, smglomcache: str):
+        epochs=Arg('--epochs', '-e', default=1, type=int, help='Number of epochs to train for.'),
+        save_dir=Arg('--save_dir', '-s', default='/tmp/seq2seq/models', help='Directory where the finished model is saved to.'),
+        download_dir=Arg('--download_dir', '-d', default='/tmp/seq2seq/downloads', help='Directory where downloads are saved to.'),
+        log_dir=Arg('--log_dir', '-l', default='/tmp/seq2seq/logs', help='Directory for tensorboard logs.'),
+        cache_dir=Arg('--cache_dir', '-c', default='/tmp/seq2seq/cache/', help='Path to directory for cache files.'))
+    def train(epochs: int, save_dir: str, download_dir: str, log_dir: str, cache_dir: str):
         self = Seq2SeqModel()
-        self.train(downloaddir=downloaddir, logdir=logdir, savedir=savedir, epochs=epochs, smglomcache=smglomcache)
+        self.train(
+            epochs=epochs,
+            download_dir=download_dir,
+            log_dir=log_dir,
+            save_dir=save_dir,
+            cache_dir=cache_dir,
+        )
     
     @command(
-        file=Arg('--file', required=True, help='File to create predictions for.'),
-        model=Arg('--model', required=True, help='Path to model to load.'))
-    def predict(file: str, model: str):
+        model=Arg('--model', required=True, help='Path to model to load.'),
+        files=Arg(nargs='*', help='List of files to create predictions for.'))
+    def predict(model: str, *files: str):
         self = Seq2SeqModel.load(model)
-        print(self.predict(file))
+        print(self.predict(*files))
     
     cli = Cli([train, predict], 'Trains a seq2seq model or creates tags for a file.')
     cli.dispatch()

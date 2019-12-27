@@ -60,13 +60,13 @@ class Downloader:
             out_file.flush()
 
 
-def maybe_download_git(repo_url, save_dir='data/'):
+def maybe_download_git(repo_url: str, save_dir: str):
     ''' Downloads a git repository if it doesn't exist.
     Parameters:
-        repo_url: git repository to download
-        save_dir: path to save directory
+        repo_url: git repository to download.
+        save_dir: path to save directory.
     Returns:
-        Path to the folder where the repo was cloned into
+        Path to the folder where the repo was cloned into.
     '''
     # name the repo from the url
     repo_name = splitext(repo_url)[0].split("/")[-1]
@@ -90,15 +90,24 @@ def maybe_download_git(repo_url, save_dir='data/'):
 
     return clone_dir
 
-def maybe_download_and_extract(url, silent=False, return_name_of_single_file=True, return_all_extracted_file_names=True, save_dir='data/', cache='/tmp/cache/'):
+def maybe_download_and_extract(
+    url,
+    save_dir: str,
+    extract_dir: str = None,
+    silent=False,
+    return_name_of_single_file=True,
+    return_all_extracted_file_names=True):
     ''' Downloads any file and extracts it if it is a .zip, .tar.gz or .gz file.
     Parameters:
-        url: file to download
-        return_name_of_single_file: if true, returns the name of the file that was extracted
-        return_all_extracted_file_names: returns at least one and all extracted files
-        save_dir: path to save directory
+        url: Resource to download.
+        save_dir: Directory to where the files should be stored.
+        extract_dir: Directory to where the downloaded files should be extracted to if necessary.
+            No extraction will be attempted if this is None.
+        silent: Enables some info output to stdout.
+        return_name_of_single_file: Enables returning of the path of the only file that was downloaded.
+        return_all_extracted_file_names: Returns paths of all extracted files, raises if unable to.
     Returns:
-        Path to the folder where the url was extracted to (changes according to arguments)
+        Path to the folder where the url was extracted to (changes according to arguments).
     '''
     # silent print function
     def sprint(*msg, endln=False, flush=True):
@@ -107,13 +116,13 @@ def maybe_download_and_extract(url, silent=False, return_name_of_single_file=Tru
             else: print(*msg, end='', flush=flush)
     
     # create missing directories
-    if exists(cache) and not isdir(cache):
-        raise RuntimeError(f"Can't create cache directory because path already exists and is not a directory: {cache}")
-    if not exists(cache):
-        os.makedirs(cache)
-        
-    if not exists(save_dir):
-        os.makedirs(save_dir)
+    if extract_dir is not None:
+        extract_dir = os.path.abspath(extract_dir)
+        os.makedirs(extract_dir, exist_ok=True)
+    
+    save_dir = os.path.abspath(save_dir)
+    if extract_dir != save_dir:
+        os.makedirs(save_dir, exist_ok=True)
 
     if url.endswith(".tar.gz"):
         # special case for .tar.gz
@@ -129,53 +138,52 @@ def maybe_download_and_extract(url, silent=False, return_name_of_single_file=Tru
     # file.ext
     file_name_with_ext = file_name_without_ext + file_ext
 
-    # cache/file.ext
-    path_to_file_in_cache = join(cache, file_name_with_ext)
+    # <save_dir>/file.ext
+    path_to_save_location = join(save_dir, file_name_with_ext)
 
-    # data/file/ or data/file
-    path_to_extract_location = join(save_dir, file_name_without_ext)    
+    # <extract_dir>/file
+    if extract_dir is not None:
+        path_to_extract_location = join(extract_dir, file_name_without_ext)
+    else:
+        path_to_extract_location = path_to_save_location
 
     # do nothing if file is already extracted in data/
-    if not exists(path_to_extract_location) or (isdir(path_to_extract_location) and listdir(path_to_extract_location) == []):
+    if exists(path_to_extract_location):
+        sprint(f'{path_to_extract_location} OK')
+    else:
         # look for cached download
-        if exists(path_to_file_in_cache):
-            sprint(f"Using cached {path_to_file_in_cache} ...", flush=True)
+        if exists(path_to_save_location):
+            sprint(f"Using cached {path_to_save_location} ...", flush=True)
         else:
             # download file
-            sprint(f"Downloading {url} to {path_to_file_in_cache} ...", flush=True)
-            downloader = Downloader(url, path_to_file_in_cache)
+            sprint(f"Downloading {url} to {path_to_save_location} ...", flush=True)
+            downloader = Downloader(url, path_to_save_location)
             chunksizes = list(downloader.download())
             if not downloader.finished:
-                raise Exception(f"The download failed: {chunksizes}")
+                raise Exception(f"The download failed. Last downloaded chunksize: {chunksizes}")
         # extract all to extraction target directory
-        if url.endswith(".zip"):
-            # create extraction target directory if it doesn't exist (else it is empty)
-            if not exists(path_to_extract_location):
-                sprint("Making extraction directory at", path_to_extract_location, '...')
+        if extract_dir is not None:
+            if url.endswith(".zip"):
+                # create extraction target directory if it doesn't exist (else it is empty)
                 os.makedirs(path_to_extract_location)
-            with zipfile.ZipFile(path_to_file_in_cache, 'r') as zip_ref:
-                sprint("Extracting .zip file ...")
-                zip_ref.extractall(path_to_extract_location)
-        elif url.endswith(".tar.gz"):
-            # create extraction target directory if it doesn't exist (else it is empty)
-            if not exists(path_to_extract_location):
-                sprint("Making extraction directory at", path_to_extract_location, '...')
+                with zipfile.ZipFile(path_to_save_location, 'r') as zip_ref:
+                    sprint("Extracting .zip file to %s..." % path_to_extract_location)
+                    zip_ref.extractall(path_to_extract_location)
+            elif url.endswith(".tar.gz"):
+                # create extraction target directory if it doesn't exist (else it is empty)
                 os.makedirs(path_to_extract_location)
-            with tarfile.open(path_to_file_in_cache, "r:gz") as tar_ref:
-                sprint("Extracting .tar.gz file ...")
-                tar_ref.extractall(path_to_extract_location)
-        elif url.endswith(".gz"):
-            with gzip.open(path_to_file_in_cache, 'rb') as gz_ref, open(path_to_extract_location, 'wb') as out_ref:
-                sprint("Extracting .gz file ...")
-                shutil.copyfileobj(gz_ref, out_ref)
-        else:
-            #raise Exception("Can't extract file with the extension %s..." % file_ext)
-            sprint("Can't extract file with the extension %s... copying to %s instead..." % (file_ext, path_to_extract_location), flush=True)
-            shutil.copy(path_to_file_in_cache, path_to_extract_location)
+                with tarfile.open(path_to_save_location, "r:gz") as tar_ref:
+                    sprint("Extracting .tar.gz file to %s..." % path_to_extract_location)
+                    tar_ref.extractall(path_to_extract_location)
+            elif url.endswith(".gz"):
+                with gzip.open(path_to_save_location, 'rb') as gz_ref, open(path_to_extract_location, 'wb') as out_ref:
+                    sprint("Extracting .gz file to %s..." % path_to_extract_location)
+                    shutil.copyfileobj(gz_ref, out_ref)
+            else:
+                #raise Exception("Can't extract file with the extension %s..." % file_ext)
+                sprint("Can't extract file with the extension %s... copying to %s instead..." % (file_ext, path_to_extract_location), flush=True)
+                shutil.copy(path_to_save_location, path_to_extract_location)
         sprint(" OK", endln=True)
-    else:
-        if not silent:
-            print("{} is already present".format(path_to_extract_location))
 
     if isdir(path_to_extract_location):
         if return_all_extracted_file_names:

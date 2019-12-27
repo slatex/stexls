@@ -39,13 +39,10 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             but force is not set.
         '''
         global model
-        log.info('load_model(%s) called.', path)
-        log.debug('Attempting to load model from "%s"', path)
+        log.info('load_model(%s, %s)', path, force)
         if not force and model is not None:
             log.debug('Attempt to load a model even though one is already loaded.')
             raise ValueError('Model already loaded.')
-        elif force:
-            log.debug('Force model load.')
         try:
             model = Seq2SeqModel.load(path)
             log.debug(model.settings)
@@ -67,14 +64,12 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
         Raises:
             Value error if no model is loaded.
         '''
-
-        log.info('predict() called.')
+        log.info('predict(%s)', files)
         if model is None:
             raise ValueError('No model loaded.')
-        log.debug('Predicting for files: %s', files)
         try:
             predictions = model.predict(*files)
-            log.debug('Predictions done: %s', predictions)
+            log.debug('Predictions: %s', predictions)
             return predictions
         except:
             log.exception('Failed to create predictions.')
@@ -83,7 +78,7 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
     @method
     def get_info(self) -> dict:
         ' Gets info about loaded model, raise ValueError if no model loaded. '
-        log.info('get_info() called.')
+        log.info('get_info()')
         if model is None:
             raise ValueError('No model loaded.')
         log.debug('Settings are: %s', model.settings)
@@ -93,33 +88,30 @@ if __name__ == '__main__':
     @command(
         host=Arg(default='localhost', help='Hostname to bind server to.'),
         port=Arg(type=int, default=0, help='Port to bind server on.'),
-        loglevel=Arg(default='WARNING', help='Logger loglevel: DEBUG, INFO, WARNING, ERROR, CRITICAL'))
-    async def tcp(host: str, port: int, loglevel: str = 'WARNING'):
+        loglevel=Arg(default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'))
+    async def tcp(host: str, port: int, loglevel: str = 'error'):
         ''' Creates a tcp socket server that communicates using json-rcp.
             When the server started accepting messages, a line
             with <hostname>:<port> will be printed to stdout.
         Parameters:
             host: The hostname the server will be launched on.
             port: The port the socket should bind to. 0 for any free port.
-            loglevel: Logging loglevel (CRITICAL, ERROR, WARNING, INFO, DEBUG).
+            loglevel: Logging loglevel (error, warning, info, debug).
         '''
         logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
         log.info('Creating tcp server at %s:%i.', host, port)
-        started = asyncio.Future()
-        server = asyncio.create_task(
-            start_server(TaggerServerDispatcher, host=host, port=port, started=started))
-        info = await started
+        info, server = await start_server(TaggerServerDispatcher, host, port)
         print('{}:{}'.format(*info), flush=True)
         await server
 
     @command(
-        loglevel=Arg(default='WARNING', help='Logger loglevel: DEBUG, INFO, WARNING, ERROR, CRITICAL'))
-    async def stdio(loglevel: str = 'WARNING'):
+        loglevel=Arg(default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'))
+    async def stdio(loglevel: str = 'error'):
         ''' Creates a json-rpc server that listens listens for messages
             using stdin and writes respones to stdout.
             Therefore, only a single client can be connected to this server.
         Parameters:
-            loglevel: Logging loglevel (CRITICAL, ERROR, WARNING, INFO, DEBUG).
+            loglevel: Logging loglevel (error, warning, info, debug).
         '''
         logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
         log.info('Creating json-rpc server using stdin and stdout streams.')

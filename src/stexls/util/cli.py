@@ -15,7 +15,7 @@ import functools
 import argparse
 import shlex
 
-__all__ = ['Cli', 'Arg']
+__all__ = ['Cli', 'Arg', 'command']
 
 
 class Arg:

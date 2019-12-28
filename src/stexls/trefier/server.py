@@ -12,6 +12,7 @@ import asyncio
 import logging
 import sys
 from stexls.trefier.models.tags import Tag
+from stexls.trefier.models import base
 from stexls.util.cli import Cli, Arg, command
 from stexls.util.jsonrpc import dispatcher
 from stexls.util.jsonrpc.tcp import start_server
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 
 class TaggerServerDispatcher(dispatcher.Dispatcher):
     ''' This is the interface the tagger server implements. '''
-    model = None
+    model: base.Model = None
     @method
     def load_model(self, path: str, force: bool = False) -> dict:
         ''' Loads a model into global memory.
@@ -83,6 +84,20 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             raise ValueError('No model loaded.')
         log.debug('Settings are: %s', TaggerServerDispatcher.model.settings)
         return TaggerServerDispatcher.model.settings
+    
+    @method
+    def supported_prediction_types(self) -> List[str]:
+        log.info('supported_prediction_types()')
+        if TaggerServerDispatcher.model is None:
+            raise ValueError('No model loaded.')
+        return TaggerServerDispatcher.model.supported_prediction_types()
+    
+    @method
+    def set_prediction_type(self, prediction_type: str) -> bool:
+        log.info('set_prediction_type(%s)', prediction_type)
+        if TaggerServerDispatcher.model is None:
+            raise ValueError('No model loaded.')
+        return TaggerServerDispatcher.model.set_prediction_type(prediction_type)
 
 if __name__ == '__main__':
     @command(

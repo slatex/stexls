@@ -43,19 +43,26 @@ class Model:
             'class_names': class_names,
             'version': version
         }
+    
+    def supported_prediction_types(self) -> List[str]:
+        ' Returns a list of prediction types this model supports. '
+        return [self.settings['prediction_type']]
+    
+    def set_prediction_type(self, prediction_type: str) -> bool:
+        ' Sets the prediction type for this model. '
+        assert prediction_type in self.supported_prediction_types()
+        self.settings['prediction_type'] = PredictionType[prediction_type].name
 
     def train(self):
         ' Executes the training operation of this model. '
         raise NotImplementedError()
 
-    def predict(self, text: str) -> List[Tag]:
-        ''' Generates predictions from raw text.
-            The output format should be in accordance with the given prediction type.
-            The model self should handel the tokenization into a format it understands.
+    def predict(self, *files: str) -> List[List[Tag]]:
+        ''' Generates predictions from files or text.
         Parameters:
-            text: Input text.
+            files: List of files to generate tags for.
         Returns:
-            List of tags for every token in the text file.
+            List of tags for every token for each file.
         '''
         raise NotImplementedError()
     

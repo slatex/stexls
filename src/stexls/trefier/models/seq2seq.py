@@ -247,6 +247,8 @@ class Seq2SeqModel(base.Model):
         return [
             [
                 tags.Tag(int(pred[0] > threshold), token.begin, token.end)
+                if self.settings['prediction_type'] == base.PredictionType.DISCRETE.name
+                else tags.Tag(pred.tolist(), token.begin, token.end)
                 for pred, token in zip(doc[-len(tokens):], tokens)
             ]
             for doc, tokens in zip(self.model.predict(inputs), all_tokens)
@@ -294,6 +296,9 @@ class Seq2SeqModel(base.Model):
                 self.model = models.load_model(ref.name)
             assert self.model is not None
         return self
+    
+    def supported_prediction_types(self) -> List[str]:
+        return [base.PredictionType.PROBABILITIES.name, base.PredictionType.DISCRETE.name]
 
 
 if __name__ == '__main__':
@@ -316,11 +321,12 @@ if __name__ == '__main__':
         )
     
     @command(
-        model=Arg('--model', required=True, help='Path to model to load.'),
+        model=Arg('--model', '-m', required=True, help='Path to model to load.'),
+        threshold=Arg('--threshold', '-t', type=float, default=0.5, help='.'),
         files=Arg(nargs='*', help='List of files to create predictions for.'))
-    def predict(model: str, *files: str):
+    def predict(model: str, *files: str, threshold: float = 0.5):
         self = Seq2SeqModel.load(model)
-        print(self.predict(*files))
+        print(self.predict(*files, threshold))
     
     cli = Cli([train, predict], 'Trains a seq2seq model or creates tags for a file.')
     cli.dispatch()

@@ -32,3 +32,11 @@ class ClientDispatcher(dispatcher.Dispatcher):
     @request
     def get_info(self):
         ' Gets current server state. '
+    
+    @request
+    def supported_prediction_types(self) -> List[str]:
+        ' Gets list of supported prediction types. '
+    
+    @request
+    def set_prediction_type(self, prediction_type: str) -> bool:
+        ' Sets the remote models prediction type and returns success status. '

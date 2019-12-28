@@ -84,20 +84,7 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             raise ValueError('No model loaded.')
         log.debug('Settings are: %s', TaggerServerDispatcher.model.settings)
         return TaggerServerDispatcher.model.settings
-    
-    @method
-    def supported_prediction_types(self) -> List[str]:
-        log.info('supported_prediction_types()')
-        if TaggerServerDispatcher.model is None:
-            raise ValueError('No model loaded.')
-        return TaggerServerDispatcher.model.supported_prediction_types()
-    
-    @method
-    def set_prediction_type(self, prediction_type: str) -> bool:
-        log.info('set_prediction_type(%s)', prediction_type)
-        if TaggerServerDispatcher.model is None:
-            raise ValueError('No model loaded.')
-        return TaggerServerDispatcher.model.set_prediction_type(prediction_type)
+
 
 if __name__ == '__main__':
     @command(
@@ -136,7 +123,7 @@ if __name__ == '__main__':
         server = TaggerServerDispatcher(connection)
         connection.set_method_provider(server)
         await connection.run_until_finished()
-        
+
     cli = Cli([tcp, stdio], description=__doc__)
     asyncio.run(cli.dispatch())
     log.info('Server stopped.')

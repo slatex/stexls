@@ -30,13 +30,5 @@ class ClientDispatcher(dispatcher.Dispatcher):
         ' Creates a list of tags for each file provided in the argument. '
 
     @request
-    def get_info(self):
-        ' Gets current server state. '
-    
-    @request
-    def supported_prediction_types(self) -> List[str]:
-        ' Gets list of supported prediction types. '
-    
-    @request
-    def set_prediction_type(self, prediction_type: str) -> bool:
-        ' Sets the remote models prediction type and returns success status. '
+    def get_info(self) -> dict:
+        ' Get info about loaded model. '

@@ -34,7 +34,7 @@ _VERSION_MINOR = 0
 class Seq2SeqModel(base.Model):
     def __init__(self):
         super().__init__(
-            prediction_type=base.PredictionType.PROBABILITIES,
+            prediction_type=base.PredictionType.probabilities,
             class_names=['text', 'keyword'],
             version=f'{_VERSION_MAJOR}.{_VERSION_MINOR}'
         )
@@ -224,7 +224,7 @@ class Seq2SeqModel(base.Model):
             print('Saving model to', filepath)
             self.save(filepath)
     
-    def predict(self, *files: str, threshold: float = 0.5) -> List[List[tags.Tag]]:
+    def predict(self, *files: str) -> List[List[tags.Tag]]:
         documents = []
         all_tokens = []
         for tokenizer, file in zip(map(LatexTokenizer.from_file, files), files):
@@ -246,9 +246,7 @@ class Seq2SeqModel(base.Model):
             print('Prediction input key', k, 'values shape', v.shape)
         return [
             [
-                tags.Tag(int(pred[0] > threshold), token.begin, token.end)
-                if self.settings['prediction_type'] == base.PredictionType.DISCRETE.name
-                else tags.Tag(pred.tolist(), token.begin, token.end)
+                tags.Tag(float(pred[0]), token.begin, token.end)
                 for pred, token in zip(doc[-len(tokens):], tokens)
             ]
             for doc, tokens in zip(self.model.predict(inputs), all_tokens)
@@ -296,10 +294,6 @@ class Seq2SeqModel(base.Model):
                 self.model = models.load_model(ref.name)
             assert self.model is not None
         return self
-    
-    def supported_prediction_types(self) -> List[str]:
-        return [base.PredictionType.PROBABILITIES.name, base.PredictionType.DISCRETE.name]
-
 
 if __name__ == '__main__':
     from stexls.util.cli import Cli, command, Arg

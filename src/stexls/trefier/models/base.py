@@ -11,14 +11,13 @@ __all__ = ['Model']
 
 class PredictionType(Enum):
     ''' Possible prediction types for a model are
-    PROBABILITIES: Given a constant number of possible labels,
-        this model predicts the probability distribution of labels.
-    DISCRETE: Given a constant number of possible labels,
-        this model predicts a number between 0 and #labels-1,
-        representing the label the input belongs to.
+    discrete: Predicts an integer representation for the class.
+    probabilities: Predicts a probability for each class.
+        This may be a single float in the case of a two-class case,
+        or a list of probabilities that sum up to 1, in the multi-class case.
     '''
-    PROBABILITIES=1
-    DISCRETE=2
+    discrete='discrete'
+    probabilities='probabilities'
 
 
 class Model:
@@ -44,15 +43,6 @@ class Model:
             'version': version
         }
     
-    def supported_prediction_types(self) -> List[str]:
-        ' Returns a list of prediction types this model supports. '
-        return [self.settings['prediction_type']]
-    
-    def set_prediction_type(self, prediction_type: str) -> bool:
-        ' Sets the prediction type for this model. '
-        assert prediction_type in self.supported_prediction_types()
-        self.settings['prediction_type'] = PredictionType[prediction_type].name
-
     def train(self):
         ' Executes the training operation of this model. '
         raise NotImplementedError()

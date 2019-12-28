@@ -22,8 +22,8 @@ __all__ = ['ClientDispatcher']
 class ClientDispatcher(dispatcher.Dispatcher):
     ' Json-rpc client interface method. '
     @request
-    def load_model(self, path: str, force: bool = False) -> bool:
-        ' Loads a model. '
+    def load_model(self, path: str, force: bool = False) -> dict:
+        ''' Loads a model and returns the model's information. '''
 
     @request
     def predict(self, *files: str) -> List[List[Tag]]:

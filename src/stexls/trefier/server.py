@@ -6,6 +6,7 @@
     from stdin/out.
 '''
 __all__ = ['TaggerServerDispatcher']
+
 from typing import List
 import asyncio
 import logging
@@ -21,38 +22,37 @@ from stexls.util.jsonrpc.streams import AsyncBufferedReaderStream, AsyncBuffered
 from stexls.trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
-model = None
 
 class TaggerServerDispatcher(dispatcher.Dispatcher):
     ''' This is the interface the tagger server implements. '''
+    model = None
     @method
-    def load_model(self, path: str, force: bool = False):
+    def load_model(self, path: str, force: bool = False) -> dict:
         ''' Loads a model into global memory.
         Parameters:
             path: Path to the model to load.
             force: Enables replacing an already loaded model.
-        Return:
-            True. Because a request needs a respose.
-            Raises an exception if something goes wrong.
+        Returns:
+            Model information dictionary.
         Raises:
             ValueError if an model is already loaded
             but force is not set.
         '''
-        global model
+        TaggerServerDispatcher.model
         log.info('load_model(%s, %s)', path, force)
-        if not force and model is not None:
+        if not force and TaggerServerDispatcher.model is not None:
             log.debug('Attempt to load a model even though one is already loaded.')
             raise ValueError('Model already loaded.')
         try:
-            model = Seq2SeqModel.load(path)
-            log.debug(model.settings)
-            return True
+            TaggerServerDispatcher.model = Seq2SeqModel.load(path)
+            if TaggerServerDispatcher.model is None:
+                log.error('load_model(%s) returned None because of unknown reason.')
+                raise ValueError('Failed to load model because of unknown reason.')
+            log.debug('Loaded model from "%s" has settings: %s', path, TaggerServerDispatcher.model.settings)
+            return TaggerServerDispatcher.model.settings
         except:
             log.exception('Failed to load model from "%s"', path)
             raise
-        if model is None:
-            log.error('load_model(%s) returned None because of unknown reason.')
-            raise ValueError('Failed to load model because of unknown reason.')
     
     @method
     def predict(self, *files: str) -> List[List[Tag]]:
@@ -65,10 +65,10 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
             Value error if no model is loaded.
         '''
         log.info('predict(%s)', files)
-        if model is None:
+        if TaggerServerDispatcher.model is None:
             raise ValueError('No model loaded.')
         try:
-            predictions = model.predict(*files)
+            predictions = TaggerServerDispatcher.model.predict(*files)
             log.debug('Predictions: %s', predictions)
             return predictions
         except:
@@ -79,10 +79,10 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
     def get_info(self) -> dict:
         ' Gets info about loaded model, raise ValueError if no model loaded. '
         log.info('get_info()')
-        if model is None:
+        if TaggerServerDispatcher.model is None:
             raise ValueError('No model loaded.')
-        log.debug('Settings are: %s', model.settings)
-        return model.settings
+        log.debug('Settings are: %s', TaggerServerDispatcher.model.settings)
+        return TaggerServerDispatcher.model.settings
 
 if __name__ == '__main__':
     @command(

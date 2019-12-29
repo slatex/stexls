@@ -314,9 +314,9 @@ if __name__ == '__main__':
         model=Arg('--model', '-m', required=True, help='Path to model to load.'),
         threshold=Arg('--threshold', '-t', type=float, default=0.5, help='.'),
         files=Arg(nargs='*', help='List of files to create predictions for.'))
-    def predict(model: str, *files: str, threshold: float = 0.5):
+    def predict(model: str, *files: str):
         self = Seq2SeqModel.load(model)
-        print(self.predict(*files, threshold))
+        print(self.predict(*files))
     
     cli = Cli([train, predict], 'Trains a seq2seq model or creates tags for a file.')
     cli.dispatch()

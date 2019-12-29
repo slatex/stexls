@@ -312,7 +312,6 @@ if __name__ == '__main__':
     
     @command(
         model=Arg('--model', '-m', required=True, help='Path to model to load.'),
-        threshold=Arg('--threshold', '-t', type=float, default=0.5, help='.'),
         files=Arg(nargs='*', help='List of files to create predictions for.'))
     def predict(model: str, *files: str):
         self = Seq2SeqModel.load(model)

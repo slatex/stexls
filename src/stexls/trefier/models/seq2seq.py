@@ -229,12 +229,10 @@ class Seq2SeqModel(base.Model):
         all_tokens = []
         for tokenizer, file in zip(map(LatexTokenizer.from_file, files), files):
             if tokenizer is None:
-                print('Skipping file', file)
                 continue
             tokens = list(tokenizer)
             all_tokens.append(tokens)
             lexemes = [t.lexeme for t in tokens]
-            print(file, 'has', len(lexemes), 'tokens.')
             documents.append(lexemes)
         inputs = {
             'tokens': pad_sequences(self.glove.transform(documents), dtype=np.float32),
@@ -242,8 +240,6 @@ class Seq2SeqModel(base.Model):
             'tfidf': np.expand_dims(pad_sequences(self.tfidf_model.transform(documents), dtype=np.float32), axis=-1),
             'pos': pad_sequences(self.pos_tag_model.predict(documents), dtype=np.float32),
         }
-        for k, v in inputs.items():
-            print('Prediction input key', k, 'values shape', v.shape)
         return [
             [
                 tags.Tag(float(pred[0]), token.begin, token.end)

@@ -3,50 +3,83 @@ from typing import Iterable, Callable, Iterator, Tuple, Union
 import asyncio
 import logging
 from .core import *
-from .dispatcher import DispatcherTarget
-from .hooks import extract_methods
 from .streams import JsonStreamReader, JsonStreamWriter, AsyncReaderStream, AsyncWriterStream
 from .util import validate_json, restore_message
-from .method_provider import MethodProvider
 
 log = logging.getLogger(__name__)
 
 __all__ = ('JsonRpcProtocol',)
 
 
-class JsonRpcProtocol(DispatcherTarget):
+class JsonRpcProtocol:
     ' This is a implementation for the json-rpc-protocol. '
     def __init__(
-        self, reader: AsyncReaderStream, writer: AsyncWriterStream, linebreak: str = '\r\n', encoding: str = 'utf-8'):
+        self,
+        reader: AsyncReaderStream,
+        writer: AsyncWriterStream,
+        linebreak: str = '\r\n',
+        encoding: str = 'utf-8'):
+        """Initializes the protocol with a reader and writer task.
+        
+        Args:
+            reader (AsyncReaderStream): Input stream.
+            writer (AsyncWriterStream): Output stream.
+            linebreak (str, optional): Message linebreak character. Defaults to '\r\n'.
+            encoding (str, optional): Encoding of the streams. Defaults to 'utf-8'.
+        """
         self.__reader = JsonStreamReader(reader, linebreak=linebreak, encoding=encoding)
         self.__writer = JsonStreamWriter(writer, linebreak=linebreak, encoding=encoding)
         self.__writer_queue = asyncio.Queue()
-        self.__methods = extract_methods(self)
+        self.__methods = {}
         self.__requests = {}
-        self.__method_provider: MethodProvider = None
-        self.__task_loop: asyncio.Future = None
-    
-    def set_method_provider(self, provider: MethodProvider):
-        ' Sets the protocols method provider used to resolve requests and notifications. '
-        self.__method_provider = provider
 
     async def run_until_finished(self):
         ' Runs the protocol until all subtasks finish. '
         log.info('JsonRpcProtocol starting.')
-        self.__task_loop = asyncio.gather(
-            self._reader_task(),
-            self._writer_task())
         try:
-            await self.__task_loop
+            await asyncio.gather(
+                self._reader_task(),
+                self._writer_task())
         except asyncio.CancelledError:
             log.info('Stopping JsonRpcProtocol due to cancellation.')
         log.info('JsonRpcProtocol all tasks finished. Exiting.')
+    
+    def on(self, method: str, callback: Callable):
+        """Registers a method.
+        
+        Args:
+            method (str): Method name to register.
+            callback (Callable): The function body, that will be called.
+        """
+        if method in self.__methods:
+            raise ValueError(f'Method "{method}" is already registered with this protocol.')
+        log.info('Registering json-rpc callback "%s"', method)
+        self.__methods[method] = callback
 
-    async def dispatch(
-        self, message_or_batch: Union[MessageObject, List[MessageObject]]
+    async def send(
+        self,
+        message_or_batch: Union[MessageObject, List[MessageObject]]
         ) -> Optional[ResponseObject, List[ResponseObject]]:
+        """Sends a message or batch of messages over the connection.
+        
+        Args:
+            message_or_batch (Union[MessageObject, List[MessageObject]]):
+                Single message object or batch of message objects.
+        
+        Raises:
+            ValueError: If a request has an id that already exists.
+        
+        Returns:
+            Optional[ResponseObject, List[ResponseObject]]:
+                A response object or list ob response object for each
+                request that was sent.
+        """
         if isinstance(message_or_batch, list):
             log.debug('Dispatching batch: %s', message_or_batch)
+            for msg in message_or_batch:
+                if isinstance(msg, RequestObject):
+                    if msg.id in self.__requests:
+                        raise ValueError(f'Duplicate request id: {msg.id}')
             requests = {
                 msg.id: asyncio.Future()
                 for msg in message_or_batch
@@ -57,6 +90,8 @@ class JsonRpcProtocol(DispatcherTarget):
             return await asyncio.gather(*requests.values())
         elif isinstance(message_or_batch, RequestObject):
             log.debug('Dispatching request: %s', message_or_batch)
+            if message_or_batch.id in self.__requests:
+                raise ValueError(f'Duplicate request id: {message_or_batch.id}')
             request = asyncio.Future()
             self.__requests[message_or_batch.id] = request
             self.__writer_queue.put_nowait(message_or_batch)
@@ -65,21 +100,43 @@ class JsonRpcProtocol(DispatcherTarget):
             log.debug('Dispatching %s: %s.', type(message_or_batch), message_or_batch)
             self.__writer_queue.put_nowait(message_or_batch)
     
-    async def call(
+    async def _call(
         self,
         method: str,
-        params: Union[list, dict, None],
+        params: Union[list, dict, None] = None,
         id: Union[int, str] = None) -> Optional[ResponseObject]:
-        ' Calls the given method with the parameters and generates a response object according to the results. '
+        """Calls a registered method callback with the given parameters.
+        
+        Args:
+            method (str): The callback method to call.
+            params (Union[list, dict, None]): Optional list or dict of parameters. Defaults to None.
+            id (Union[int, str], optional): Optional id if a response should be awaited. Defaults to None.
+        
+        Raises:
+            ValueError: Raised if the type of the parameters argument is invalid.
+        
+        Returns:
+            Optional[ResponseObject]: A respose object if the id was specified.
+        """
         log.info('Calling method %s(%s) with id %s.', method, params, id)
-        if not self.__method_provider.is_method(method):
-            log.warning('Method %s not found.', method)
+        if not method in self.__methods:
+            log.warning('Method "%s" not found.', method, exc_info=1)
             response = ResponseObject(
                 id, error=ErrorObject(ErrorCodes.MethodNotFound, data=method))
         else:
             try:
-                result = await self.__method_provider.call(method, params)
+                if params is None:
+                    result = self.__methods[method]()
+                elif isinstance(params, list):
+                    result = self.__methods[method](*params)
+                elif isinstance(params, dict):
+                    result = self.__methods[method](**params)
+                else:
+                    raise ValueError(f'Method params of invalid type: {type(params)}')
                 log.debug('Method %s(%s) call successful.', method, params)
+                if asyncio.iscoroutine(result):
+                    log.debug(f'Called method "{method}" returned coroutine.')
+                    result = await result
                 response = ResponseObject(id, result=result)
             except TypeError as e:
                 log.warning('Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
@@ -94,18 +151,46 @@ class JsonRpcProtocol(DispatcherTarget):
         return response
    
     async def _handle_message_or_batch(
-        self, message_or_batch: Any) -> Optional[ResponseObject, List[ResponseObject]]:
+        self,
+        message_or_batch: Union[List[dict], dict]) -> Optional[ResponseObject, List[ResponseObject]]:
+        """Multiplexes the message handler between a single message or a batch.
+
+        The provided messages are dictionaries of deserialized json strings.
+        
+        Args:
+            message_or_batch (Union[List[dict], dict]):
+                Single dictionary or batch of dictionaries.
+        
+        Returns:
+            Optional[ResponseObject, List[ResponseObject]]:
+                Response objects which need to be sent back to sender.
+                This may be responses stating, that the input object was invalid,
+                or the result of a request execution.
+        """
         if isinstance(message_or_batch, list):
             log.debug('Handling raw json batch: %s', message_or_batch)
             tasks = [
-                asyncio.create_task(self._handle_message(msg))
+                self._handle_message(msg)
                 for msg in message_or_batch
             ]
             return list(filter(None, await asyncio.gather(*tasks)))
         else:
             return await self._handle_message(message_or_batch)
     
-    async def _handle_message(self, message: Any) -> Optional[ResponseObject]:
+    async def _handle_message(self, message: dict) -> Optional[ResponseObject]:
+        """Handles a single incoming message.
+
+        The incoming message must be a deserialized json dictionary.
+        Other types will result in a an invalid message response.
+        Responses returned by this method must be returned to the sender.
+        
+        Args:
+            message (dict): Message to handle. Deserialized json object.
+        
+        Returns:
+            Optional[ResponseObject]: Response with invalid json object parsing status,
+                or execution result.
+        """
         log.debug('Handling message: %s', message)
         invalid = validate_json(message)
         if invalid is not None:
@@ -115,10 +200,10 @@ class JsonRpcProtocol(DispatcherTarget):
         log.debug('Restored original message from json: %s', message)
         if isinstance(message, RequestObject):
             log.info('Calling request "%i" method "%s".', message.id, message.method)
-            return await self.call(message.method, getattr(message, 'params', None), message.id)
+            return await self._call(message.method, getattr(message, 'params', None), message.id)
         elif isinstance(message, NotificationObject):
             log.info('Calling notification method "%s".', message.method)
-            await self.call(message.method, getattr(message, 'params', None))
+            await self._call(message.method, getattr(message, 'params', None))
         elif isinstance(message, ResponseObject):
             request: asyncio.Future = self.__requests.get(getattr(message, 'id', None))
             if request is None:
@@ -133,6 +218,7 @@ class JsonRpcProtocol(DispatcherTarget):
                     request.set_result(message.result)
                 
     async def _reader_task(self):
+        ' Launches and waits for completion of the reader stream task which reads incoming messages. '
         log.info('Reader task started.')
         try:
             while True:
@@ -156,6 +242,7 @@ class JsonRpcProtocol(DispatcherTarget):
         log.info('Reader task finished.')
     
     async def _writer_task(self):
+        ' Launches and waits for completion of the writer stream task, which writes outgoing messages. '
         log.info('Writer task started.')
         try:
             while True:

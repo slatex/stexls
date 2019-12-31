@@ -1,5 +1,6 @@
 import logging
 import functools
+from typing import Coroutine
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def request(f):
 
     from .dispatcher import Dispatcher
     @functools.wraps(f)
-    def request_wrapper(self: Dispatcher, *args, **kwargs):
+    def request_wrapper(self: Dispatcher, *args, **kwargs) -> Coroutine:
         if args and kwargs:
             raise ValueError('Mixing args and kwargs not allowed.')
         f(self, *args, **kwargs)
@@ -41,7 +42,7 @@ def notification(f):
 
     from .dispatcher import Dispatcher
     @functools.wraps(f)
-    def notification_wrapper(self: Dispatcher, *args, **kwargs):
+    def notification_wrapper(self: Dispatcher, *args, **kwargs) -> Coroutine:
         if args and kwargs:
             raise ValueError('Mixing args and kwargs not allowed.')
         f(self, *args, **kwargs)
@@ -77,5 +78,5 @@ def extract_methods(instance):
         if method_name in methods:
             raise ValueError(f'Duplicate method with the name "{method_name}".')
         methods[method_name] = attr
-        log.debug('Registering method "%s" with %s', method_name, instance)
+        log.debug('Extracted method with name "%s": %s', method_name, instance)
     return methods

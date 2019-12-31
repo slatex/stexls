@@ -20,7 +20,7 @@ class JsonRpcProtocol:
         linebreak: str = '\r\n',
         encoding: str = 'utf-8'):
         """Initializes the protocol with a reader and writer task.
-        
+
         Args:
             reader (AsyncReaderStream): Input stream.
             writer (AsyncWriterStream): Output stream.
@@ -43,10 +43,10 @@ class JsonRpcProtocol:
         except asyncio.CancelledError:
             log.info('Stopping JsonRpcProtocol due to cancellation.')
         log.info('JsonRpcProtocol all tasks finished. Exiting.')
-    
+
     def on(self, method: str, callback: Callable):
         """Registers a method.
-        
+
         Args:
             method (str): Method name to register.
             callback (Callable): The function body, that will be called.
@@ -61,14 +61,14 @@ class JsonRpcProtocol:
         message_or_batch: Union[MessageObject, List[MessageObject]]
         ) -> Optional[ResponseObject, List[ResponseObject]]:
         """Sends a message or batch of messages over the connection.
-        
+
         Args:
             message_or_batch (Union[MessageObject, List[MessageObject]]):
                 Single message object or batch of message objects.
-        
+
         Raises:
             ValueError: If a request has an id that already exists.
-        
+
         Returns:
             Optional[ResponseObject, List[ResponseObject]]:
                 A response object or list ob response object for each
@@ -99,22 +99,22 @@ class JsonRpcProtocol:
         elif isinstance(message_or_batch, MessageObject):
             log.debug('Dispatching %s: %s.', type(message_or_batch), message_or_batch)
             self.__writer_queue.put_nowait(message_or_batch)
-    
+
     async def _call(
         self,
         method: str,
         params: Union[list, dict, None] = None,
         id: Union[int, str] = None) -> Optional[ResponseObject]:
         """Calls a registered method callback with the given parameters.
-        
+
         Args:
             method (str): The callback method to call.
             params (Union[list, dict, None]): Optional list or dict of parameters. Defaults to None.
             id (Union[int, str], optional): Optional id if a response should be awaited. Defaults to None.
-        
+
         Raises:
             ValueError: Raised if the type of the parameters argument is invalid.
-        
+
         Returns:
             Optional[ResponseObject]: A respose object if the id was specified.
         """
@@ -149,18 +149,18 @@ class JsonRpcProtocol:
         if id is not None:
             log.debug('Returning response to method call of %s(%s) with id %s.', method, params, id)
         return response
-   
+
     async def _handle_message_or_batch(
         self,
         message_or_batch: Union[List[dict], dict]) -> Optional[ResponseObject, List[ResponseObject]]:
         """Multiplexes the message handler between a single message or a batch.
 
         The provided messages are dictionaries of deserialized json strings.
-        
+
         Args:
             message_or_batch (Union[List[dict], dict]):
                 Single dictionary or batch of dictionaries.
-        
+
         Returns:
             Optional[ResponseObject, List[ResponseObject]]:
                 Response objects which need to be sent back to sender.
@@ -176,17 +176,17 @@ class JsonRpcProtocol:
             return list(filter(None, await asyncio.gather(*tasks)))
         else:
             return await self._handle_message(message_or_batch)
-    
+
     async def _handle_message(self, message: dict) -> Optional[ResponseObject]:
         """Handles a single incoming message.
 
         The incoming message must be a deserialized json dictionary.
         Other types will result in a an invalid message response.
         Responses returned by this method must be returned to the sender.
-        
+
         Args:
             message (dict): Message to handle. Deserialized json object.
-        
+
         Returns:
             Optional[ResponseObject]: Response with invalid json object parsing status,
                 or execution result.
@@ -216,7 +216,7 @@ class JsonRpcProtocol:
                 else:
                     log.info('Resolving id "%i".', message.id)
                     request.set_result(message.result)
-                
+
     async def _reader_task(self):
         ' Launches and waits for completion of the reader stream task which reads incoming messages. '
         log.info('Reader task started.')
@@ -240,7 +240,7 @@ class JsonRpcProtocol:
             log.debug('Reader task exiting because of %s.', type(e))
             self.__writer_queue.put_nowait(self)
         log.info('Reader task finished.')
-    
+
     async def _writer_task(self):
         ' Launches and waits for completion of the writer stream task, which writes outgoing messages. '
         log.info('Writer task started.')

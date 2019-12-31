@@ -6,13 +6,10 @@
 '''
 import asyncio
 import logging
-from typing import List
+from typing import List, Dict, Any
 from stexls.trefier.models.tags import Tag
-from stexls.util.cli import Cli, Arg, command
-from stexls.util.jsonrpc import tcp
 from stexls.util.jsonrpc import dispatcher
-from stexls.util.jsonrpc.hooks import request, notification
-from stexls.trefier.models.seq2seq import Seq2SeqModel
+from stexls.util.jsonrpc.hooks import request
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +19,7 @@ __all__ = ['ClientDispatcher']
 class ClientDispatcher(dispatcher.Dispatcher):
     ' Json-rpc client interface method. '
     @request
-    def load_model(self, path: str, force: bool = False) -> dict:
+    def load_model(self, path: str, force: bool = False) -> Dict[str, Any]:
         ''' Loads a model and returns the model's information. '''
 
     @request

@@ -16,15 +16,17 @@ __all__ = ['open_connection', 'start_server']
 async def open_connection(
     dispatcher_factory: Callable[[JsonRpcProtocol], Dispatcher],
     host: str = 'localhost', port: int = 0):
-    ''' Creates and connects a client to a given host and port.
-    Parameters:
-        dispatcher_factory: A callable that constructs a dispatcher.
-        host: Host to connect to.
-        port: Port the host listens for incoming connections.
+    """Connects a client to a given host and port.
+    
+    Args:
+        dispatcher_factory (Callable[[JsonRpcProtocol], Dispatcher]): Factory for a dispatcher for the connection.
+        host (str, optional): Server host. Defaults to 'localhost'.
+        port (int, optional): Server port. Defaults to 0.
+    
     Returns:
-        Interactive Dispatcher, connected server (host, port) tuple and
-        a started asyncio task with the client task loop.
-    '''
+        2-Tuple: First item is the dispatcher for the connection.
+            Second is the task the client runs on.
+    """
     log.info('Connecting to server at %s:%i ...', host, port)
     reader, writer = await asyncio.open_connection(host, port)
     peername = writer.get_extra_info('peername')
@@ -41,19 +43,25 @@ async def open_connection(
         finally:
             log.info('Client disconnected from %s.', peername)
     task = asyncio.create_task(client_run_task()) 
-    return dispatcher, peername, task
+    return dispatcher, task
 
 
 async def start_server(
     dispatcher_factory: Callable[[JsonRpcProtocol], Dispatcher],
     host: str = 'localhost',
     port: int = 0):
-    ''' Starts a server at the given host and port.
-        Creates a new dispatcher using dispatcher_factory every time a new connection is made.
+    """Starts a asyncio tcp server. At the given host and port.
+    
+    Args:
+        dispatcher_factory (Callable[[JsonRpcProtocol], Dispatcher]): A factory for a dispatcher for each new connection.
+        host (str, optional): Server host. Defaults to 'localhost'.
+        port (int, optional): Server pot. Defaults to 0.
+    
     Returns:
-        Server (host, port) tuple and an asyncio task
-        with the server loop.
-    '''
+        3-Tuple: First is the host and port the server is bound to.
+            Second is the asyncio Task the server runs at.
+            Third is a list of active connections.
+    """
     connections = []
     async def connect(reader, writer):
         peername = writer.get_extra_info('peername')

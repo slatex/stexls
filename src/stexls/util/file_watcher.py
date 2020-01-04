@@ -14,7 +14,7 @@ class WorkspaceWatcher:
     Instead, everytime the index is updated, all files inside a folder will be
     checked at once.
     """
-    Update = collections.namedtuple('Update', ['created', 'modified', 'deleted'])
+    Changes = collections.namedtuple('Changes', ['created', 'modified', 'deleted'])
     def __init__(self, folder: str, filter: Pattern = None):
         """Initializes the watcher with a root folder and an optional ignore pattern.
 
@@ -32,7 +32,7 @@ class WorkspaceWatcher:
     def __setstate__(self, state):
         self.folder, self.filter, self.files = state
 
-    def update(self) -> 'WorkspaceWatcher.Update':
+    def update(self) -> 'WorkspaceWatcher.Changes':
         """Updates the internal file index.
 
         Indexes all files inside the workspace directory.
@@ -40,7 +40,7 @@ class WorkspaceWatcher:
         files where the modified time changed from last update() call.
 
         Returns:
-            WorkspaceWatcher.Update: Tuple of created, modified and deleted files.
+            WorkspaceWatcher.Changes: Tuple of created, modified and deleted files.
 
         Raises:
             ValueError: If the watched folder is not a valid target.
@@ -67,7 +67,7 @@ class WorkspaceWatcher:
         # update the file index
         self.files = files
         # return changes
-        return WorkspaceWatcher.Update(created=created, modified=modified, deleted=deleted)
+        return WorkspaceWatcher.Changes(created=created, modified=modified, deleted=deleted)
 
 
 class AsyncFileWatcher:

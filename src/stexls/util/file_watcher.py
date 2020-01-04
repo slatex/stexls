@@ -1,62 +1,258 @@
-from __future__ import annotations
-from typing import Dict, List, Optional, Tuple, Set
-import os.path as path
+from typing import Dict, List, Awaitable, Union, Pattern
 from glob import glob
+import os
+import itertools
+import collections
+import asyncio
+import logging
 
-__all__ = ['FileWatcher']
+log = logging.getLogger(__name__)
 
+__all__ = ['WorkspaceWatcher', 'AsyncFileWatcher']
 
-class FileWatcher:
-    """ Implements a simple file watcher, that keeps track of deleted and modified status of added files """
-    def __init__(self, extensions: Optional[List[str]] = None):
-        self._files: Dict[str, float] = dict()
-        self._extensions = extensions
+class WorkspaceWatcher:
+    """ Watches all files located inside a root workspace folder.
+
+    The watching process is not done asynchronously and not on a file basis.
+    Instead, everytime the index is updated, all files inside a folder will be
+    checked at once.
+    """
+    def __init__(self, folder: str, filter: Pattern = None):
+        """Initializes the watcher with a root folder and an optional ignore pattern.
+
+        Args:
+            folder (str): Root folder of the workspace.
+            filter (Pattern, optional): Ignore files where the pattern matches fully. Defaults to None.
+        """
+        self.folder = folder
+        self.filter = filter
+        self.files: Dict[str, float] = []
 
     def __getstate__(self):
-        return self._files, self._extensions
+        return (self.folder, self.filter, self.files)
 
     def __setstate__(self, state):
-        self._files, self._extensions = state
-    
-    def update(self) -> Tuple[Set[str], Set[str]]:
-        """ Removes deleted files from index then returns two lists for deleted and modified files """
-        deleted = set(filter(lambda x: not path.isfile(x), self._files))
-        modified = set(f for f, time in self._files.items() if path.isfile(f) and time < path.getmtime(f))
+        self.folder, self.filter, self.files = state
 
-        for file in deleted:
-            del self._files[file]
-        
-        for file in modified:
-            self._files[file] = path.getmtime(file)
+    def update(self) -> collections.NamedTuple:
+        """Updates the internal file index.
 
-        return deleted, modified
+        Indexes all files inside the workspace directory.
+        Returns newly created, deleted files, as well as
+        files where the modified time changed from last update() call.
 
-    def add(self, file, pattern=True, add_only=True, mark_modified=True):
-        """ Adds all files grabbed by the pattern to the index and if mark_modified is True, returns them on the next update() call
-        Returns set of added files
+        Returns:
+            collections.NamedTuple: Tuple of created, modified and deleted files.
+
+        Raises:
+            ValueError: If the watched folder is not a valid target.
         """
-        changed = set()
-        for file in glob(file, recursive=True) if pattern else [file]:
-            file = path.abspath(file)
-            if self._extensions and not any(file.endswith(ext) for ext in self._extensions):
-                # skip files that don't match any extensions
-                continue
-            if add_only and file in self._files:
-                # skip already watched file 
-                continue
-            if path.isfile(file):
-                # only add if file is actually a file
-                changed.add(file)
-                self._files[file] = 0 if mark_modified else path.getmtime(file)
-        return changed
-    
-    def remove(self, file_or_pattern):
-        """ Removes all files by glob pattern and returns the list of removed files """
-        removed = set(filter(lambda x: x in self._files, map(path.abspath, glob(file_or_pattern, recursive=True))))
-        for file in removed:
-            del self._files[file]
-        return removed
-    
-    def __iter__(self):
-        """ Iterator for watched files """
-        return iter(self._files)
+        if not os.path.isdir(self.folder):
+            raise ValueError(f'Invalid watch target "{self.folder}".')
+        # split file index into delete and still existing files
+        a, b = itertools.tee(map(os.path.isfile, self.files.keys()))
+        deleted = set(itertools.filterfalse(a))
+        old_files = set(filter(None, b))
+        # get list of files & folders in the workspace
+        files = glob(os.path.join(self.folder, '**/*'), recursive=True)
+        # filter out files
+        files = filter(os.path.isfile, files)
+        # filter out files using the filter
+        if self.filter:
+            files = filter(self.filter.fullmatch, files)
+        # create new index of files and modified times
+        files = dict(zip(files, map(os.path.getmtime, files)))
+        # newly created files are the difference of files before and after update
+        new_files = set(files)
+        created = new_files - old_files
+        # modified files are files which exist in before and after update index, with a new timestamp
+        modified = set(self.files[f] < files[f] for f in old_files & new_files)
+        # update the file index
+        self.files = files
+        # return changes
+        return collections.NamedTuple(created=created, modified=modified, deleted=deleted)
+
+
+class AsyncFileWatcher:
+    ''' Asynchronous file watcher which is able to emit
+    created, deleted and modified events for a single file.
+    '''
+    def __init__(self, path: str, binary: bool = False):
+        """Initializes the watcher.
+
+        The file watcher is able to watch files which do not exist yet
+        and will emit created events, when it is created.
+
+        The respective events will be stored in the events_on_* members.
+
+        Args:
+            path (str): Path to the watched file.
+            binary (bool): Whether or not the file should be read in binary or not. Defaults to False.
+        """
+        self.path = path
+        self.binary = binary
+        self.events_on_created: List[asyncio.Future] = []
+        self.events_on_deleted: List[asyncio.Future] = []
+        self.events_on_modified: List[asyncio.Future] = []
+        self._watching = False
+
+    def __getstate__(self):
+        return (self.path, self.binary)
+
+    def __setstate__(self, state):
+        self.path, self.binary = state
+        self.events_on_created = []
+        self.events_on_deleted = []
+        self.events_on_modified = []
+        self._watching = False
+
+    async def watch(self, delay: float = 2.0):
+        """Starts an infinite loop watching for file changes.
+
+        The watching process can be safely stopped by cancelling
+        the watch() coroutine. If cancelled, all waiting events
+        will also be cancelled or resolved with False.
+
+        Args:
+            delay (float, optional): Poll frequency in seconds. Defaults to 2.0.
+
+        Raises:
+            ValueError: Raised if watcher is already running.
+        """
+        if self._watching:
+            raise ValueError('Watcher already active.')
+        self._watching = True
+        log.debug('Watching file "%s"', self.path)
+        try:
+            while True:
+                if os.path.isfile(self.path):
+                    try:
+                        await self._watch_modified(delay)
+                    except FileNotFoundError:
+                        log.info('Watched file "%s" deleted.', self.path)
+                        self._resolve(self.events_on_deleted, True)
+                else:
+                    await self._watch_created(delay)
+                    log.info('Watched file "%s" created.', self.path)
+        finally:
+            self._watching = False
+            self._cleanup()
+
+    def _cleanup(self):
+        ' Cancels all waiting events and clears event lists. '
+        for evt in itertools.chain(
+            self.events_on_created,
+            self.events_on_deleted):
+            if not evt.cancelled:
+                evt.set_result(False)
+        for evt in self.events_on_modified:
+            if not evt.cancelled:
+                evt.cancelled()
+        self.events_on_modified.clear()
+        self.events_on_deleted.clear()
+        self.events_on_created.clear()
+
+    def on_modified(self) -> Awaitable[Union[bytes, str]]:
+        """Creates an event which is triggered if the file changes.
+
+        Creation of a file is not a change and will not trigger this event.
+        Use on_created() instead.
+
+        Raises:
+            ValueError: Raised if the file watcher is not running.
+
+        Returns:
+            Awaitable[Union[bytes, str]]: Awaitable future which resolves to the new content of the file.
+                Cancelled when the watcher is cancelled.
+        """
+        if not self._watching:
+            raise ValueError('File watcher not running.')
+        evt = asyncio.Future()
+        self.events_on_modified.append(evt)
+        return evt
+
+    def on_created(self) -> Awaitable[bool]:
+        """Creates an event which is triggered when the file is created.
+
+        Raises:
+            ValueError: Raised if the file watcher is not running.
+
+        Returns:
+            Awaitable[bool]: Resolves to True when the file is created,
+                Resolves to False if the watcher is stopped.
+        """
+        if not self._watching:
+            raise ValueError('File watcher not running.')
+        evt = asyncio.Future()
+        self.events_on_created.append(evt)
+        return evt
+
+    def on_deleted(self) -> Awaitable[bool]:
+        """Creates an event which is triggered when the file is deleted.
+
+        Raises:
+            ValueError: Raised if the file watcher is not running.
+
+        Returns:
+            Awaitable[bool]: Resolves to True when the file is deleted,
+                Resolves to False if the watcher is stopped.
+        """
+        if not self._watching:
+            raise ValueError('File watcher not running.')
+        evt = asyncio.Future()
+        self.events_on_deleted.append(evt)
+        return evt
+
+    def _read(self) -> Union[str, bytes]:
+        """Reads the file's content.
+
+        Returns:
+            Union[str, bytes]: Content is bytes if self.binary is set, else string.
+        """
+        with open(self.path, 'rb' if self.binary else 'r') as fd:
+            return fd.read()
+
+    def _timestamp(self):
+        ' Returns the modified timestamp of the file. '
+        return os.stat(self.path).st_mtime
+
+    async def _watch_modified(self, delay: float):
+        """Watches an existing file for changes.
+
+        Loop is infinite and can only be stopped by deleting the watched file.
+        The loop polls the file's status every delay seconds and triggers
+        on_modified events if the modified time has changed.
+
+        Args:
+            delay (float): Poll delay.
+        """
+        timestamp = self._timestamp()
+        while True:
+            new_timestamp = self._timestamp()
+            if timestamp != new_timestamp:
+                content = self._read()
+                self._resolve(self.events_on_modified, content)
+                timestamp = new_timestamp
+                log.info('Watched file "%s" modified.', self.path)
+            await asyncio.sleep(delay)
+
+    async def _watch_created(self, delay: float):
+        """Waits until the watched file is created.
+
+        Checks the file path every delay seconds.
+        Triggers on_created events if the file exists,
+        then returns.
+
+        Args:
+            delay (float): Poll delay in seconds.
+        """
+        while not os.path.isfile(self.path):
+            await asyncio.sleep(delay)
+        self._resolve(self.events_on_created, True)
+
+    def _resolve(self, events: List[asyncio.Future], value):
+        ' Resolves a list of events with a given value. '
+        for evt in events:
+            if not evt.cancelled:
+                evt.set_result(value)
+        events.clear()

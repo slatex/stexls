@@ -24,7 +24,7 @@ class WorkspaceWatcher:
         """
         self.folder = folder
         self.filter = filter
-        self.files: Dict[str, float] = []
+        self.files: Dict[str, float] = {}
 
     def __getstate__(self):
         return (self.folder, self.filter, self.files)
@@ -48,23 +48,22 @@ class WorkspaceWatcher:
         if not os.path.isdir(self.folder):
             raise ValueError(f'Invalid watch target "{self.folder}".')
         # split file index into delete and still existing files
-        a, b = itertools.tee(map(os.path.isfile, self.files.keys()))
-        deleted = set(itertools.filterfalse(a))
-        old_files = set(filter(None, b))
+        old_files = set(filter(lambda x: os.path.isfile(x), self.files.keys()))
+        deleted = set(filter(lambda x: not os.path.isfile(x), self.files.keys()))
         # get list of files & folders in the workspace
         files = glob(os.path.join(self.folder, '**/*'), recursive=True)
         # filter out files
         files = filter(os.path.isfile, files)
         # filter out files using the filter
         if self.filter:
-            files = filter(self.filter.fullmatch, files)
+            files = itertools.filterfalse(lambda x: self.filter.fullmatch(x), files)
         # create new index of files and modified times
-        files = dict(zip(files, map(os.path.getmtime, files)))
+        files = dict(map(lambda x: (x, os.path.getmtime(x)), files))
         # newly created files are the difference of files before and after update
         new_files = set(files)
-        created = new_files - old_files
+        created = new_files.difference(old_files)
         # modified files are files which exist in before and after update index, with a new timestamp
-        modified = set(self.files[f] < files[f] for f in old_files & new_files)
+        modified = set(f for f in old_files.intersection(new_files) if self.files[f] != files[f])
         # update the file index
         self.files = files
         # return changes

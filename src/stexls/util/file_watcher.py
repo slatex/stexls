@@ -4,9 +4,6 @@ import os
 import itertools
 import collections
 import asyncio
-import logging
-
-log = logging.getLogger(__name__)
 
 __all__ = ['WorkspaceWatcher', 'AsyncFileWatcher']
 
@@ -122,18 +119,15 @@ class AsyncFileWatcher:
         if self._watching:
             raise ValueError('Watcher already active.')
         self._watching = True
-        log.debug('Watching file "%s"', self.path)
         try:
             while True:
                 if os.path.isfile(self.path):
                     try:
                         await self._watch_modified(delay)
                     except FileNotFoundError:
-                        log.info('Watched file "%s" deleted.', self.path)
                         self._resolve(self.events_on_deleted, True)
                 else:
                     await self._watch_created(delay)
-                    log.info('Watched file "%s" created.', self.path)
         finally:
             self._watching = False
             self._cleanup()
@@ -233,7 +227,6 @@ class AsyncFileWatcher:
                 content = self._read()
                 self._resolve(self.events_on_modified, content)
                 timestamp = new_timestamp
-                log.info('Watched file "%s" modified.', self.path)
             await asyncio.sleep(delay)
 
     async def _watch_created(self, delay: float):

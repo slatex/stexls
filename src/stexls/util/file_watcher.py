@@ -14,6 +14,7 @@ class WorkspaceWatcher:
     Instead, everytime the index is updated, all files inside a folder will be
     checked at once.
     """
+    Update = collections.namedtuple('Update', ['created', 'modified', 'deleted'])
     def __init__(self, folder: str, filter: Pattern = None):
         """Initializes the watcher with a root folder and an optional ignore pattern.
 
@@ -31,7 +32,7 @@ class WorkspaceWatcher:
     def __setstate__(self, state):
         self.folder, self.filter, self.files = state
 
-    def update(self) -> collections.NamedTuple:
+    def update(self) -> 'WorkspaceWatcher.Update':
         """Updates the internal file index.
 
         Indexes all files inside the workspace directory.
@@ -39,7 +40,7 @@ class WorkspaceWatcher:
         files where the modified time changed from last update() call.
 
         Returns:
-            collections.NamedTuple: Tuple of created, modified and deleted files.
+            WorkspaceWatcher.Update: Tuple of created, modified and deleted files.
 
         Raises:
             ValueError: If the watched folder is not a valid target.
@@ -67,7 +68,7 @@ class WorkspaceWatcher:
         # update the file index
         self.files = files
         # return changes
-        return collections.NamedTuple(created=created, modified=modified, deleted=deleted)
+        return WorkspaceWatcher.Update(created=created, modified=modified, deleted=deleted)
 
 
 class AsyncFileWatcher:
@@ -136,12 +137,12 @@ class AsyncFileWatcher:
         ' Cancels all waiting events and clears event lists. '
         for evt in itertools.chain(
             self.events_on_created,
-            self.events_on_deleted):
-            if not evt.cancelled:
+            self.events_on_modified):
+            if not evt.cancelled():
+                evt.cancel()
+        for evt in self.events_on_deleted:
+            if not evt.cancelled():
                 evt.set_result(False)
-        for evt in self.events_on_modified:
-            if not evt.cancelled:
-                evt.cancelled()
         self.events_on_modified.clear()
         self.events_on_deleted.clear()
         self.events_on_created.clear()
@@ -165,21 +166,31 @@ class AsyncFileWatcher:
         self.events_on_modified.append(evt)
         return evt
 
-    def on_created(self) -> Awaitable[bool]:
+    def on_created(self) -> Awaitable[str]:
         """Creates an event which is triggered when the file is created.
 
         Raises:
             ValueError: Raised if the file watcher is not running.
 
         Returns:
-            Awaitable[bool]: Resolves to True when the file is created,
-                Resolves to False if the watcher is stopped.
+            Awaitable[str]: Resolves to the content of the file when it is created.
+                Cancelled if the watcher is cancelled.
         """
         if not self._watching:
             raise ValueError('File watcher not running.')
         evt = asyncio.Future()
         self.events_on_created.append(evt)
         return evt
+
+    async def on_created_or_modified(self) -> Awaitable[str]:
+        done, pending = await asyncio.wait((
+            self.on_created(),
+            self.on_modified()
+        ), return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        for task in done:
+            return task.result()
 
     def on_deleted(self) -> Awaitable[bool]:
         """Creates an event which is triggered when the file is deleted.
@@ -241,11 +252,11 @@ class AsyncFileWatcher:
         """
         while not os.path.isfile(self.path):
             await asyncio.sleep(delay)
-        self._resolve(self.events_on_created, True)
+        self._resolve(self.events_on_created, self._read())
 
     def _resolve(self, events: List[asyncio.Future], value):
         ' Resolves a list of events with a given value. '
         for evt in events:
-            if not evt.cancelled:
+            if not evt.cancelled():
                 evt.set_result(value)
         events.clear()

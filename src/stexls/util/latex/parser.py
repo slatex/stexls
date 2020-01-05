@@ -1,6 +1,6 @@
 from __future__ import annotations
 import itertools, os, re, copy, antlr4
-from typing import Iterator, Pattern, List, Optional, Tuple
+from typing import Iterator, Pattern, List, Optional, Tuple, Callable
 from antlr4.error.ErrorListener import ErrorListener
 
 from stexls.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer
@@ -147,6 +147,9 @@ class Environment(Node):
             yield self
         else:
             yield from super().finditer(env_pattern)
+
+    def __repr__(self):
+        return f'[Environment name={self.name}]'
 
 
 class InlineEnvironment(Environment):
@@ -308,6 +311,31 @@ class LatexParser(_LatexParserListener):
                 raise
         finally:
             del self._stack
+
+    def walk(self, enter: Callable[[Environment], None], exit: Callable[[Environment], None] = None):
+        """Walks through environments, calling enter() and exit() on each.
+
+        Args:
+            enter (Callable[[Environment], None]): Called the first time the environment is encountered.
+            exit (Callable[[Environment], None], optional):
+                Called when all children of a previously entered environment have been visited.
+                Defaults to None.
+        """
+        stack = [self.root]
+        visited = []
+        while stack:
+            current = stack.pop()
+            if isinstance(current, Environment):
+                if current in visited:
+                    if exit is not None:
+                        exit(current)
+                else:
+                    enter(current)
+                    stack.append(current)
+                    stack.extend(reversed(current.children))
+                    visited.append(current)
+            else:
+                stack.extend(current.children)
 
 
 class SyntaxErrorInformation:

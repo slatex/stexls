@@ -1,10 +1,10 @@
 from __future__ import annotations
 from typing import Optional, Iterator, Tuple
 import re
-from trefier.misc import roman_numerals
+from stexls.util import roman_numerals
 
 
-class DefData:
+class Defi:
     PATTERN = re.compile(r'([ma]*)def([ivx]+)(s)?(\*)?')
     def __init__(self, m: bool, a: bool, i: int, s: bool, asterisk: bool):
         """ Data of 'defi' environment
@@ -12,7 +12,7 @@ class DefData:
             :param m: m flag is a prefix.
             :param a: a flag is a prefix.
             :param i: Expected argument count.
-            :param s: s flag at the end. 
+            :param s: s flag at the end.
             :param asterisk: If it is a * environment.
         """
         self.m = m
@@ -22,12 +22,12 @@ class DefData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[DefData]:
+    def parse(env: str) -> Optional[Defi]:
         """ Parses the given latex environment name assuming it is a "defi." """
-        match = DefData.PATTERN.fullmatch(env)
+        match = Defi.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return DefData(
+        return Defi(
             'm' in match.group(1),
             'a' in match.group(1),
             roman_numerals.roman2int(match.group(2)),
@@ -35,7 +35,7 @@ class DefData:
             match.group(4) is not None)
 
 
-class TrefData:
+class Trefi:
     PATTERN = re.compile(r'([ma]*)tref([ivx]+)(s)?(\*)?')
     def __init__(self, m: bool, a: bool, i: int, s: bool, asterisk: bool):
         """ Data of 'trefi' environment
@@ -43,7 +43,7 @@ class TrefData:
             :param m: m flag is a prefix.
             :param a: a flag is a prefix.
             :param i: Expected argument count.
-            :param s: s flag at the end. 
+            :param s: s flag at the end.
             :param asterisk: If it is a * environment.
         """
         self.m = m
@@ -53,12 +53,12 @@ class TrefData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[TrefData]:
+    def parse(env: str) -> Optional[Trefi]:
         """ Parses the given latex environment name assuming it is a "trefi." """
-        match = TrefData.PATTERN.fullmatch(env)
+        match = Trefi.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return TrefData(
+        return Trefi(
             'm' in match.group(1),
             'a' in match.group(1),
             roman_numerals.roman2int(match.group(2)),
@@ -67,13 +67,13 @@ class TrefData:
         )
 
 
-class SymData:
+class Sym:
     PATTERN = re.compile(r'sym([ivx]+)(s)?(\*)?')
     def __init__(self, i: int, s: bool, asterisk: bool):
         """ Data of 'sym' environment
         Arguments:
             :param i: Expected argument count.
-            :param s: s flag at the end. 
+            :param s: s flag at the end.
             :param asterisk: If it is a * environment.
         """
         self.i = i
@@ -81,19 +81,19 @@ class SymData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[SymData]:
+    def parse(env: str) -> Optional[Sym]:
         """ Parses the given latex environment name assuming it is a "sym." """
-        match = SymData.PATTERN.fullmatch(env)
+        match = Sym.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return SymData(
+        return Sym(
             roman_numerals.roman2int(match.group(1)),
             match.group(2) is not None,
             match.group(3) is not None,
         )
 
 
-class SymdefData:
+class Symdef:
     PATTERN = re.compile(r'symdef(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'symdef' environment
@@ -103,17 +103,17 @@ class SymdefData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[SymdefData]:
+    def parse(env: str) -> Optional[Symdef]:
         """ Parses the given latex environment name assuming it is a "symdef." """
-        match = SymdefData.PATTERN.fullmatch(env)
+        match = Symdef.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return SymdefData(
+        return Symdef(
             match.group(1) is not None,
         )
 
 
-class GImportData:
+class GImport:
     PATTERN = re.compile(r'gimport(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'gimport' environment
@@ -123,17 +123,17 @@ class GImportData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[GImportData]:
+    def parse(env: str) -> Optional[GImport]:
         """ Parses the given latex environment name assuming it is a "gimport." """
-        match = GImportData.PATTERN.fullmatch(env)
+        match = GImport.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return GImportData(
+        return GImport(
             match.group(1) is not None,
         )
 
 
-class GStructureData:
+class GStructure:
     PATTERN = re.compile(r'gstructure(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'gstructure' environment
@@ -143,12 +143,12 @@ class GStructureData:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[GStructureData]:
+    def parse(env: str) -> Optional[GStructure]:
         """ Parses the given latex environment name assuming it is a "gstructure." """
-        match = GStructureData.PATTERN.fullmatch(env)
+        match = GStructure.PATTERN.fullmatch(env)
         if match is None:
             return None
-        return GStructureData(
+        return GStructure(
             match.group(1) is not None,
         )
 

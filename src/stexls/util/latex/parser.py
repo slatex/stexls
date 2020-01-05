@@ -21,10 +21,10 @@ class Node:
         """
         assert isinstance(end, int)
         assert isinstance(begin, int)
-        self.begin = begin
-        self.end = end
-        self.children = []
-        self.parent = None
+        self.begin: int = begin
+        self.end: int = end
+        self.children: List[Node] = []
+        self.parent: Node = None
 
     def add(self, node: Node):
         ' Adds a child. '

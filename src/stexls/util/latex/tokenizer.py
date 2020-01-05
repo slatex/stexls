@@ -30,14 +30,14 @@ class LatexToken:
         self.begin = begin
         self.end = end
         self.envs = envs
-    
+
     def __iter__(self):
         ' Yields the members, imitating a tuple. '
         yield self.lexeme
         yield self.begin
         yield self.end
         yield self.envs
-    
+
     def __repr__(self) -> str:
         return f'[LatexToken lexeme="{self.lexeme}" begin={self.begin} end={self.end} envs={self.envs}]'
 
@@ -47,8 +47,10 @@ class LatexTokenizer:
     def __init__(
         self,
         root: parser.Node,
+        lower: bool = True,
         words: str = DEFAULT_WORDS,
         token_filter: str = DEFAULT_FILTER):
+        self.lower = lower
         self.math_token = '<math>'
         self._words = re.compile(words)
         self._token_filter = re.compile(token_filter)
@@ -59,8 +61,11 @@ class LatexTokenizer:
         ' Parses the lexical tokens in the file and yields them. '
         for token in self._tokens:
             if token.envs and '$' in token.envs:
+                lexeme = self.math_token or token.lexeme
+                if self.lower:
+                    lexeme = lexeme.lower()
                 yield LatexToken(
-                    self.math_token or token.lexeme,
+                    lexeme,
                     token.begin,
                     token.end,
                     token.envs)
@@ -69,8 +74,11 @@ class LatexTokenizer:
                     if self._token_filter.fullmatch(word.group()):
                         continue
                     begin, end = word.span()
+                    lexeme = word.group()
+                    if self.lower:
+                        lexeme = lexeme.lower()
                     yield LatexToken(
-                        word.group(),
+                        lexeme,
                         token.begin + begin,
                         token.begin + end,
                         token.envs)
@@ -79,10 +87,10 @@ class LatexTokenizer:
     def from_file(file: Union[str, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
         ' Creates this tokenizer directly from a file, parsing it beforehand. '
         if not isinstance(file, parser.LatexParser):
-            file = parser.LatexParser(file, lower=lower)
+            file = parser.LatexParser(file)
         if not file.success:
             return None
-        return LatexTokenizer(file.root)
+        return LatexTokenizer(file.root, lower=lower)
 
 def _replace_german_characters(text: str) -> str:
     return (text.

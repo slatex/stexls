@@ -257,8 +257,8 @@ class LatexParser(_LatexParserListener):
     def get_text_by_offset(self, begin: int, end: int) -> str:
         ' Returns the text between zero indexed begin and end offsets. '
         return self.source[begin:end]
-    
-    def __init__(self, file_or_document: str, lower: bool = False, ignore_exceptions: bool = False):
+
+    def __init__(self, file_or_document: str, ignore_exceptions: bool = False):
         ''' Creates a parser and parses the file.
             Initializes also the following members:
                 file: Path to the file that was parsed, None if the file_or_document argument was not a file.
@@ -269,7 +269,6 @@ class LatexParser(_LatexParserListener):
                 syntax_errors: List of all syntax erros which occured during parsing.
         Parameters:
             file_or_document: A which is either a path to a latex file or the file's content itself.
-            lower: Enables calling lower() on the file source text.
             ignore_exceptions:
                 If enabled, exceptions thrown during parsing
                 will be stored in self.exceptions instead of raising.
@@ -290,8 +289,6 @@ class LatexParser(_LatexParserListener):
                     self.source = ref.read()
             else:
                 self.source = file_or_document
-            if lower:
-                self.source = self.source.lower()
             self._line_lengths = [len(line)+1 for line in self.source.split('\n')]
             lexer = _LatexLexer(antlr4.InputStream(self.source))
             stream = antlr4.CommonTokenStream(lexer)

@@ -7,13 +7,14 @@ from stexls.util import roman_numerals
 class Defi:
     PATTERN = re.compile(r'([ma]*)def([ivx]+)(s)?(\*)?')
     def __init__(self, m: bool, a: bool, i: int, s: bool, asterisk: bool):
-        """ Data of 'defi' environment
-        Arguments:
-            :param m: m flag is a prefix.
-            :param a: a flag is a prefix.
-            :param i: Expected argument count.
-            :param s: s flag at the end.
-            :param asterisk: If it is a * environment.
+        """ Data of 'defi' environment.
+
+        Args:
+            m (bool): m flag is a prefix.
+            a (bool): a flag is a prefix.
+            i (int): Expected argument count.
+            s (bool): s flag at the end.
+            asterisk (bool): If it is a * environment.
         """
         self.m = m
         self.a = a
@@ -22,7 +23,7 @@ class Defi:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[Defi]:
+    def from_string(env: str) -> Optional[Defi]:
         """ Parses the given latex environment name assuming it is a "defi." """
         match = Defi.PATTERN.fullmatch(env)
         if match is None:
@@ -39,12 +40,13 @@ class Trefi:
     PATTERN = re.compile(r'([ma]*)tref([ivx]+)(s)?(\*)?')
     def __init__(self, m: bool, a: bool, i: int, s: bool, asterisk: bool):
         """ Data of 'trefi' environment
-        Arguments:
-            :param m: m flag is a prefix.
-            :param a: a flag is a prefix.
-            :param i: Expected argument count.
-            :param s: s flag at the end.
-            :param asterisk: If it is a * environment.
+
+        Args:
+            m (bool): m flag is a prefix.
+            a (bool): a flag is a prefix.
+            i (int): Expected argument count.
+            s (bool): s flag at the end.
+            asterisk (bool): If it is a * environment.
         """
         self.m = m
         self.a = a
@@ -53,7 +55,7 @@ class Trefi:
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[Trefi]:
+    def from_string(env: str) -> Optional[Trefi]:
         """ Parses the given latex environment name assuming it is a "trefi." """
         match = Trefi.PATTERN.fullmatch(env)
         if match is None:
@@ -71,17 +73,18 @@ class Sym:
     PATTERN = re.compile(r'sym([ivx]+)(s)?(\*)?')
     def __init__(self, i: int, s: bool, asterisk: bool):
         """ Data of 'sym' environment
-        Arguments:
-            :param i: Expected argument count.
-            :param s: s flag at the end.
-            :param asterisk: If it is a * environment.
+
+        Args:
+            i (int): Expected argument count.
+            s (bool): s flag at the end.
+            asterisk (bool): If it is a * environment.
         """
         self.i = i
         self.s = s
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[Sym]:
+    def from_string(env: str) -> Optional[Sym]:
         """ Parses the given latex environment name assuming it is a "sym." """
         match = Sym.PATTERN.fullmatch(env)
         if match is None:
@@ -97,13 +100,14 @@ class Symdef:
     PATTERN = re.compile(r'symdef(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'symdef' environment
-        Arguments:
-            :param asterisk: If it is a * environment.
+
+        Args:
+            asterisk (bool): If it is a * environment.
         """
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[Symdef]:
+    def from_string(env: str) -> Optional[Symdef]:
         """ Parses the given latex environment name assuming it is a "symdef." """
         match = Symdef.PATTERN.fullmatch(env)
         if match is None:
@@ -117,13 +121,14 @@ class GImport:
     PATTERN = re.compile(r'gimport(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'gimport' environment
-        Arguments:
-            :param asterisk: If it is a * environment.
+
+        Args:
+            asterisk (bool): If it is a * environment.
         """
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[GImport]:
+    def from_string(env: str) -> Optional[GImport]:
         """ Parses the given latex environment name assuming it is a "gimport." """
         match = GImport.PATTERN.fullmatch(env)
         if match is None:
@@ -137,13 +142,14 @@ class GStructure:
     PATTERN = re.compile(r'gstructure(\*)?')
     def __init__(self, asterisk: bool):
         """ Data of 'gstructure' environment
-        Arguments:
-            :param asterisk: If it is a * environment.
+
+        Args:
+            asterisk (bool): If it is a * environment.
         """
         self.asterisk = asterisk
 
     @staticmethod
-    def parse(env: str) -> Optional[GStructure]:
+    def from_string(env: str) -> Optional[GStructure]:
         """ Parses the given latex environment name assuming it is a "gstructure." """
         match = GStructure.PATTERN.fullmatch(env)
         if match is None:
@@ -154,7 +160,7 @@ class GStructure:
 
 
 class OArgData:
-    PATTERN=re.compile(r'(?<=,|\[)(?:(\w+)=)?([^,\]]*)')
+    PATTERN=re.compile(r'(?<=,|\[)(?:\s*(\S+)\s*=)?([^,\]]*)')
     def __init__(self,
         name: Optional[str],
         name_span: Optional[Tuple[int, int]],
@@ -164,11 +170,11 @@ class OArgData:
         if name is not None then the argument was [...,"<name>=<value>",...]
         else it was [...,<value>,...].
 
-        Arguments:
-            :param name: Optional name of the argument.
-            :param name_span: Start and stop index of the argument name string relative to the given string. None if name is None.
-            :param value: Value of the argument.
-            :param value_span: Start and stop index of the argument value string relative to the given string.
+        Args:
+            name (str): Optional name of the argument.
+            name_span (Tuple[int, int]): Start and stop index of the argument name string relative to the given string. None if name is None.
+            value (str): Value of the argument.
+            value_span (Tuple[int, int]): Start and stop index of the argument value string relative to the given string.
         """
         self.name = name
         self.name_span = name_span
@@ -176,7 +182,7 @@ class OArgData:
         self.value_span = value_span
 
     @staticmethod
-    def parse(env_oargs: str) -> Iterator[OArgData]:
+    def from_string(env_oargs: str) -> Iterator[OArgData]:
         """ Parses a latex environment's o argument string and returns
             all o arguments inside it. """
         if not env_oargs:

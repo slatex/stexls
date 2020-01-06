@@ -88,8 +88,6 @@ class LatexTokenizer:
         ' Creates this tokenizer directly from a file, parsing it beforehand. '
         if not isinstance(file, parser.LatexParser):
             file = parser.LatexParser(file)
-        if not file.success:
-            return None
         return LatexTokenizer(file.root, lower=lower)
 
 def _replace_german_characters(text: str) -> str:

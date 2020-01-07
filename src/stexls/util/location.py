@@ -74,6 +74,9 @@ class Position:
         ' Creates a copy of this position. '
         return Position(self.line, self.character)
 
+    def __repr__(self):
+        return f'[Position ({self.line} {self.character})]'
+
 
 class Range:
     ' Represents a range given by a start and end position. '
@@ -159,6 +162,9 @@ class Range:
         assert accmax is not None
         return Range(accmin.copy(), accmax.copy())
 
+    def __repr__(self):
+        return f'[Range ({self.start.line} {self.start.character}) ({self.end.line} {self.end.character})]'
+
 
 class Location:
     def __init__(self, uri: str, positionOrRange: Union[Position, Range]):
@@ -167,3 +173,6 @@ class Location:
             self.range = Range(positionOrRange, positionOrRange)
         else:
             self.range = positionOrRange
+
+    def __repr__(self):
+        return f'[Location uri="{self.uri}" range={self.range}]'

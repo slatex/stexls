@@ -63,12 +63,12 @@ class Node:
 class Token(Node):
     ' A token is a leaf node that contains the actual text of the source file. '
     def __init__(self, begin: int, end: int, lexeme: str):
-        ''' Constructs a token with text and position information.
+        """ Constructs a token with text and position information.
         Parameters:
             begin: Zero indexed begin offset of the text.
             end: Zero indexed end offset of the text.
             lexeme: The actual text in the source document.
-        '''
+        """
         super().__init__(begin, end)
         self.lexeme = lexeme
 
@@ -92,22 +92,22 @@ class MathToken(Token):
 
 
 class Environment(Node):
-    ''' An environment is a node of the form
+    """ An environment is a node of the form
         \\begin{name}[<oargs>]{<rargs>}
             <text>
         \\end{name}
         The oargs and rargs do not contain text.
-    '''
+    """
     def __init__(self, begin: int, end: int):
-        ''' Initializes an environment node with an empty rarg and oarg array.
+        """ Initializes an environment node with an empty rarg and oarg array.
         Parameters:
             begin: Zero indexed begin offset of where the environment's first character is (the first "\\")
             end: Zero indexed end offset of where the environment's last character is (usually a "}")
-        '''
+        """
         super().__init__(begin, end)
         self.name = None
-        self.rargs = []
-        self.oargs = []
+        self.rargs: List[Node] = []
+        self.oargs: List[Node] = []
 
     def add_oarg(self, oarg: Node):
         ' Register an OArg. '
@@ -134,9 +134,9 @@ class Environment(Node):
 
     @property
     def env_name(self) -> str:
-        ''' Gets the environment's name from the provided name token,
+        """ Gets the environment's name from the provided name token,
             raises if no token provided.
-        '''
+        """
         if self.name is None:
             raise RuntimeError(
                 'Unable to get environment name,'

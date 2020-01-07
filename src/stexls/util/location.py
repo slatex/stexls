@@ -138,16 +138,18 @@ class Range:
         return Range(self.start.copy(), self.end.copy())
 
     @staticmethod
-    def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Range:
+    def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Optional[Range]:
         ''' Creates the big union of all ranges and positions given.
             The big union is given by the range formed by the smallest
             and largest position in the list.
         '''
         if not rangesOrPositions:
-            raise ValueError('List of ranges may not be empty.')
-        accmin: Position = None
-        accmax: Position = None
+            return None
+        default = rangesOrPositions[0]
+        accmin: Position = default if isinstance(default, Position) else default.start
+        accmax: Position = default if isinstance(default, Position) else default.end
         for x in rangesOrPositions[1:]:
+            assert isinstance(x, (Position, Range)), "Invalid type in array."
             if isinstance(x, Position):
                 if accmin is None or x.is_before(accmin):
                     accmin = x
@@ -158,8 +160,6 @@ class Range:
                     accmin = x.start
                 if accmax is None or x.end.is_after(accmax):
                     accmax = x.end
-        assert accmin is not None
-        assert accmax is not None
         return Range(accmin.copy(), accmax.copy())
 
     def __repr__(self):

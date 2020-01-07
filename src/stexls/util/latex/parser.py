@@ -15,18 +15,38 @@ __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToke
 
 class Node:
     ' Base class for the syntax tree content. '
-    def __init__(self, begin: int, end: int):
+    def __init__(self, parser: LatexParser, begin: int, end: int):
         """ Creates a node.
-        Parameters:
-            begin: Zero indexed begin offset in the source file.
-            end: Zero indexed end offset in the source file.
+
+        Args:
+            parser (LatexParser): Parser that generated this node.
+            begin (int): Zero indexed begin offset in the source file.
+            end (int): Zero indexed end offset in the source file.
         """
-        # assert isinstance(end, int)
-        # assert isinstance(begin, int)
+        assert isinstance(end, int)
+        assert isinstance(begin, int)
+        self.parser = parser
         self.begin: int = begin
         self.end: int = end
         self.children: List[Node] = []
         self.parent: Node = None
+
+    @property
+    def text(self) -> str:
+        " The text this node contains. "
+        return self.parser.get_text_by_offset(self.begin, self.end)
+
+    @property
+    def text_inside(self) -> str:
+        " Get text spanned by first and last child nodes. "
+        tokens = list(self.tokens)
+        if not tokens:
+            start = self.begin
+            stop = self.end
+        else:
+            start = tokens[0].begin
+            stop = tokens[-1].end
+        return self.parser.get_text_by_offset(start, stop)
 
     def add(self, node: Node):
         ' Adds a child. '
@@ -62,14 +82,14 @@ class Node:
 
 class Token(Node):
     ' A token is a leaf node that contains the actual text of the source file. '
-    def __init__(self, begin: int, end: int, lexeme: str):
+    def __init__(self, parser: LatexParser, begin: int, end: int, lexeme: str):
         """ Constructs a token with text and position information.
         Parameters:
             begin: Zero indexed begin offset of the text.
             end: Zero indexed end offset of the text.
             lexeme: The actual text in the source document.
         """
-        super().__init__(begin, end)
+        super().__init__(parser, begin, end)
         self.lexeme = lexeme
 
     @property
@@ -98,13 +118,13 @@ class Environment(Node):
         \\end{name}
         The oargs and rargs do not contain text.
     """
-    def __init__(self, begin: int, end: int):
+    def __init__(self, parser: LatexParser, begin: int, end: int):
         """ Initializes an environment node with an empty rarg and oarg array.
         Parameters:
             begin: Zero indexed begin offset of where the environment's first character is (the first "\\")
             end: Zero indexed end offset of where the environment's last character is (usually a "}")
         """
-        super().__init__(begin, end)
+        super().__init__(parser, begin, end)
         self.name = None
         self.rargs: List[Node] = []
         self.oargs: List[Node] = []
@@ -195,7 +215,7 @@ class LatexParser:
         parser = _LatexParser(stream)
         error_listener = _SyntaxErrorErrorListener(self.file)
         parser.addErrorListener(error_listener)
-        listener = _LatexParserListener()
+        listener = _LatexParserListener(self)
         walker = antlr4.ParseTreeWalker()
         parse_tree = parser.main()
         walker.walk(listener, parse_tree)
@@ -322,8 +342,9 @@ class _SyntaxErrorErrorListener(ErrorListener):
 
 class _LatexParserListener(_LatexParserListener):
     ' Implements the antlr4 methods for parsing a latex file. '
-    def __init__(self):
+    def __init__(self, parser: LatexParser):
         super().__init__()
+        self.parser = parser
         self.stack: List[Node] = []
 
     @staticmethod
@@ -332,7 +353,7 @@ class _LatexParserListener(_LatexParserListener):
 
     def enterMain(self, ctx: _LatexParser.MainContext):
         range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(*range)
+        node = Node(self.parser, *range)
         self.stack.append(node)
 
     def exitMain(self, ctx: _LatexParser.MainContext):
@@ -340,11 +361,11 @@ class _LatexParserListener(_LatexParserListener):
 
     def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         range = _LatexParserListener._get_ctx_range(ctx)
-        env = InlineEnvironment(*range)
+        env = InlineEnvironment(self.parser, *range)
         env_name_ctx = ctx.INLINE_ENV_NAME()
         env_name = str(env_name_ctx)[1:]
         env_name_range = (env_name_ctx.getSymbol().start, env_name_ctx.getSymbol().stop)
-        token = Token(*env_name_range, env_name)
+        token = Token(self.parser, *env_name_range, env_name)
         env.add_name(token)
         self.stack.append(env)
 
@@ -354,7 +375,7 @@ class _LatexParserListener(_LatexParserListener):
 
     def enterEnv(self, ctx: _LatexParser.EnvContext):
         range = _LatexParserListener._get_ctx_range(ctx)
-        env = Environment(*range)
+        env = Environment(self.parser, *range)
         self.stack.append(env)
 
     def exitEnv(self, ctx: _LatexParser.EnvContext):
@@ -365,7 +386,7 @@ class _LatexParserListener(_LatexParserListener):
         assert isinstance(self.stack[-1], Environment), "Broken parser stack."
         lexeme = str(ctx.TOKEN())
         range = _LatexParserListener._get_ctx_range(ctx)
-        token = Token(*range, lexeme)
+        token = Token(self.parser, *range, lexeme)
         self.stack[-1].add_name(token)
 
     def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
@@ -379,19 +400,19 @@ class _LatexParserListener(_LatexParserListener):
     def exitMath(self, ctx: _LatexParser.MathContext):
         lexeme = str(ctx.MATH_ENV())
         range = _LatexParserListener._get_ctx_range(ctx)
-        math = MathToken(*range, lexeme)
+        math = MathToken(self.parser, *range, lexeme)
         self.stack[-1].add(math)
 
     def exitToken(self, ctx: _LatexParser.TokenContext):
         token_ctx = ctx.TOKEN()
         lexeme = str(token_ctx)
         range = _LatexParserListener._get_ctx_range(ctx)
-        token = Token(*range, lexeme)
+        token = Token(self.parser, *range, lexeme)
         self.stack[-1].add(token)
 
     def enterOarg(self, ctx: _LatexParser.OargContext):
         range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(*range)
+        node = Node(self.parser, *range)
         self.stack.append(node)
 
     def exitOarg(self, ctx: _LatexParser.OargContext):
@@ -401,7 +422,7 @@ class _LatexParserListener(_LatexParserListener):
 
     def enterRarg(self, ctx: _LatexParser.RargContext):
         range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(*range)
+        node = Node(self.parser, *range)
         self.stack.append(node)
 
     def exitRarg(self, ctx: _LatexParser.RargContext):

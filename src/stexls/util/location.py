@@ -146,8 +146,12 @@ class Range:
         if not rangesOrPositions:
             return None
         default = rangesOrPositions[0]
-        accmin: Position = default if isinstance(default, Position) else default.start
-        accmax: Position = default if isinstance(default, Position) else default.end
+        if isinstance(default, Position):
+            accmin: Position = default
+            accmax: Position = default
+        else:
+            accmin: Position = default.start
+            accmax: Position = default.end
         for x in rangesOrPositions[1:]:
             assert isinstance(x, (Position, Range)), "Invalid type in array."
             if isinstance(x, Position):

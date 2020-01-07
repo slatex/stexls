@@ -16,7 +16,7 @@ class Position:
         '''
         self.line = line
         self.character = character
-    
+
     def compare_to(self, other: Position) -> int:
         ''' Compares two positions.
         Parameters:
@@ -32,27 +32,27 @@ class Position:
             return self.character - other.character
         else:
             return 0
-    
+
     def is_after(self, other: Position) -> bool:
         ' Returns true if self appears after other. '
         return 0 < self.compare_to(other)
-        
+
     def is_after_or_equal(self, other: Position) -> bool:
         ' Returns true if self appears after other or if they are equal. '
         return 0 <= self.compare_to(other)
-        
+
     def is_before(self, other: Position) -> bool:
         ' Returns true if self appears before other. '
         return self.compare_to(other) < 0
-        
+
     def is_before_or_equal(self, other: Position) -> bool:
         ' Returns true if self appears before other or if they are equal. '
         return self.compare_to(other) <= 0
-    
+
     def is_equal(self, other: Position) -> bool:
         ' Returns true if line and character of both are the same. '
         return self.line == other.line and self.character == other.character
-    
+
     def replace(self, line: Optional[int] = None, character: Optional[int] = None) -> Position:
         ''' Copies self and replaces the copies line and/or character.
         Parameters:
@@ -64,17 +64,17 @@ class Position:
         return Position(
             self.line if line is None else line,
             self.character if character is None else character)
-    
+
     def copy_from(self, other: Position):
         ' Copies other line and character into self. '
         self.line = other.line
         self.character = other.character
-    
+
     def copy(self) -> Position:
         ' Creates a copy of this position. '
         return Position(self.line, self.character)
 
-        
+
 class Range:
     ' Represents a range given by a start and end position. '
     def __init__(self, start: Position, end: Position):
@@ -85,17 +85,17 @@ class Range:
         '''
         self.start = start
         self.end = end
-    
+
     def is_empty(self) -> bool:
         ''' Checks wether the range is empty or not.
             The range is empty if start and end are equal.
         '''
         return self.start.equals(self.end)
-    
+
     def is_single_line(self) -> bool:
         ' Returns true if the start and end positions are on the same line. '
         return self.start.line == self.end.line
-    
+
     def union(self, other: Union[Range, Position]) -> Range:
         ''' Creates a new Range with the union of self and other.
         Parameters:
@@ -110,7 +110,7 @@ class Range:
             else other.start.copy(),
             self.end.copy() if self.end.is_after_or_equal(other.end)
             else other.end.copy())
-    
+
     def replace(self, start: Optional[Position] = None, end: Optional[Position] = None) -> Range:
         ''' Creates a copy with a new start and end.
         If start or end is not None they will be copied and
@@ -124,12 +124,12 @@ class Range:
         return Range(
             (self.start if start is None else start).copy(),
             (self.end if end is None else end).copy())
-    
+
     def copy_from(self, other: Range):
         ' Replaces self start and end with copies of other start and end. '
         self.start = other.start.copy()
         self.end = other.end.copy()
-    
+
     def copy(self) -> Range:
         ' Creates a deep copy of self. '
         return Range(self.start.copy(), self.end.copy())
@@ -166,4 +166,4 @@ class Location:
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)
         else:
-            self.range = range
+            self.range = positionOrRange

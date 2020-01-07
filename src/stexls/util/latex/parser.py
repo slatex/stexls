@@ -1,6 +1,6 @@
 from __future__ import annotations
 import itertools, os, re, copy, antlr4
-from typing import Iterator, Pattern, List, Optional, Tuple, Callable
+from typing import Iterator, Pattern, List, Optional, Tuple, Callable, Union
 import tempfile
 
 from antlr4.error.ErrorListener import ErrorListener
@@ -8,6 +8,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from stexls.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer
 from stexls.util.latex.grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
 from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParser
+from stexls.util.location import Location, Range, Position
 
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
@@ -32,20 +33,34 @@ class Node:
         self.parent: Node = None
 
     @property
+    def location(self) -> Location:
+        " Location of this node in the file. "
+        begin = self.parser.offset_to_position(self.begin)
+        end = self.parser.offset_to_position(self.end)
+        return Location(self.parser.file, Range(begin, end))
+
+    @property
+    def content_range(self) -> Range:
+        " Range of the children of this node. Range of self if there are no children. "
+        if not self.children:
+            return self.location.range
+        begin = self.parser.offset_to_position(self.children[0].begin)
+        end = self.parser.offset_to_position(self.children[-1].end)
+        return Range(begin, end)
+
+    @property
     def text(self) -> str:
         " The text this node contains. "
         return self.parser.get_text_by_offset(self.begin, self.end)
 
     @property
     def text_inside(self) -> str:
-        " Get text spanned by first and last child nodes. "
-        tokens = list(self.tokens)
-        if not tokens:
-            start = self.begin
-            stop = self.end
+        " Get text spanned by first and last child nodes. Equal to self.text if there are no children. "
+        if not self.children:
+            return self.text
         else:
-            start = tokens[0].begin
-            stop = tokens[-1].end
+            start = self.children[0].begin
+            stop = self.children[-1].end
         return self.parser.get_text_by_offset(start, stop)
 
     def add(self, node: Node):
@@ -240,32 +255,33 @@ class LatexParser:
             fd.flush()
         return LatexParser(file=fd.name, encoding='utf-8')
 
-    def offset_to_position(self, offset: int) -> Tuple[int, int]:
+    def offset_to_position(self, offset: int) -> Position:
         """ Converts offset to tuple of line and character.
 
         Args:
             offset (int): 0-indexed offset character in the file.
 
         Returns:
-            Tuple[int, int]: First is the 1-indexed line,
-                Second is the 1-indexed character of that line.
+            Position: Equivalent position.
         """
         for i, len in enumerate(self._line_lengths):
             if offset < len:
                 break
             offset -= len
-        return i, offset
+        return Position(i, offset)
 
-    def position_to_offset(self, line: int, character: int) -> int:
-        """ Converts 1-indexed line and 1-indexed character to an offset.
+    def position_to_offset(self, line: Union[int, Position], character: int = None) -> int:
+        """ Converts 0-indexed line and 0-indexed character to an offset.
 
         Args:
-            line (int): 1-indexed line.
-            character (int): 1-indexed character of that line.
+            line (Union[int, Position]): 0-indexed line or Position.
+            character (int, optional): 0-indexed character of that line. If None, then line must be a position.
 
         Returns:
             int: 0-indexed offset of that line and character.
         """
+        if character is None:
+            line, character = line.line, line.character
         return sum(self._line_lengths[:line]) + character
 
     def get_text_by_offset(self, begin: int, end: int) -> str:

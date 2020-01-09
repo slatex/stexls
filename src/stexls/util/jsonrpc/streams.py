@@ -1,221 +1,241 @@
-from typing import Union, Optional, Any, Dict
-import io
-import sys
+""" This module implements streams which read a json string or write a json string. """
+from typing import Union, Any, Dict, List, Optional, BinaryIO, Callable
 import asyncio
-import functools
 import re
 import json
-import logging
+from socket import socket
+from select import select
+from .core import RequestObject, NotificationObject, MessageObject, ResponseObject, ErrorCodes, ErrorObject
 
-log = logging.getLogger(__name__)
-
-__all__ = (
-    'AsyncReaderStream',
-    'AsyncBufferedReaderStream',
-    'AsyncIoReaderStream',
-    'AsyncWriterStream',
-    'AsyncBufferedWriterStream',
-    'AsyncIoWriterStream',
+__all__ = [
+    'JsonReader',
+    'JsonWriter',
     'JsonStreamReader',
-    'JsonStreamWriter'
-)
+    'JsonBinaryWriter',
+    'JsonSocketReader',
+    'AsyncIoJsonReader',
+]
 
-class AsyncReaderStream:
-    ' Interface for a stream that can read lines and bytes asynchronously. '
-    async def readuntil(self, separator: bytes = b'\n') -> bytes:
-        ''' Reads data until separator is reached.
-            Must return en empty string if EOF is encountered.
-        '''
+
+class JsonReader:
+    " An interface for a stream which reads from a stream and parses it as json. "
+    async def read_json(self) -> Any:
+        """ Reads a json object from stream.
+
+        Raises:
+            json.JSONDecodeError: Error if something non-deserializable is received.
+
+        Returns:
+            Any: A parsed json object or None if EOF encountered.
+        """
         raise NotImplementedError()
 
-    async def read(self, count: int) -> bytes:
-        ''' Reads exactly count many bytes from stream and returns them.
-            Must return an empty string if EOF is encountered.
-        '''
+
+class JsonWriter:
+    " An interface for a stream which writes json to a stream by serializing any object. "
+    def write_json(self, o: Any):
+        """ Writes any json parsable object.
+
+        Raises:
+            json.JSONDecode[summary]Error: Error if something non-serializable needs to be sent.
+
+        Args:
+            o (Any): Json parsable object
+        """
         raise NotImplementedError()
 
 
-class AsyncBufferedReaderStream(AsyncReaderStream):
-    def __init__(self, stream: io.BufferedReader):
-        self._stream = stream
-        self._buffer = b''
-
-    async def readuntil(self, separator: bytes = b'\n') -> bytes:
-        loop = asyncio.get_event_loop()
-        while separator not in self._buffer:
-            log.debug('AsyncBufferedReader waiting for bytes to read.')
-            data = await loop.run_in_executor(None, self._stream.read1)
-            if not data:
-                return b''
-            self._buffer += data
-        line, self._buffer = self._buffer.split(separator, maxsplit=1)
-        log.debug('AsyncBufferedReader received line (length: %i, buffer len: %i).', len(line), len(self._buffer))
-        return line + separator
-    
-    async def read(self, count: int = -1) -> bytes:
-        loop = asyncio.get_event_loop()
-        partial = functools.partial(self._stream.read, count)
-        log.debug('AsyncBufferedReader waiting for %i bytes.', count)
-        data = await loop.run_in_executor(None, partial)
-        return data
-
-
-class AsyncIoReaderStream(AsyncReaderStream):
-    ' Adapts asyncio.StreamReader '
-    def __init__(self, stream: asyncio.StreamReader):
-        self._stream = stream
-    
-    async def readuntil(self, separator: bytes = b'\n') -> bytes:
-        return await self._stream.readuntil(separator)
-    
-    async def read(self, count: int = -1) -> bytes:
-        return await self._stream.read(count)
-
-
-class AsyncWriterStream:
-    ' Interface for a stream that writes all bytes in data, then returns. '
-    async def write(self, data: bytes):
-        ' Writes all the bytes provided. '
-        raise NotImplementedError()
-    
-
-class AsyncBufferedWriterStream(AsyncWriterStream):
-    ' Adapts io.BufferedWriter. '
-    def __init__(self, stream: io.BufferedWriter, force_flush: bool = True):
-        ''' Creates an async writer stream with an underlying io.BufferedWriter.
-        Parameters:
-            stream: The stream object to use.
-            force_flush: Enables flushing the stream after each write.
-        '''
-        self._stream = stream
-        self._force_flush = force_flush
-
-    async def write(self, data: bytes):
-        written = 0
-        while written < len(data):
-            written += self._stream.write(data[written:])
-        if self._force_flush:
-            self._stream.flush()
-
-
-class AsyncIoWriterStream(AsyncWriterStream):
-    ' Adapts asyncio.StreamWriter '
-    def __init__(self, stream: asyncio.StreamWriter):
-        self._stream = stream
-    
-    async def write(self, data: bytes):
-        self._stream.write(data)
-
-
-class JsonStreamReader:
-    ' An adapter to a stream, which allows to read headers and json objects. '
+class JsonStreamReader(JsonReader):
+    " Implements the json stream reader "
     def __init__(
         self,
-        stream: AsyncReaderStream,
-        separator: str = ':',
+        stream: BinaryIO,
         linebreak: str = '\r\n',
         encoding: str = 'utf-8'):
-        self._stream = stream
-        self._separator = separator
+        self.stream = stream
         self._linebreak = bytes(linebreak, encoding)
         self._encoding = encoding
-    
-    async def header(self) -> Dict[str, str]:
-        ''' Reads a header from stream until the terminator line is reached.
-            Raises an EOFError if eof is encountered during read.
+
+    async def read_headers(self) -> Dict[str, str]:
+        """Reads headers until empty line is reached.
+
         Returns:
-            Dictionary of string with the name of the header option
-            to a string with the value of the header option.
-        '''
-        header = {}
+            Dict[str, str]: Dictionary of headers and their values.
+        """
+        headers = {}
+        loop = asyncio.get_event_loop()
         while True:
-            log.debug('Start reading until linebreak (%s).', self._linebreak)
-            line: bytes = await self._stream.readuntil(self._linebreak)
+            line = await loop.run_in_executor(None, self.stream.readline)
             if not line:
-                log.debug('Stream reader header encountered end of file.')
-                raise EOFError()
+                return None
             if line == self._linebreak:
-                log.debug('Stream reader header terminator received.')
-                return header
-            log.debug('Line received: "%s"', line.strip())
-            line = line.decode(self._encoding)
-            parts = line.split(self._separator)
-            setting, value = map(str.strip, parts)
-            log.debug('Setting header setting "%s" to "%s"', setting, value)
-            header[setting.lower()] = value
+                return headers
+            line: str = line.decode(encoding=self._encoding, errors='strict')
+            header, value = line.split(':', maxsplit=1)
+            headers[header.strip().lower()] = value.strip()
 
-    async def read(self, header: Dict[str, str]) -> Union[dict, list, str, float, int, bool, None]:
-        ''' Reads data according to the header from stream and parses the content as json and returns it.
-            If eof is encountered while reading, an EOFError is raised.
-            May raise unicode decode or json decode errors if the messages are invalid.
-        Parameters:
-            header: Dict of header parameters and values.
+    async def read_json(self) -> Any:
+        """ Reads json object from a binary stream.
+
+        Expects at least thet Content-Length header with the number of bytes needed to decode
+        the json object. Optionally a Content-Type header for charset.
+
+        Raises:
+            ValueError: Invalid header or content.
+
         Returns:
-            A valid json object.
-        '''
-        content_length: int = int(header['content-length'])
-        log.debug('Header content length is %i.', content_length)
-        content_type: Optional[str] = header.get('content-type')
-        charset: str = 'utf-8'
-        if content_type:
-            for m in re.finditer(r'(?<!\w)charset=([\w\-]+)', content_type):
-                charset = m.group(1)
-                log.debug('Setting content charset to "%s', charset)
-        log.debug('Json reader reading %i bytes.', content_length)
-        content: bytes = await self._stream.read(content_length)
-        if not content:
-            raise EOFError()
-        content = content.decode(charset)
-        log.debug('Content received: %s', content)
-        obj = json.loads(content)
-        log.debug('Json object parsed: %s', obj)
-        return obj
+            Any: Parsed json object or None if EOF reached.
+        """
+        header: Dict[str, str] = await self.read_headers()
+        if not header:
+            return None
+        charset = self._encoding
+        if 'content-length' not in header:
+            raise ValueError('Invalid header: Content-Length not specified.')
+        content_length = header['content-length']
+        if not content_length.isdigit():
+            raise ValueError(f'Invalid Content-Length: "{content_length}"')
+        content_length = int(content_length)
+        if 'content-type' in header:
+            match = re.fullmatch(r'(\S+);\s*charset=(\S+)', header['content-type'])
+            if match is not None:
+                content_type, charset = match.groups()
+                if content_type != 'application/json':
+                    raise ValueError(f'Invalid Content-Type: {content_type}')
+        loop = asyncio.get_event_loop()
+        content = b''
+        while True:
+            tmp = await loop.run_in_executor(None, self.stream.read, content_length - len(content))
+            if not tmp:
+                return None
+            content += tmp
+            if len(content) == content_length:
+                break
+        content = content.decode(charset, errors='strict')
+        return json.loads(content)
 
 
-class JsonStreamWriter:
-    ' An adapater to a writer stream, which allows to write headers and objects serialized with json. '
+class JsonBinaryWriter(JsonWriter):
+    ' Writes binary json data. '
     def __init__(
         self,
-        stream: AsyncWriterStream,
-        separator: str = ':',
+        write: Callable[[bytes], None],
+        linebreak: str = '\r\n',
+        charset: str = 'utf-8',
+        encoding: str = 'utf-8'):
+        self.write = write
+        self._linebreak = linebreak
+        self._charset = charset
+        self._encoding = encoding
+
+    def send_header(self, header: str, value: str):
+        content = f'{header}: {value}{self._linebreak}'
+        header_bytes = bytes(content, self._encoding)
+        self.write(header_bytes)
+
+    def end_header(self):
+        self.write(bytes(self._linebreak, self._encoding))
+
+    def write_json(self, o: Any):
+        content = json.dumps(o, default=lambda x: x.__dict__)
+        content = bytes(content, self._charset)
+        self.send_header('Content-Length', str(len(content)))
+        self.send_header('Content-Type', f'application/json; charset={self._charset}')
+        self.end_header()
+        self.write(content)
+
+
+class JsonSocketReader(JsonStreamReader):
+    " Extends the json stream reader to accept sockets as streams. "
+    def __init__(
+        self,
+        sock: socket,
+        poll_freq: float = 1.0,
         linebreak: str = '\r\n',
         encoding: str = 'utf-8'):
-        self._stream = stream
-        self._separator = bytes(separator, encoding)
-        self._linebreak = bytes(linebreak, encoding)
+        super().__init__(self, linebreak, encoding)
+        self.__sock = sock
+        self.__poll_freq = poll_freq
+        self.__buffer = b''
+
+    def poll(self):
+        " Poll the socket until data can be read and add it to the buffer. "
+        while True:
+            print('Waiting for data...')
+            ready, _, err = select([self.__sock], [], [self.__sock], self.__poll_freq)
+            if err:
+                raise RuntimeError(err)
+            if ready:
+                break
+        data = self.__sock.recv(1024)
+        if not data:
+            raise EOFError()
+        print('data read:', data)
+        self.__buffer += data
+
+    def readline(self, *args):
+        " Polls the socket until a line can be read. "
+        while self._linebreak not in self.__buffer:
+            self.poll()
+        line, self.__buffer = self.__buffer.split(self._linebreak, maxsplit=1)
+        return line + self._linebreak
+
+    def read(self, n: int = -1):
+        " Polls the socket until EOF is reached if n < 0, or until the buffer has n many bytes. Then returns the polled data. "
+        if n < 0:
+            try:
+                while True:
+                    self.poll()
+            except EOFError:
+                data = self.__buffer
+                self.__buffer = b''
+                return data
+        else:
+            while len(self.__buffer) < n:
+                self.poll()
+            data, self.__buffer = self.__buffer[:n], self.__buffer[n:]
+            return data
+
+
+class AsyncIoJsonReader(JsonReader):
+    def __init__(
+        self, stream: asyncio.StreamReader, linebreak: str = '\r\n', encoding: str = 'utf-8'):
+        self.stream = stream
+        self._linebreak = linebreak.encode(encoding)
         self._encoding = encoding
-        self._content_type = f'application/json; charset={encoding}'
-    
-    async def send_header(
-        self,
-        setting: str,
-        value: str):
-        ''' Sends a single line of the header, consisting of a string for
-            the setting and a string for the value of the setting.
-        Parameters:
-            setting: Name of the setting to add to the header.
-            value: Value of the setting.
-        '''
-        log.debug('Json writer sending header "%s" with value "%s".', setting, value)
-        setting = bytes(setting, self._encoding)
-        value = bytes(' ' + value, self._encoding)
-        data = setting + self._separator + value + self._linebreak
-        await self._stream.write(data)
 
-    async def end_header(self):
-        ' Sends the header terminator string. '
-        await self._stream.write(self._linebreak)
+    async def read_headers(self):
+        headers: Dict[str, str] = {}
+        while True:
+            line = await self.stream.readuntil(self._linebreak)
+            if not line:
+                return None
+            if line == self._linebreak:
+                return headers
+            line = line.decode(self._encoding)
+            header, value = line.split(':')
+            headers[header.strip().lower()] = value.strip()
 
-    async def write(self, o: Any):
-        ''' Writes a json serializable object to the underlying stream
-            using the provided encoding.
-        Parameters:
-            o: The json serializable object to write.
-        '''
-        content = json.dumps(o, default=lambda x: x.__dict__)
-        content = bytes(content, self._encoding)
-        await self.send_header(setting='Content-Length', value=str(len(content)))
-        await self.send_header(setting='Content-Type', value=self._content_type)
-        await self.end_header()
-        log.debug('JsonWriterStream sending content (%i bytes).', len(content))
-        await self._stream.write(content)
+    async def read_json(self):
+        headers: Dict[str, str] = await self.read_headers()
+        if headers is None:
+            return None
+        if 'content-length' not in headers:
+            raise ValueError('Invalid header: Content-Length missing.')
+        content_length = headers['content-length']
+        if not content_length.isdigit():
+            raise ValueError(f'Invalid Content-Length value: {content_length}')
+        charset = 'utf-8'
+        if 'content-type' in headers:
+            match = re.fullmatch(r'(\S+);\s*charset=(\S+)', headers['content-type'])
+            if match is not None:
+                content_type, charset = match.groups()
+                if content_type != 'application/json':
+                    raise ValueError(f'Invalid Content-Type: {content_type}')
+        content_length = int(content_length)
+        try:
+            content = await self.stream.readexactly(content_length)
+        except asyncio.IncompleteReadError:
+            return None
+        content = content.decode(charset)
+        return json.loads(content)

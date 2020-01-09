@@ -1,48 +1,46 @@
 from __future__ import annotations
-from typing import Iterable, Callable, Iterator, Tuple, Union
+from typing import Callable, Union, List, Optional
 import asyncio
 import logging
-from .core import *
-from .streams import JsonStreamReader, JsonStreamWriter, AsyncReaderStream, AsyncWriterStream
-from .util import validate_json, restore_message
+import json
+
+from .core import MessageObject, NotificationObject, RequestObject, ResponseObject, ErrorCodes, ErrorObject
+from .streams import JsonReader, JsonWriter
+from .parser import MessageParser
 
 log = logging.getLogger(__name__)
 
-__all__ = ('JsonRpcProtocol',)
+__all__ = ['JsonRpcConnection']
 
 
-class JsonRpcProtocol:
+class JsonRpcConnection:
     ' This is a implementation for the json-rpc-protocol. '
     def __init__(
         self,
-        reader: AsyncReaderStream,
-        writer: AsyncWriterStream,
-        linebreak: str = '\r\n',
-        encoding: str = 'utf-8'):
+        reader: JsonReader,
+        writer: JsonWriter):
         """Initializes the protocol with a reader and writer task.
 
         Args:
-            reader (AsyncReaderStream): Input stream.
-            writer (AsyncWriterStream): Output stream.
-            linebreak (str, optional): Message linebreak character. Defaults to '\r\n'.
-            encoding (str, optional): Encoding of the streams. Defaults to 'utf-8'.
+            reader (JsonReader): Input stream.
+            writer (JsonWriter): Output stream.
         """
-        self._reader = JsonStreamReader(reader, linebreak=linebreak, encoding=encoding)
-        self._writer = JsonStreamWriter(writer, linebreak=linebreak, encoding=encoding)
+        self.reader = reader
+        self.writer = writer
         self._writer_queue = asyncio.Queue()
         self._methods = {}
         self._requests = {}
 
     async def run_until_finished(self):
         ' Runs the protocol until all subtasks finish. '
-        log.info('JsonRpcProtocol starting.')
+        log.info('Connection starting.')
         try:
             await asyncio.gather(
                 self._reader_task(),
                 self._writer_task())
         except asyncio.CancelledError:
-            log.info('Stopping JsonRpcProtocol due to cancellation.')
-        log.info('JsonRpcProtocol all tasks finished. Exiting.')
+            log.info('Stopping Connection due to cancellation.')
+        log.info('JsonRpcConnection all tasks finished. Exiting.')
 
     def on(self, method: str, callback: Callable):
         """Registers a method.
@@ -57,8 +55,7 @@ class JsonRpcProtocol:
         self._methods[method] = callback
 
     async def send(
-        self,
-        message_or_batch: Union[MessageObject, List[MessageObject]]
+        self, message_or_batch: Union[MessageObject, List[MessageObject]]
         ) -> Optional[ResponseObject, List[ResponseObject]]:
         """Sends a message or batch of messages over the connection.
 
@@ -150,54 +147,15 @@ class JsonRpcProtocol:
             log.debug('Returning response to method call of %s(%s) with id %s.', method, params, id)
         return response
 
-    async def _handle_message_or_batch(
-        self,
-        message_or_batch: Union[List[dict], dict]) -> Optional[ResponseObject, List[ResponseObject]]:
-        """Multiplexes the message handler between a single message or a batch.
-
-        The provided messages are dictionaries of deserialized json strings.
+    async def _handle_message(self, message: MessageObject) -> Optional[ResponseObject]:
+        """ Handles any type of jrpc message object.
 
         Args:
-            message_or_batch (Union[List[dict], dict]):
-                Single dictionary or batch of dictionaries.
+            message (MessageObject): Incoming message object.
 
         Returns:
-            Optional[ResponseObject, List[ResponseObject]]:
-                Response objects which need to be sent back to sender.
-                This may be responses stating, that the input object was invalid,
-                or the result of a request execution.
+            Optional[ResponseObject]: Response to request messages.
         """
-        if isinstance(message_or_batch, list):
-            log.debug('Handling raw json batch: %s', message_or_batch)
-            tasks = [
-                self._handle_message(msg)
-                for msg in message_or_batch
-            ]
-            return list(filter(None, await asyncio.gather(*tasks)))
-        else:
-            return await self._handle_message(message_or_batch)
-
-    async def _handle_message(self, message: dict) -> Optional[ResponseObject]:
-        """Handles a single incoming message.
-
-        The incoming message must be a deserialized json dictionary.
-        Other types will result in a an invalid message response.
-        Responses returned by this method must be returned to the sender.
-
-        Args:
-            message (dict): Message to handle. Deserialized json object.
-
-        Returns:
-            Optional[ResponseObject]: Response with invalid json object parsing status,
-                or execution result.
-        """
-        log.debug('Handling message: %s', message)
-        invalid = validate_json(message)
-        if invalid is not None:
-            log.debug('Handled message is invalid, creating response: %s', invalid)
-            return invalid
-        message = restore_message(message)
-        log.debug('Restored original message from json: %s', message)
         if isinstance(message, RequestObject):
             log.info('Calling request "%i" method "%s".', message.id, message.method)
             return await self._call(message.method, getattr(message, 'params', None), message.id)
@@ -223,22 +181,29 @@ class JsonRpcProtocol:
         try:
             while True:
                 log.debug('Waiting for message from stream.')
-                header: dict = await self._reader.header()
-                if not header or 'content-length' not in header:
-                    log.warning('Invalid header: %s', header)
-                    continue
-                log.debug('Header received: %s', header)
-                message = await self._reader.read(header)
-                log.debug('Message content received: %s', message)
-                responses = await self._handle_message_or_batch(message)
+                try:
+                    obj = await self.reader.read_json()
+                    if obj is None:
+                        log.debug('Reader task read EOF.')
+                        break
+                    parser = MessageParser(obj)
+                    handled_messages = await asyncio.gather(*map(self._handle_message, parser.valid))
+                    responses = list(filter(None, handled_messages)) + parser.errors
+                except json.JSONDecodeError as e:
+                    log.exception('Reader encountered exception while parsing json.')
+                    responses = ResponseObject(None, error=ErrorObject(ErrorCodes.ParseError, message=str(e)))
                 if not responses:
                     log.debug('Reader generated empty response.')
                 else:
                     log.debug('Reader sending responses to the writer task: %s', responses)
-                    await self._writer_queue.put(responses)
+                    if parser.is_batch:
+                        await self._writer_queue.put(responses)
+                    else:
+                        for response in responses:
+                            await self._writer_queue.put(response)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
             log.debug('Reader task exiting because of %s.', type(e))
-            self._writer_queue.put_nowait(self)
+        await self._writer_queue.put(self)
         log.info('Reader task finished.')
 
     async def _writer_task(self):
@@ -255,7 +220,7 @@ class JsonRpcProtocol:
                     log.debug('Writer throwing invalid message away: %s', message)
                 else:
                     log.debug('Writing message: %s', message)
-                    await self._writer.write(message)
+                    self.writer.write_json(message)
         except asyncio.CancelledError:
             log.debug('Writer task stopped because of cancellation event.')
         log.info('Writer task finished.')

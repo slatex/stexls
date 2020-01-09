@@ -4,8 +4,8 @@ Use open_connection() to create a client and use start_server() to create a serv
 from typing import Optional, Callable
 import asyncio
 import logging
-from .streams import AsyncIoReaderStream, AsyncIoWriterStream
-from .protocol import JsonRpcProtocol
+from .streams import AsyncIoJsonReader, JsonBinaryWriter
+from .connection import JsonRpcConnection
 from .dispatcher import Dispatcher
 
 log = logging.getLogger(__name__)
@@ -14,15 +14,15 @@ __all__ = ['open_connection', 'start_server']
 
 
 async def open_connection(
-    dispatcher_factory: Callable[[JsonRpcProtocol], Dispatcher],
+    dispatcher_factory: Callable[[JsonRpcConnection], Dispatcher],
     host: str = 'localhost', port: int = 0):
     """Connects a client to a given host and port.
-    
+
     Args:
-        dispatcher_factory (Callable[[JsonRpcProtocol], Dispatcher]): Factory for a dispatcher for the connection.
+        dispatcher_factory (Callable[[JsonRpcConnection], Dispatcher]): Factory for a dispatcher for the connection.
         host (str, optional): Server host. Defaults to 'localhost'.
         port (int, optional): Server port. Defaults to 0.
-    
+
     Returns:
         2-Tuple: First item is the dispatcher for the connection.
             Second is the task the client runs on.
@@ -31,32 +31,32 @@ async def open_connection(
     reader, writer = await asyncio.open_connection(host, port)
     peername = writer.get_extra_info('peername')
     log.info('Client connected to %s.', peername)
-    protocol = JsonRpcProtocol(
-        AsyncIoReaderStream(reader),
-        AsyncIoWriterStream(writer))
-    dispatcher = dispatcher_factory(protocol)
+    connection = JsonRpcConnection(
+        AsyncIoJsonReader(reader),
+        JsonBinaryWriter(writer.write))
+    dispatcher = dispatcher_factory(connection)
     async def client_run_task():
         try:
-            log.debug('Starting client protocol loop.')
-            await protocol.run_until_finished()
+            log.debug('Starting client connection loop.')
+            await connection.run_until_finished()
             log.debug('Client loop of %s finished without errors.', peername)
         finally:
             log.info('Client disconnected from %s.', peername)
-    task = asyncio.create_task(client_run_task()) 
+    task = asyncio.create_task(client_run_task())
     return dispatcher, task
 
 
 async def start_server(
-    dispatcher_factory: Callable[[JsonRpcProtocol], Dispatcher],
+    dispatcher_factory: Callable[[JsonRpcConnection], Dispatcher],
     host: str = 'localhost',
     port: int = 0):
     """Starts a asyncio tcp server. At the given host and port.
-    
+
     Args:
-        dispatcher_factory (Callable[[JsonRpcProtocol], Dispatcher]): A factory for a dispatcher for each new connection.
+        dispatcher_factory (Callable[[JsonRpcConnection], Dispatcher]): A factory for a dispatcher for each new connection.
         host (str, optional): Server host. Defaults to 'localhost'.
         port (int, optional): Server pot. Defaults to 0.
-    
+
     Returns:
         3-Tuple: First is the host and port the server is bound to.
             Second is the asyncio Task the server runs at.
@@ -66,19 +66,19 @@ async def start_server(
     async def connect(reader, writer):
         peername = writer.get_extra_info('peername')
         log.info('Server accepted connection from %s.', peername)
-        protocol = JsonRpcProtocol(
-            AsyncIoReaderStream(reader),
-            AsyncIoWriterStream(writer))
-        connection = dispatcher_factory(protocol)
-        connections.append(connection)
+        connection = JsonRpcConnection(
+            AsyncIoJsonReader(reader),
+            JsonBinaryWriter(writer.write))
+        dispatcher = dispatcher_factory(connection)
+        connections.append(dispatcher)
         try:
             log.debug('Starting server client loop.')
-            await protocol.run_until_finished()
+            await connection.run_until_finished()
             log.debug('Client loop of %s finished without errors.', peername)
         except:
             log.exception('Server connection to %s closed by exception.')
         finally:
-            connections.remove(connection)
+            connections.remove(dispatcher)
             log.info('Server connection to %s closed.', peername)
     log.info('Starting server on %s:%i ...', host, port)
     server = await asyncio.start_server(connect, host, port)
@@ -92,5 +92,5 @@ async def start_server(
             log.debug('Server loop finished without errors.')
         finally:
             log.info('Server %s:%i closed.', host, port)
-    task = asyncio.create_task(serving_task()) 
+    task = asyncio.create_task(serving_task())
     return info, task, connections

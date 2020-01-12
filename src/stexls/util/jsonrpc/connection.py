@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Union, List, Optional, Any, Dict, Awaitable
+from typing import Callable, Union, List, Optional, Any, Dict, Awaitable, Tuple
 import re
 import asyncio
 import logging
@@ -19,8 +19,12 @@ __all__ = ['JsonRpcConnection', 'start_server', 'open_connection', 'open_stdio_c
 class JsonRpcConnection:
     ' This is a implementation for the json-rpc-protocol. '
     def __init__(self, stream: JsonStream):
+        """ Initializes the connection with a stream which can read and write json data.
+
+        Args:
+            stream: IO Stream which handles json serialization and protocol header stuff.
+        """
         self._stream = stream
-        self._writer_queue = asyncio.Queue()
         self._methods = {}
         self._requests = {}
 
@@ -35,18 +39,28 @@ class JsonRpcConnection:
             raise ValueError(f'Method "{method}" is already registered with this protocol.')
         self._methods[method] = callback
 
-    def send(self, message: Union[NotificationObject, RequestObject, ResponseObject]):
+    def send(self, message: Union[NotificationObject, RequestObject]) -> Optional[Awaitable[Any]]:
+        """ Sends a message of any type.
+
+        Args:
+            message: A message you want to send.
+
+        Returns:
+            Optional[Awaitable[Any]]: A future with the result of a request.
+        """
         if isinstance(message, NotificationObject):
             self.send_notification(message)
         elif isinstance(message, ResponseObject):
-            self.send_response(message)
+            raise ValueError('The user should not send response objects.')
         elif isinstance(message, RequestObject):
             return self.send_request(message)
 
     def send_notification(self, message: NotificationObject):
+        ' Specifically sends a notification. '
         self._stream.write_json(message)
 
     def send_request(self, message: RequestObject) -> Awaitable[Any]:
+        ' Sends a request and returns the future object with the results. '
         if message.id in self._requests:
             raise ValueError('Duplicate message id.')
         result = asyncio.Future()
@@ -54,10 +68,11 @@ class JsonRpcConnection:
         self._stream.write_json(message)
         return result
 
-    def send_response(self, message: ResponseObject):
-        self._stream.write_json(message)
-
     def _handle_response(self, response: ResponseObject):
+        ''' Handles an response object.
+
+        Performs error checks and resolves request if ids match.
+        '''
         if response.id is None:
             log.warning('Received response without id:\n%s', response)
         elif response.id not in self._requests:
@@ -72,14 +87,24 @@ class JsonRpcConnection:
                 result.set_result(response.result)
 
     async def _handle_notification(self, notification: NotificationObject):
+        ' Handles incoming notifications. This only calls the contained method. '
         await self.call(
             notification.method, getattr(notification, 'params', None))
 
-    async def _handle_request(self, request: RequestObject):
+    async def _handle_request(self, request: RequestObject) -> Awaitable[Any]:
+        """ Handles a request.
+
+        Calls the contained method with parameters and returns the response object.
+
+        Returns:
+            ResponseObject: ResponseObject with results or errors.
+        """
         return await self.call(
             request.method, getattr(request, 'params', None), request.id)
 
-    async def _handle_message(self, message):
+    async def _handle_message(
+        self, message: Union[RequestObject, NotificationObject, ResponseObject]) -> Optional[ResponseObject]:
+        " Handles any type of incoming message and returns the response if it is a request. "
         if isinstance(message, ResponseObject):
             self._handle_response(message)
         elif isinstance(message, NotificationObject):
@@ -92,6 +117,20 @@ class JsonRpcConnection:
         method: str,
         params: Union[list, dict, None] = None,
         id: Union[int, str] = None) -> Optional[ResponseObject]:
+        """ Calls a registered method.
+
+        Searches for the specified method and executes it using the list or dict
+        of parameters. If an ID is given, an response will be returned with the
+        execution results.
+
+        Args:
+            method: Method to execute.
+            params: Optional parameters passed to the method.
+            id: Optional response id. Responses will only be generated if this is not None.
+
+        Returns:
+            Optional[ResponseObject]: Response object with the given ID if given.
+        """
         if not method in self._methods:
             log.warning('Method "%s" not found.', method, exc_info=1)
             response = ResponseObject(
@@ -121,7 +160,16 @@ class JsonRpcConnection:
                     id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
         return response
 
-    async def _handle(self, obj):
+    async def _handle(self, obj: dict):
+        """ Handles an incoming raw message.
+
+        The input is parsed as a MessageObject or batch of message objects.
+        the parsed messages are handled in parallel
+        and responses and errors are written to the output stream.
+
+        Args:
+            obj: Some dictionary parsed using json.
+        """
         parser = MessageParser(obj)
         log.debug(
             "Parsed message (%i valid, %i errors).", len(parser.valid), len(parser.errors))
@@ -138,7 +186,7 @@ class JsonRpcConnection:
                 self._stream.write_json(response)
 
     async def run_forever(self):
-        ' Launches and waits for completion of the reader stream task which reads incoming messages. '
+        ' Launches the incoming message reader. '
         log.info('Reader task started.')
         try:
             while True:
@@ -155,8 +203,30 @@ class JsonRpcConnection:
             log.debug('Reader task exiting because of %s.', type(e))
         log.info('Reader task finished.')
 
-async def start_server(dispatcher_factory: type, host: str = 'localhost', port: int = 0, encoding: str = 'utf-8', charset: str = None, newline: str = '\n') -> JsonStream:
+async def start_server(
+    dispatcher_factory: type,
+    host: str = 'localhost',
+    port: int = 0,
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n') -> Tuple[Tuple[str, int], asyncio.Task]:
+    """ Starts a tcp server.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        host: Host name to connect to.
+        port: Port to connect to.
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents. Uses encoding if None.
+        newline: Which character terminates lines.
+
+    Returns:
+        Tuple[Tuple[str, int], asyncio.Task]: Returns a tuple of host name and port the
+            server is running on, as well as the asyncio task the server runs on.
+    """
     def connect_fun(r, w):
+        peername = w.get_extra_info('peername')
+        log.info('Incoming connection from %s', peername)
         stream = JsonStream(
             r, w, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
@@ -171,7 +241,26 @@ async def start_server(dispatcher_factory: type, host: str = 'localhost', port: 
     return server_name, server_task
 
 async def open_connection(
-    dispatcher_factory: type, host: str = 'localhost', port: int = 0, encoding: str = 'utf-8', charset: str = None, newline: str = '\n') -> JsonStream:
+    dispatcher_factory: type,
+    host: str = 'localhost',
+    port: int = 0,
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n') -> JsonStream:
+    """ Opens a connection to a tcp server.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        host: Host name to connect to.
+        port: Port to connect to.
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents.
+        newline: Which character terminates lines.
+
+    Returns:
+        (Dispatcher, Task): Returns the dispatcher instance for this connection
+            as well as the task which runs the client's event loop.
+    """
     reader, writer = await asyncio.open_connection(host=host, port=port)
     stream = JsonStream(
         reader, writer, encoding=encoding, charset=charset, newline=newline)
@@ -188,6 +277,22 @@ async def open_stdio_connection(
     charset: str = None,
     newline: str = '\n',
     loop = None) -> JsonStream:
+    """ Opens connection using stdio.
+
+    Takes input and output file descriptors and uses
+    them as the streams for the json connection.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        input_fd: Input file descriptor of pipe.
+            Can also be a string of "stdin".
+        output_fd: Output file descriptor of pipe.
+            Can also be a string of "stdout" or "stderr".
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents.
+        newline: Which character terminates lines.
+        loop: Asyncio event loop.
+    """
     translate = {
         'stdin': sys.stdin.fileno,
         'stdout': sys.stdout.fileno,

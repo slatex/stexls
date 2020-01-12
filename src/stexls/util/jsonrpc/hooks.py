@@ -19,7 +19,7 @@ def alias(name: str):
 
 def request(f):
     log.debug('JsonRpc request hook: %s', f)
-    
+
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
 
@@ -47,7 +47,7 @@ def notification(f):
             raise ValueError('Mixing args and kwargs not allowed.')
         f(self, *args, **kwargs)
         method_name = getattr(f, _JSON_RPC_NAME)
-        return self.notification(method_name, args or kwargs)
+        self.notification(method_name, args or kwargs)
 
     return notification_wrapper
 

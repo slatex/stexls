@@ -1,121 +1,97 @@
 from __future__ import annotations
-from typing import Callable, Union, List, Optional
+from typing import Callable, Union, List, Optional, Any, Dict, Awaitable
+import re
 import asyncio
 import logging
 import json
+import os
+import sys
 
 from .core import MessageObject, NotificationObject, RequestObject, ResponseObject, ErrorCodes, ErrorObject
-from .streams import JsonReader, JsonWriter
+from .streams import JsonStream
 from .parser import MessageParser
 
 log = logging.getLogger(__name__)
 
-__all__ = ['JsonRpcConnection']
+__all__ = ['JsonRpcConnection', 'start_server', 'open_connection', 'open_stdio_connection']
 
 
 class JsonRpcConnection:
     ' This is a implementation for the json-rpc-protocol. '
-    def __init__(
-        self,
-        reader: JsonReader,
-        writer: JsonWriter):
-        """Initializes the protocol with a reader and writer task.
-
-        Args:
-            reader (JsonReader): Input stream.
-            writer (JsonWriter): Output stream.
-        """
-        self.reader = reader
-        self.writer = writer
+    def __init__(self, stream: JsonStream):
+        self._stream = stream
         self._writer_queue = asyncio.Queue()
         self._methods = {}
         self._requests = {}
 
-    async def run_until_finished(self):
-        ' Runs the protocol until all subtasks finish. '
-        log.info('Connection starting.')
-        try:
-            await asyncio.gather(
-                self._reader_task(),
-                self._writer_task())
-        except asyncio.CancelledError:
-            log.info('Stopping Connection due to cancellation.')
-        log.info('JsonRpcConnection all tasks finished. Exiting.')
-
     def on(self, method: str, callback: Callable):
-        """Registers a method.
+        """ Registers a method as a request and notification handler.
 
         Args:
             method (str): Method name to register.
-            callback (Callable): The function body, that will be called.
+            callback (Callable): The function body that will be called.
         """
         if method in self._methods:
             raise ValueError(f'Method "{method}" is already registered with this protocol.')
-        log.info('Registering json-rpc callback "%s"', method)
         self._methods[method] = callback
 
-    async def send(
-        self, message_or_batch: Union[MessageObject, List[MessageObject]]
-        ) -> Optional[ResponseObject, List[ResponseObject]]:
-        """Sends a message or batch of messages over the connection.
+    def send(self, message: Union[NotificationObject, RequestObject, ResponseObject]):
+        if isinstance(message, NotificationObject):
+            self.send_notification(message)
+        elif isinstance(message, ResponseObject):
+            self.send_response(message)
+        elif isinstance(message, RequestObject):
+            return self.send_request(message)
 
-        Args:
-            message_or_batch (Union[MessageObject, List[MessageObject]]):
-                Single message object or batch of message objects.
+    def send_notification(self, message: NotificationObject):
+        self._stream.write_json(message)
 
-        Raises:
-            ValueError: If a request has an id that already exists.
+    def send_request(self, message: RequestObject) -> Awaitable[Any]:
+        if message.id in self._requests:
+            raise ValueError('Duplicate message id.')
+        result = asyncio.Future()
+        self._requests[message.id] = result
+        self._stream.write_json(message)
+        return result
 
-        Returns:
-            Optional[ResponseObject, List[ResponseObject]]:
-                A response object or list ob response object for each
-                request that was sent.
-        """
-        if isinstance(message_or_batch, list):
-            log.debug('Dispatching batch: %s', message_or_batch)
-            for msg in message_or_batch:
-                if isinstance(msg, RequestObject):
-                    if msg.id in self._requests:
-                        raise ValueError(f'Duplicate request id: {msg.id}')
-            requests = {
-                msg.id: asyncio.Future()
-                for msg in message_or_batch
-                if isinstance(msg, RequestObject)
-            }
-            self._requests.update(requests)
-            self._writer_queue.put_nowait(message_or_batch)
-            return await asyncio.gather(*requests.values())
-        elif isinstance(message_or_batch, RequestObject):
-            log.debug('Dispatching request: %s', message_or_batch)
-            if message_or_batch.id in self._requests:
-                raise ValueError(f'Duplicate request id: {message_or_batch.id}')
-            request = asyncio.Future()
-            self._requests[message_or_batch.id] = request
-            self._writer_queue.put_nowait(message_or_batch)
-            return await request
-        elif isinstance(message_or_batch, MessageObject):
-            log.debug('Dispatching %s: %s.', type(message_or_batch), message_or_batch)
-            self._writer_queue.put_nowait(message_or_batch)
+    def send_response(self, message: ResponseObject):
+        self._stream.write_json(message)
 
-    async def _call(
+    def _handle_response(self, response: ResponseObject):
+        if response.id is None:
+            log.warning('Received response without id:\n%s', response)
+        elif response.id not in self._requests:
+            log.warning('Received response with unknown id:\n%s', response)
+        else:
+            log.debug('Resolving request:\n%s', response)
+            result = self._requests[response.id]
+            del self._requests[response.id]
+            if hasattr(response, 'error'):
+                result.set_exception(response.error.to_exception())
+            else:
+                result.set_result(response.result)
+
+    async def _handle_notification(self, notification: NotificationObject):
+        await self.call(
+            notification.method, getattr(notification, 'params', None))
+
+    async def _handle_request(self, request: RequestObject):
+        return await self.call(
+            request.method, getattr(request, 'params', None), request.id)
+
+    async def _handle_message(self, message):
+        if isinstance(message, ResponseObject):
+            self._handle_response(message)
+        elif isinstance(message, NotificationObject):
+            await self._handle_notification(message)
+        elif isinstance(message, RequestObject):
+            return await self._handle_request(message)
+
+    async def call(
         self,
         method: str,
         params: Union[list, dict, None] = None,
         id: Union[int, str] = None) -> Optional[ResponseObject]:
-        """Calls a registered method callback with the given parameters.
-
-        Args:
-            method (str): The callback method to call.
-            params (Union[list, dict, None]): Optional list or dict of parameters. Defaults to None.
-            id (Union[int, str], optional): Optional id if a response should be awaited. Defaults to None.
-
-        Raises:
-            ValueError: Raised if the type of the parameters argument is invalid.
-
-        Returns:
-            Optional[ResponseObject]: A respose object if the id was specified.
-        """
-        log.info('Calling method %s(%s) with id %s.', method, params, id)
         if not method in self._methods:
             log.warning('Method "%s" not found.', method, exc_info=1)
             response = ResponseObject(
@@ -143,84 +119,96 @@ class JsonRpcConnection:
                 log.exception('Method %s(%s) raised an unexpected error.', method, params)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
-        if id is not None:
-            log.debug('Returning response to method call of %s(%s) with id %s.', method, params, id)
         return response
 
-    async def _handle_message(self, message: MessageObject) -> Optional[ResponseObject]:
-        """ Handles any type of jrpc message object.
+    async def _handle(self, obj):
+        parser = MessageParser(obj)
+        log.debug(
+            "Parsed message (%i valid, %i errors).", len(parser.valid), len(parser.errors))
+        responses = await asyncio.gather(
+            *map(self._handle_message, parser.valid))
+        responses = filter(None, responses)
+        responses = list(responses) + parser.errors
+        if not responses:
+            log.debug('No responses to send back.')
+        elif parser.is_batch:
+            self._stream.write_json(responses)
+        else:
+            for response in responses:
+                self._stream.write_json(response)
 
-        Args:
-            message (MessageObject): Incoming message object.
-
-        Returns:
-            Optional[ResponseObject]: Response to request messages.
-        """
-        if isinstance(message, RequestObject):
-            log.info('Calling request "%i" method "%s".', message.id, message.method)
-            return await self._call(message.method, getattr(message, 'params', None), message.id)
-        elif isinstance(message, NotificationObject):
-            log.info('Calling notification method "%s".', message.method)
-            await self._call(message.method, getattr(message, 'params', None))
-        elif isinstance(message, ResponseObject):
-            request: asyncio.Future = self._requests.get(getattr(message, 'id', None))
-            if request is None:
-                log.warning('Response with unexpected id (%s): %s', getattr(message, 'id', None), message)
-            else:
-                del self._requests[message.id]
-                if hasattr(message, 'error'):
-                    log.warning('Resolving request "%i" with error: %s', message.id, message.error)
-                    request.set_exception(message.error.to_exception())
-                else:
-                    log.info('Resolving id "%i".', message.id)
-                    request.set_result(message.result)
-
-    async def _reader_task(self):
+    async def run_forever(self):
         ' Launches and waits for completion of the reader stream task which reads incoming messages. '
         log.info('Reader task started.')
         try:
             while True:
                 log.debug('Waiting for message from stream.')
                 try:
-                    obj = await self.reader.read_json()
-                    if obj is None:
-                        log.debug('Reader task read EOF.')
-                        break
-                    parser = MessageParser(obj)
-                    handled_messages = await asyncio.gather(*map(self._handle_message, parser.valid))
-                    responses = list(filter(None, handled_messages)) + parser.errors
+                    obj = await self._stream.read_json()
+                    log.debug('Message received: %s', obj)
+                    asyncio.create_task(self._handle(obj))
                 except json.JSONDecodeError as e:
                     log.exception('Reader encountered exception while parsing json.')
-                    responses = ResponseObject(None, error=ErrorObject(ErrorCodes.ParseError, message=str(e)))
-                if not responses:
-                    log.debug('Reader generated empty response.')
-                else:
-                    log.debug('Reader sending responses to the writer task: %s', responses)
-                    if parser.is_batch:
-                        await self._writer_queue.put(responses)
-                    else:
-                        for response in responses:
-                            await self._writer_queue.put(response)
+                    response = ResponseObject(None, error=ErrorObject(ErrorCodes.ParseError, message=str(e)))
+                    self._stream.write_json(response)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
             log.debug('Reader task exiting because of %s.', type(e))
-        await self._writer_queue.put(self)
         log.info('Reader task finished.')
 
-    async def _writer_task(self):
-        ' Launches and waits for completion of the writer stream task, which writes outgoing messages. '
-        log.info('Writer task started.')
-        try:
-            while True:
-                log.debug('Writer waiting for message from queue.')
-                message: Union[MessageObject, List[MessageObject]] = await self._writer_queue.get()
-                if message == self:
-                    log.info('Writer task received stop message. Exiting.')
-                    break
-                if not message:
-                    log.debug('Writer throwing invalid message away: %s', message)
-                else:
-                    log.debug('Writing message: %s', message)
-                    self.writer.write_json(message)
-        except asyncio.CancelledError:
-            log.debug('Writer task stopped because of cancellation event.')
-        log.info('Writer task finished.')
+async def start_server(dispatcher_factory: type, host: str = 'localhost', port: int = 0, encoding: str = 'utf-8', charset: str = None, newline: str = '\n') -> JsonStream:
+    def connect_fun(r, w):
+        stream = JsonStream(
+            r, w, encoding=encoding, charset=charset, newline=newline)
+        conn = JsonRpcConnection(stream)
+        _ = dispatcher_factory(conn)
+        asyncio.create_task(conn.run_forever())
+    server = await asyncio.start_server(connect_fun, host=host, port=port)
+    async def task():
+        async with server:
+            await server.serve_forever()
+    server_name = server.sockets[0].getsockname()[:2]
+    server_task = asyncio.create_task(task())
+    return server_name, server_task
+
+async def open_connection(
+    dispatcher_factory: type, host: str = 'localhost', port: int = 0, encoding: str = 'utf-8', charset: str = None, newline: str = '\n') -> JsonStream:
+    reader, writer = await asyncio.open_connection(host=host, port=port)
+    stream = JsonStream(
+        reader, writer, encoding=encoding, charset=charset, newline=newline)
+    conn = JsonRpcConnection(stream)
+    conn_task = asyncio.create_task(conn.run_forever())
+    dispatcher = dispatcher_factory(conn)
+    return dispatcher, conn_task
+
+async def open_stdio_connection(
+    dispatcher_factory: type,
+    input_fd: int = 'stdin',
+    output_fd: int = 'stdout',
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n',
+    loop = None) -> JsonStream:
+    translate = {
+        'stdin': sys.stdin.fileno,
+        'stdout': sys.stdout.fileno,
+        'stderr': sys.stderr.fileno,
+    }
+    input_fd = translate.get(input_fd, lambda: input_fd)()
+    output_fd = translate.get(output_fd, lambda: output_fd)()
+    input_pipe = os.fdopen(input_fd, 'rb', 0)
+    output_pipe = os.fdopen(output_fd, 'wb', 0)
+    loop = loop or asyncio.get_event_loop()
+    reader = asyncio.StreamReader(loop=loop)
+    await loop.connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(reader, loop=loop), input_pipe)
+    writer_transport, writer_protocol = await loop.connect_write_pipe(
+        lambda: asyncio.streams.FlowControlMixin(loop=loop),
+        output_pipe)
+    writer = asyncio.streams.StreamWriter(
+        writer_transport, writer_protocol, None, loop)
+    stream = JsonStream(
+        reader, writer, encoding=encoding, charset=charset, newline=newline)
+    conn = JsonRpcConnection(stream)
+    conn_task = asyncio.create_task(conn.run_forever())
+    dispatcher = dispatcher_factory(conn)
+    return dispatcher, conn_task

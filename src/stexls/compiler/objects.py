@@ -1,7 +1,7 @@
 """ This file contains the equivalent to c++ object files, but for stex.
 """
-from typing import List, Tuple
-from stexls.util.location import Location
+from typing import List, Tuple, Optional
+from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import LatexParser, Environment
 from stexls.compiler.tags import Module, Binding, Trefi, Defi, Symi, Symdef, GImport
 
@@ -29,6 +29,7 @@ class StexObject:
         self.gimports: List[GImport] = []
         self.exceptions: List[Tuple[Location, ValueError]] = []
         self.syntax_errors = []
+        self.success = False
         def visitor(env: Environment):
             try:
                 module = Module.from_environment(env)
@@ -62,7 +63,17 @@ class StexObject:
             except ValueError as e:
                 self.exceptions.append((env.location, e))
                 return
-
-        parser = LatexParser(file)
-        self.syntax_errors = parser.syntax_errors
-        parser.walk(visitor)
+        try:
+            parser = LatexParser(file)
+            self.syntax_errors = parser.syntax_errors
+            parser.walk(visitor)
+            self.success = True
+        except Exception as e:
+            try:
+                with open(file) as f:
+                    lines = f.readlines()
+            except:
+                lines = []
+            last_line = len(lines)
+            last_character = len(lines[-1]) if lines else 0
+            self.exceptions.append((Location(file, Range(Position(0, 0), Position(last_line, last_character))), e))

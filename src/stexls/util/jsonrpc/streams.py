@@ -75,6 +75,9 @@ class JsonStream:
             if not line:
                 raise EOFError()
             line = line.decode(self.encoding)
-            header, value = line.split(':', maxsplit=1)
+            try:
+                header, value = line.split(':', maxsplit=1)
+            except ValueError as e:
+                raise ValueError(f'Invalid line format in line "{line.strip()}": Missing ":" character.') from e
             headers[header.strip().lower()] = value.strip()
 

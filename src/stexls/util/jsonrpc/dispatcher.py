@@ -1,17 +1,19 @@
 from __future__ import annotations
-from typing import Union, Any, Awaitable, Optional
+from typing import Union, Any, Awaitable, Optional, Tuple
 from collections import defaultdict
 import asyncio
 import logging
 import itertools
+import os
+import sys
 from .core import RequestObject, NotificationObject
 from .hooks import extract_methods
 from .connection import JsonRpcConnection
+from .streams import JsonStream
 
 log = logging.getLogger(__name__)
 
-__all__ = ['Dispatcher']
-
+__all__ = ['Dispatcher', 'start_server', 'open_connection', 'open_stdio_connection']
 
 class Dispatcher:
     ''' A dispatcher is a hook that allows sending user messages to a connection
@@ -65,3 +67,123 @@ class Dispatcher:
         log.info('Dispatching notification %s(%s).', method, params)
         message = NotificationObject(method, params)
         self.connection.send_notification(message)
+
+
+async def start_server(
+    dispatcher_factory: type,
+    host: str = 'localhost',
+    port: int = 0,
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n') -> Tuple[Tuple[str, int], asyncio.Task]:
+    """ Starts a tcp server.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        host: Host name to connect to.
+        port: Port to connect to.
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents. Uses encoding if None.
+        newline: Which character terminates lines.
+
+    Returns:
+        Tuple[Tuple[str, int], asyncio.Task]: Returns a tuple of host name and port the
+            server is running on, as well as the asyncio task the server runs on.
+    """
+    def connect_fun(r, w):
+        peername = w.get_extra_info('peername')
+        log.info('Incoming connection from %s', peername)
+        stream = JsonStream(
+            r, w, encoding=encoding, charset=charset, newline=newline)
+        conn = JsonRpcConnection(stream)
+        _ = dispatcher_factory(conn)
+        asyncio.create_task(conn.run_forever())
+    server = await asyncio.start_server(connect_fun, host=host, port=port)
+    async def task():
+        async with server:
+            await server.serve_forever()
+    server_name = server.sockets[0].getsockname()[:2]
+    server_task = asyncio.create_task(task())
+    return server_name, server_task
+
+async def open_connection(
+    dispatcher_factory: type,
+    host: str = 'localhost',
+    port: int = 0,
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n') -> Tuple[Dispatcher, asyncio.Task]:
+    """ Opens a connection to a tcp server.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        host: Host name to connect to.
+        port: Port to connect to.
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents.
+        newline: Which character terminates lines.
+
+    Returns:
+        Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher instance for this connection
+            as well as the task which runs the client's event loop.
+    """
+    reader, writer = await asyncio.open_connection(host=host, port=port)
+    stream = JsonStream(
+        reader, writer, encoding=encoding, charset=charset, newline=newline)
+    conn = JsonRpcConnection(stream)
+    conn_task = asyncio.create_task(conn.run_forever())
+    dispatcher = dispatcher_factory(conn)
+    return dispatcher, conn_task
+
+async def open_stdio_connection(
+    dispatcher_factory: type,
+    input_fd: int = 'stdin',
+    output_fd: int = 'stdout',
+    encoding: str = 'utf-8',
+    charset: str = None,
+    newline: str = '\n',
+    loop = None) -> Tuple[Dispatcher, asyncio.Task]:
+    """ Opens connection using stdio.
+
+    Takes input and output file descriptors and uses
+    them as the streams for the json connection.
+
+    Args:
+        dispatcher_factory: A Dispatcher type.
+        input_fd: Input file descriptor of pipe.
+            Can also be a string of "stdin".
+        output_fd: Output file descriptor of pipe.
+            Can also be a string of "stdout" or "stderr".
+        encoding: Encoding of the sent binary data.
+        charset: Optional encoding of the sent contents.
+        newline: Which character terminates lines.
+        loop: Asyncio event loop.
+
+    Returns:
+        Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher for the connection
+            as well as the task the protocol runs on.
+    """
+    translate = {
+        'stdin': sys.stdin.fileno,
+        'stdout': sys.stdout.fileno,
+        'stderr': sys.stderr.fileno,
+    }
+    input_fd = translate.get(input_fd, lambda: input_fd)()
+    output_fd = translate.get(output_fd, lambda: output_fd)()
+    input_pipe = os.fdopen(input_fd, 'rb', 0)
+    output_pipe = os.fdopen(output_fd, 'wb', 0)
+    loop = loop or asyncio.get_event_loop()
+    reader = asyncio.StreamReader(loop=loop)
+    await loop.connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(reader, loop=loop), input_pipe)
+    writer_transport, writer_protocol = await loop.connect_write_pipe(
+        lambda: asyncio.streams.FlowControlMixin(loop=loop),
+        output_pipe)
+    writer = asyncio.streams.StreamWriter(
+        writer_transport, writer_protocol, None, loop)
+    stream = JsonStream(
+        reader, writer, encoding=encoding, charset=charset, newline=newline)
+    conn = JsonRpcConnection(stream)
+    conn_task = asyncio.create_task(conn.run_forever())
+    dispatcher = dispatcher_factory(conn)
+    return dispatcher, conn_task

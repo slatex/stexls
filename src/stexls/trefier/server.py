@@ -9,17 +9,12 @@ __all__ = ['TaggerServerDispatcher']
 
 import asyncio
 import logging
-import sys
 from typing import List, Dict, Any
 from stexls.trefier.models.tags import Tag
 from stexls.trefier.models.base import Model
 from stexls.util.cli import Cli, Arg, command
 from stexls.util.jsonrpc import dispatcher
-from stexls.util.jsonrpc.tcp import start_server
 from stexls.util.jsonrpc.hooks import method
-from stexls.util.jsonrpc.protocol import JsonRpcProtocol
-from stexls.util.jsonrpc.streams import AsyncBufferedReaderStream, AsyncBufferedWriterStream
-
 from stexls.trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
@@ -30,15 +25,15 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
     @method
     def load_model(self, path: str, force: bool = False) -> Dict[str, Any]:
         """Loads a model backend.
-        
+
         Args:
             path (str): Path to saved model.
             force (bool, optional): Allows loading if a model is already loaded. Defaults to False.
-        
+
         Raises:
             ValueError: Model already loaded and force is not set.
             ValueError: Model.load(path) returned None.
-        
+
         Returns:
             Dict[str, Any]: Loaded model information.
         """
@@ -57,14 +52,14 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
         except:
             log.exception('Failed to load model from "%s"', path)
             raise
-    
+
     @method
     def predict(self, *files: str) -> List[List[Tag]]:
         """Creates a list of tags for each provided file.
-        
+
         Raises:
             ValueError: No model loaded using load_model()
-        
+
         Returns:
             List[List[Tag]]: A list of tags for each file.
         """
@@ -82,10 +77,10 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
     @method
     def get_info(self) -> Dict[str, Any]:
         """Gets info about the loaded model.
-        
+
         Raises:
             ValueError: No model loaded.
-        
+
         Returns:
             Dict[str, Any]: Model information.
         """
@@ -106,7 +101,7 @@ if __name__ == '__main__':
 
         When the server started accepting messages, a line
         with <hostname>:<port> will be printed to stdout.
-        
+
         Args:
             host (str): Server hostname.
             port (int): Server port. "0" for any free port.
@@ -114,7 +109,7 @@ if __name__ == '__main__':
         """
         logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
         log.info('Creating tcp server at %s:%i.', host, port)
-        (host, port), server, _ = await start_server(TaggerServerDispatcher, host, port)
+        (host, port), server = await dispatcher.start_server(TaggerServerDispatcher, host, port)
         print('{}:{}'.format(host, port), flush=True)
         await server
 
@@ -122,18 +117,17 @@ if __name__ == '__main__':
         loglevel=Arg(default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'))
     async def stdio(loglevel: str = 'error'):
         """Starts a tagger json-rpc server reading from stdin and writing to stdout.
-        
+
         Args:
             loglevel (str, optional): Logging level (error, warning, info, debug). Defaults to 'error'.
         """
         logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
         log.info('Creating json-rpc server using stdin and stdout streams.')
-        connection = JsonRpcProtocol(
-            AsyncBufferedReaderStream(sys.stdin.buffer),
-            AsyncBufferedWriterStream(sys.stdout.buffer))
-        _ = TaggerServerDispatcher(connection)
-        await connection.run_until_finished()
+        _, server = await dispatcher.open_stdio_connection(TaggerServerDispatcher)
+        await server
 
     cli = Cli([tcp, stdio], description=__doc__)
-    asyncio.run(cli.dispatch())
-    log.info('Server stopped.')
+    try:
+        asyncio.run(cli.dispatch())
+    finally:
+        log.info('Server stopped.')

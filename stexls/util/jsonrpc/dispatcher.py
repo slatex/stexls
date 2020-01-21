@@ -13,7 +13,7 @@ from .streams import JsonStream
 
 log = logging.getLogger(__name__)
 
-__all__ = ['Dispatcher', 'start_server', 'open_connection', 'open_stdio_connection']
+__all__ = ['Dispatcher']
 
 class Dispatcher:
     ''' A dispatcher is a hook that allows sending user messages to a connection

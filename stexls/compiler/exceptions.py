@@ -1,12 +1,9 @@
 from __future__ import annotations
-from typing import Union
-from trefier.misc.location import Location
 
 __all__ = [
     'LinterException',
-    'LinterArgumentCountException',
-    'LinterModuleFromFilenameException',
-    'LinterInternalException'
+    'ArgumentCountException',
+    'InternalException'
 ]
 
 
@@ -14,22 +11,14 @@ class LinterException(Exception):
     pass
 
 
-class LinterArgumentCountException(LinterException):
+class ArgumentCountException(LinterException):
     @staticmethod
-    def create(expected: Union[int, str], found: int) -> LinterArgumentCountException:
-        return LinterArgumentCountException(
+    def create(expected, found) -> ArgumentCountException:
+        return ArgumentCountException(
             f'Expected were {expected} argument(s) (found {found} argument(s))')
 
 
-class LinterModuleFromFilenameException(LinterException):
+class InternalException(LinterException):
     @staticmethod
-    def create() -> LinterModuleFromFilenameException:
-        return LinterModuleFromFilenameException(
-            f'Unable to extract module from file:'
-            f'Expected filename format is .../<base>/<repository>/"source"/<module>')
-
-
-class LinterInternalException(LinterException):
-    @staticmethod
-    def create(message: str) -> LinterInternalException:
-        return LinterInternalException(f'Internal exception: {message}')
+    def create(message: str) -> InternalException:
+        return InternalException(f'Internal exception: {message}')

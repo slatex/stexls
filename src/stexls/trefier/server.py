@@ -9,7 +9,7 @@ __all__ = ['TaggerServerDispatcher']
 
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Awaitable
 from stexls.trefier.models.tags import Tag
 from stexls.trefier.models.base import Model
 from stexls.util.cli import Cli, Arg, command
@@ -37,7 +37,6 @@ class TaggerServerDispatcher(dispatcher.Dispatcher):
         Returns:
             Dict[str, Any]: Loaded model information.
         """
-        TaggerServerDispatcher.model
         log.info('load_model(%s, %s)', path, force)
         if not force and TaggerServerDispatcher.model is not None:
             log.debug('Attempt to load a model even though one is already loaded.')
@@ -96,37 +95,37 @@ if __name__ == '__main__':
         host=Arg(default='localhost', help='Hostname to bind server to.'),
         port=Arg(type=int, default=0, help='Port to bind server on.'),
         loglevel=Arg(default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'))
-    async def tcp(host: str, port: int, loglevel: str = 'error'):
+    async def socket(host: str, port: int, loglevel: str = 'error') -> Awaitable[Any]:
         """ Creates a tcp socket server that communicates using json-rcp.
 
-        When the server started accepting messages, a line
-        with <hostname>:<port> will be printed to stdout.
+        After the server starts, a message with <hostname>:<port> will be printed to stdout.
 
         Args:
             host (str): Server hostname.
             port (int): Server port. "0" for any free port.
             loglevel (str, optional): Loglevel (error, warning, info, debug). Defaults to 'error'.
         """
-        logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
+        logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.ERROR))
         log.info('Creating tcp server at %s:%i.', host, port)
-        (host, port), server = await dispatcher.start_server(TaggerServerDispatcher, host, port)
+        (host, port), server = await TaggerServerDispatcher.start_server(host, port)
+        log.info('Server started at %s:%i', host, port)
         print('{}:{}'.format(host, port), flush=True)
         await server
 
     @command(
         loglevel=Arg(default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'))
-    async def stdio(loglevel: str = 'error'):
+    async def stdio(loglevel: str = 'error') -> Awaitable[Any]:
         """Starts a tagger json-rpc server reading from stdin and writing to stdout.
 
         Args:
             loglevel (str, optional): Logging level (error, warning, info, debug). Defaults to 'error'.
         """
-        logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.WARNING))
+        logging.basicConfig(level=getattr(logging, loglevel.upper(), logging.ERROR))
         log.info('Creating json-rpc server using stdin and stdout streams.')
-        _, server = await dispatcher.open_stdio_connection(TaggerServerDispatcher)
+        _, server = await TaggerServerDispatcher.open_stdio_connection()
         await server
 
-    cli = Cli([tcp, stdio], description=__doc__)
+    cli = Cli([socket, stdio], description=__doc__)
     try:
         asyncio.run(cli.dispatch())
     finally:

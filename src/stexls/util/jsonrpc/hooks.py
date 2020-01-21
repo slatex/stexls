@@ -1,8 +1,5 @@
-import logging
 import functools
-from typing import Coroutine
-
-log = logging.getLogger(__name__)
+from typing import Awaitable
 
 __all__ = ['alias', 'request', 'notification', 'method', 'extract_methods']
 
@@ -10,22 +7,21 @@ _JSON_RPC_NAME = 'json_rpc_name'
 _JSON_RPC_METHOD = 'json_rpc_method'
 
 def alias(name: str):
+    ' Gives a specific json rpc method name to the wrapped method. '
     assert name is not None
     def alias_decorator(f):
-        log.debug('JsonRpc hook alias %s->%s', f, name)
         f.json_rpc_name = name
         return f
     return alias_decorator
 
 def request(f):
-    log.debug('JsonRpc request hook: %s', f)
-
+    ' The wrapped method will create and send requests using the underlying dispatcher. '
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
 
     from .dispatcher import Dispatcher
     @functools.wraps(f)
-    def request_wrapper(self: Dispatcher, *args, **kwargs) -> Coroutine:
+    def request_wrapper(self: Dispatcher, *args, **kwargs) -> Awaitable:
         if args and kwargs:
             raise ValueError('Mixing args and kwargs not allowed.')
         f(self, *args, **kwargs)
@@ -35,14 +31,13 @@ def request(f):
     return request_wrapper
 
 def notification(f):
-    log.debug('JsonRpc notification hook: %s', f)
-
+    ' The wrapped method will create and send notifications using the underlying dispatcher. '
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
 
     from .dispatcher import Dispatcher
     @functools.wraps(f)
-    def notification_wrapper(self: Dispatcher, *args, **kwargs) -> Coroutine:
+    def notification_wrapper(self: Dispatcher, *args, **kwargs):
         if args and kwargs:
             raise ValueError('Mixing args and kwargs not allowed.')
         f(self, *args, **kwargs)
@@ -53,11 +48,8 @@ def notification(f):
 
 def method(f):
     ' Decorator that enables this function to be called remotely. '
-    log.debug('JsonRpc method hook: %s', f)
-
     if not hasattr(f, _JSON_RPC_NAME):
         setattr(f, _JSON_RPC_NAME, f.__name__)
-
     setattr(f, _JSON_RPC_METHOD, True)
     return f
 
@@ -68,15 +60,14 @@ def extract_methods(instance):
         if attr_name.startswith('_'):
             continue
         attr = getattr(instance, attr_name)
+        if not getattr(attr, _JSON_RPC_METHOD, False):
+            continue
         if not callable(attr):
-            continue
-        if not hasattr(attr, _JSON_RPC_METHOD):
-            continue
-        if not getattr(attr, _JSON_RPC_METHOD, None):
-            continue
+            raise ValueError(f'Not a method: {attr}')
         method_name = getattr(attr, _JSON_RPC_NAME)
         if method_name in methods:
             raise ValueError(f'Duplicate method with the name "{method_name}".')
+        if not method_name:
+            raise ValueError(f'Invalid method name given to method: {attr}')
         methods[method_name] = attr
-        log.debug('Extracted method with name "%s": %s', method_name, instance)
     return methods

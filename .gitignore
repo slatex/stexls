@@ -9,3 +9,7 @@ database.bin
 .idea/
 XDG_CACHE_HOME/
 logs/
+build/
+dist/
+develop/
+*.egg-info

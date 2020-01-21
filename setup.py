@@ -21,8 +21,8 @@ setuptools.setup(
     python_requires='>=3.7',
     install_requires=[
         'numpy',
-        'antlr4-python3-runtime',
-        'tensorflow-gpu >= 1.15',
         'scikit-learn',
+        'antlr4-python3-runtime',
+        #'tensorflow-gpu >= 1.15',
     ]
 )

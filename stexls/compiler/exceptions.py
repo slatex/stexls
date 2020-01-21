@@ -21,4 +21,4 @@ class ArgumentCountException(LinterException):
 class InternalException(LinterException):
     @staticmethod
     def create(message: str) -> InternalException:
-        return InternalException(f'Internal exception: {message}')
+        return InternalException(message)

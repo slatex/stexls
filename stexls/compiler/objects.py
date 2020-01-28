@@ -3,7 +3,7 @@
 from typing import List, Tuple, Optional
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import LatexParser, Environment
-from stexls.compiler.tags import Module, Binding, Trefi, Defi, Symi, Symdef, GImport
+from stexls.compiler.symbols import Module, Binding, Trefi, Defi, Symi, Symdef, GImport
 
 class StexObject:
     """ An object contains information about symbols, locations, imports

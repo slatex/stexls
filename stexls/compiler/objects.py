@@ -3,7 +3,7 @@
 from typing import List, Tuple, Optional
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import LatexParser, Environment
-from stexls.compiler.symbols import Module, Binding, Trefi, Defi, Symi, Symdef, GImport
+from stexls.compiler.symbols import *
 
 class StexObject:
     """ An object contains information about symbols, locations, imports
@@ -20,43 +20,43 @@ class StexObject:
             file (str): Source file.
         """
         self.file = file
-        self.modules: List[Module] = []
-        self.bindings: List[Binding] = []
-        self.trefis: List[Trefi] = []
-        self.defis: List[Defi] = []
-        self.syms: List[Symi] = []
-        self.symdefs: List[Symdef] = []
-        self.gimports: List[GImport] = []
+        self.modsigs: List[ModsigSymbol] = []
+        self.mhmodnls: List[MhmodnlSymbol] = []
+        self.trefis: List[TrefiSymbol] = []
+        self.defis: List[DefiSymbol] = []
+        self.syms: List[SymiSymbol] = []
+        self.symdefs: List[SymdefSymbol] = []
+        self.gimports: List[GImportSymbol] = []
         self.exceptions: List[Tuple[Location, ValueError]] = []
         self.syntax_errors = []
         self.success = False
         def visitor(env: Environment):
             try:
-                module = Module.from_environment(env)
+                module = ModsigSymbol.from_environment(env)
                 if module:
-                    self.modules.append(module)
+                    self.modsigs.append(module)
                     return
-                binding = Binding.from_environment(env)
+                binding = MhmodnlSymbol.from_environment(env)
                 if binding:
-                    self.bindings.append(binding)
+                    self.mhmodnls.append(binding)
                     return
-                trefi = Trefi.from_environment(env)
+                trefi = TrefiSymbol.from_environment(env)
                 if trefi:
                     self.trefis.append(trefi)
                     return
-                defi = Defi.from_environment(env)
+                defi = DefiSymbol.from_environment(env)
                 if defi:
                     self.defis.append(defi)
                     return
-                sym = Symi.from_environment(env)
+                sym = SymiSymbol.from_environment(env)
                 if sym:
                     self.syms.append(sym)
                     return
-                symdef = Symdef.from_environment(env)
+                symdef = SymdefSymbol.from_environment(env)
                 if symdef:
                     self.symdefs.append(symdef)
                     return
-                gimport = GImport.from_environment(env)
+                gimport = GImportSymbol.from_environment(env)
                 if gimport:
                     self.gimports.append(gimport)
                     return

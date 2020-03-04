@@ -8,19 +8,7 @@ class Promise:
     def __init__(self):
         self._event = threading.Event()
         self._lock = threading.Lock()
-    
-    @staticmethod
-    def run_in_thread(self, main: 'Callable', *args, **kwargs) -> Tuple['Promise', threading.Thread]:
-        ''' Runs main in a new thread and provides it with a new promise as the first
-            positional argument.
-        Returns:
-            Promise given to the thread and the thread itself.
-        '''
-        promise = Promise()
-        thread = threading.Thread(target=main, args=[promise] + args, kwargs=kwargs)
-        thread.start()
-        return promise, thread
-    
+
     def resolve(self, value: Any):
         ''' Gives the container a value and signals waiting threads the event.
             Raises ValueError if the promise resolved before. '''

@@ -16,7 +16,7 @@ class JsonStream:
             writer: asyncio.StreamWriter,
             encoding: str = 'utf-8',
             charset: str = None,
-            newline: str = '\n'):
+            newline: str = '\r\n'):
         """ Initializes the json stream with underlying stream reader and writer.
 
         Args:

@@ -74,7 +74,7 @@ class Dispatcher:
         port: int = 0,
         encoding: str = 'utf-8',
         charset: str = None,
-        newline: str = '\n') -> Tuple[Tuple[str, int], asyncio.Task]:
+        newline: str = '\r\n') -> Tuple[Tuple[str, int], asyncio.Task]:
         """ Starts a tcp server.
 
         Args:
@@ -112,7 +112,7 @@ class Dispatcher:
         port: int = 0,
         encoding: str = 'utf-8',
         charset: str = None,
-        newline: str = '\n') -> Tuple[Dispatcher, asyncio.Task]:
+        newline: str = '\r\n') -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens a connection to a tcp server.
 
         Args:
@@ -142,7 +142,7 @@ class Dispatcher:
         output_fd: int = 'stdout',
         encoding: str = 'utf-8',
         charset: str = None,
-        newline: str = '\n',
+        newline: str = '\r\n',
         loop = None) -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens connection using stdio.
 

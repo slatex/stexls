@@ -39,7 +39,7 @@ class ModsigSymbol(Symbol):
         self.name = name
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[ModsigSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[ModsigSymbol]:
         match = ModsigSymbol.PATTERN.fullmatch(e.env_name)
         if not match:
             return
@@ -59,7 +59,7 @@ class MhmodnlSymbol(Symbol):
         self.lang = lang
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[MhmodnlSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[MhmodnlSymbol]:
         match = MhmodnlSymbol.PATTERN.fullmatch(e.env_name)
         if not match:
             return
@@ -97,7 +97,7 @@ class DefiSymbol(Symbol):
         self.asterisk = asterisk
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[DefiSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[DefiSymbol]:
         match = DefiSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -141,7 +141,7 @@ class TrefiSymbol(Symbol):
         self.asterisk = asterisk
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[TrefiSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[TrefiSymbol]:
         match = TrefiSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -180,7 +180,7 @@ class SymiSymbol(Symbol):
         self.asterisk = asterisk
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[SymiSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[SymiSymbol]:
         match = SymiSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -206,8 +206,8 @@ class SymdefSymbol(Symbol):
         self.options = options
         self.asterisk = asterisk
 
-    @staticmethod
-    def from_environment(e: Environment) -> Optional[SymdefSymbol]:
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[SymdefSymbol]:
         match = SymdefSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -233,7 +233,7 @@ class GImportSymbol(Symbol):
         self.asterisk = asterisk
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[GImportSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[GImportSymbol]:
         match = GImportSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -260,7 +260,7 @@ class GStructureSymbol(Symbol):
         raise NotImplementedError
 
     @classmethod
-    def from_environment(self, e: Environment) -> Optional[GStructureSymbol]:
+    def from_environment(cls, e: Environment) -> Optional[GStructureSymbol]:
         match = GStructureSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None

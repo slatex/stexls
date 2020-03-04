@@ -7,23 +7,26 @@ class Promise:
     " Creates an container for a value that doesn't exist yet. "
     def __init__(self):
         self._event = threading.Event()
+        self._lock = threading.Lock()
     
     def resolve(self, value: Any):
         ''' Gives the container a value and signals waiting threads the event.
             Raises ValueError if the promise resolved before. '''
-        if self.has_resolved():
-            raise ValueError('Promise already resolved.')
-        self._value = value
-        self._event.set()
+        with self._lock:
+            if self.has_resolved():
+                raise ValueError('Promise already resolved.')
+            self._value = value
+            self._event.set()
     
     def throw(self, exception):
         ''' Resolves the promise but instead of a value it signals waiting threads
             that an exception should be thrown.
             Raises ValueError if the promise resolved before. '''
-        if self.has_resolved():
-            raise ValueError('Promise already resolved.')
-        self._exception = exception
-        self._event.set()
+        with self._lock:
+            if self.has_resolved():
+                raise ValueError('Promise already resolved.')
+            self._exception = exception
+            self._event.set()
     
     def has_resolved(self) -> bool:
         ' Returns wether the promise was resolved or raised an exception. '

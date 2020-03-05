@@ -23,6 +23,7 @@ setuptools.setup(
         'numpy',
         'scikit-learn',
         'antlr4-python3-runtime',
+        'nltk',
         #'tensorflow-gpu >= 1.15',
     ]
 )

@@ -11,17 +11,17 @@ class Server(Dispatcher):
     notify_count = 0
 
     @method
-    def echo(self, x):
+    def echo(self, *x):
         LOG.info('Server calling echo(%s, %s)', x, Server.notify_count)
         if x == 'raise':
             raise RuntimeError('This is an exception')
-        return x
-    
+        return {'x':x, 'notify_count':Server.notify_count}
+
     @method
     def notify(self, *args):
         LOG.info('Server notified: %s', args)
         Server.notify_count += 1
-    
+
     @request
     def info(self, i):
         LOG.info('Server requesting info from client about %s', i)
@@ -29,7 +29,7 @@ class Server(Dispatcher):
 
 class Client(Dispatcher):
     @request
-    def echo(self, x): LOG.info('Client sending request for echo of %s', x)
+    def echo(self, *x): LOG.info('Client sending request for echo of %s', x)
 
     @notification
     def notify(self, *args): LOG.info('Client sending notification about %s', args)
@@ -56,7 +56,14 @@ async def main():
         dispatcher, task = await Client.open_connection(args.host, args.port)
         LOG.info('Client connected %s: Running on task %s', dispatcher, task)
         for line in sys.stdin:
-            response = dispatcher.echo(line.strip())
+            cmd, *cargs = line.strip().split(' ')
+            if cmd == 'notify':
+                response = dispatcher.notify(*cargs)
+            elif cmd == 'echo':
+                response = dispatcher.echo(*cargs)
+            else:
+                print("invalid command:", cmd)
+                continue
             try:
                 print('Response from server:', await response)
             except Exception as e:

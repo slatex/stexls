@@ -224,17 +224,17 @@ class SymdefSymbol(Symbol):
         match = SymdefSymbol.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
-        if not e.oargs:
-            raise ValueError('RArg count mismatch (expected at least 1, found 0).')
+        if not e.rargs:
+            raise ValueError('RArg count mismatch: At least one RArg required.')
         return SymdefSymbol(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
-            TokenWithLocation.from_node_union(e.oargs),
+            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
             match.group(1) is not None,
         )
 
     def __repr__(self):
-        return f'[symdef{"*"*self.asterisk} options="{self.options}" tokens={self.tokens}]'
+        return f'[symdef{"*"*self.asterisk} options="{self.options if self.options else ""}" tokens={self.tokens}]'
 
 
 class GImportSymbol(Symbol):

@@ -5,6 +5,19 @@ from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node
 
+__all__ = [
+    'TokenWithLocation',
+    'Symbol',
+    'ModsigSymbol',
+    'MhmodnlSymbol',
+    'TrefiSymbol',
+    'DefiSymbol',
+    'SymiSymbol',
+    'SymdefSymbol',
+    'GImportSymbol',
+    'GUseSymbol',
+    'GStructureSymbol',
+]
 
 class TokenWithLocation:
     def __init__(self, value: str, range: Range):

@@ -24,7 +24,7 @@ class TfIdfModel:
 
     def fit(self, X):
         """Fits the model
-        
+
         Arguments:
             X {list} -- List of documents of tokens
         """
@@ -37,7 +37,7 @@ class TfIdfModel:
         self.idfs = {word: self._idf(self._num_documents, df) for word, df in self.dfs.items()}
 
     def fit_transform(self, X):
-        """Fits and transforms a corpus
+        """Fits and transforms a corpus.
 
         Each transformed document is treated as if it was not part of the fitting process
         E.g.:
@@ -47,10 +47,10 @@ class TfIdfModel:
                 fit(X\\doc)
                 yield transform(doc)
             fit(X)
-        
+
         Arguments:
             X {list} -- List of lists of tokens
-        
+
         Returns:
             list -- Tfidf values for all tokens in all documents or 0 for unknown words
         """
@@ -80,7 +80,7 @@ class TfIdfModel:
                 vec /= np.linalg.norm(vec, ord=self.norm_order)
             result.append(vec)
         return result
-    
+
     @staticmethod
     def test_transform():
         X = ['this is document # 1 .'.split(), 'this is document number 2 .'.split(), 'that is the doc number 3 .'.split()]
@@ -89,14 +89,14 @@ class TfIdfModel:
         t2 = TfIdfModel().fit_transform(X)[0]
 
         assert all(np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
-        
-    def _idf(self, num_documents, document_frequency):
-        """Calculates the inverse-document-frequency value for phrase
-        
+
+    def _idf(self, num_documents: int, document_frequency: int):
+        """Calculates the inverse-document-frequency value for phrase.
+
         Arguments:
             num_documents {int} -- Number of documents in the corpus
             document_frequency {int} -- Count of documents that use a phrase
-        
+
         Returns:
             float -- Idf value for a phrase. Returns 0 if document_frequency is <=0
         """
@@ -105,12 +105,11 @@ class TfIdfModel:
         return np.log2(float(num_documents) / document_frequency)
 
     def _tf(self, doc):
-        """Calculates term frequency of all words in a document
-        
+        """Calculates term frequency of all words in a document.
+
         Arguments:
             doc: Document
-            document_length {int} -- Length of the document
-        
+
         Returns:
             Dict of term frequencies
         """

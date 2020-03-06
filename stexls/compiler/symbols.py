@@ -29,8 +29,6 @@ class TokenWithLocation:
         list of options which are either named and prefixed
         with "<name>=" or unnamed.
 
-        E.g.: "named1=value1,unnamed,named2=value2,unnamed2"
-
         Returns:
             The string is parsed as a tuple of a list of the
             unnamed options "[unnamed,unnamed2]", in this case.

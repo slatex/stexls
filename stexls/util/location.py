@@ -65,7 +65,7 @@ class Position:
             >>> Position(1, 6).compare_to(Position(1, 4))
             2
             >>> Position(1, 6).compare_to(Position(1, 15))
-            9
+            -9
         '''
         if self.line != other.line:
             return self.line - other.line

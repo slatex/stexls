@@ -23,6 +23,30 @@ class TokenWithLocation:
     def __init__(self, value: str, range: Range):
         self.value = value
         self.range = range
+    
+    def as_options(self) -> Tuple[List[str], Dict[str, str]]:
+        """ Parses the value attribute as a comma seperated
+        list of options which are either named and prefixed
+        with "<name>=" or unnamed.
+
+        E.g.: "named1=value1,unnamed,named2=value2,unnamed2"
+
+        Returns:
+            The string is parsed as a tuple of a list of the
+            unnamed options "[unnamed,unnamed2]", in this case.
+            And as a dictionary of named options:
+            {"named1":"value1","named2":"value2"}
+        """
+        unnamed = []
+        named = {}
+        for part in self.value.split(','):
+            if '=' in part:
+                name, value = part.split('=', 1)
+                named[name] = value
+            else:
+                unnamed.append(part)
+        return unnamed, named
+
 
     def __repr__(self):
         return self.value

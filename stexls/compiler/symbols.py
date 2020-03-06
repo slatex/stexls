@@ -52,23 +52,25 @@ class TokenWithLocation:
         named: Dict[str, str] = {}
         named_ranges: Dict[str, Range] = {}
         offset = 0
-        for part in self.value.split(','):
-            if '=' in part:
-                name, value = part.split('=', 1)
-                named[name.strip()] = value.strip()
-                new_start = self.range.start.translate(
-                    characters=offset + len(name) + 1)
-                new_end = new_start.translate(
-                    characters=len(value))
-                named_ranges[name.strip()] = Range(new_start, new_end)
-            else:
-                unnamed.append(part.strip())
-                new_start = self.range.start.translate(
-                    characters=offset)
-                new_end = new_start.translate(
-                    characters=len(part))
-                unnamed_ranges.append(Range(new_start, new_end))
-            offset += len(part) + 1
+        for line in self.value.split('\n'):
+            for part in line.split(','):
+                if '=' in part:
+                    name, value = part.split('=', 1)
+                    named[name.strip()] = value.strip()
+                    new_start = self.range.start.translate(
+                        characters=offset + len(name) + 1) # +1 for '=' char
+                    new_end = new_start.translate(
+                        characters=len(value))
+                    named_ranges[name.strip()] = Range(new_start, new_end)
+                else:
+                    unnamed.append(part.strip())
+                    new_start = self.range.start.translate(
+                        characters=offset)
+                    new_end = new_start.translate(
+                        characters=len(part))
+                    unnamed_ranges.append(Range(new_start, new_end))
+                offset += len(part) + 1 # +1 for ',' character
+            offset += 1 # +1 for line end
         return (unnamed, named), (unnamed_ranges, named_ranges)
 
 

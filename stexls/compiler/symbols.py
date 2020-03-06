@@ -24,7 +24,7 @@ class TokenWithLocation:
         self.value = value
         self.range = range
     
-    def as_options(self) -> Tuple[Tuple[List[str], Dict[str, str]], Tuple[List[Range], Dict[str, Range]]]:
+    def parse_options(self) -> Tuple[Tuple[List[str], Dict[str, str]], Tuple[List[Range], Dict[str, Range]]]:
         """ Parses the value attribute as a comma seperated
         list of options which are either named and prefixed
         with "<name>=" or unnamed.
@@ -41,7 +41,7 @@ class TokenWithLocation:
 
         Examples:
             >>> token = TokenWithLocation('name=value,1', Range(Position(1, 1), Position(1, 13)))
-            >>> values, ranges = token.as_options()
+            >>> values, ranges = token.parse_options()
             >>> values
             (['1'], {'name': 'value'})
             >>> ranges

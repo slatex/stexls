@@ -5,6 +5,8 @@ from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import LatexParser, Environment
 from stexls.compiler.symbols import *
 
+__all__ = ['StexObject']
+
 class StexObject:
     """ An object contains information about symbols, locations, imports
     of an stex source file.

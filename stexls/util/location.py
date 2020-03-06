@@ -16,6 +16,33 @@ class Position:
         '''
         self.line = line
         self.character = character
+    
+    def translate(self, lines: int = None, characters: int = None):
+        """ Creates a copy of this position with the line and character
+            attributes offsetted by the given amount.
+        
+        Parameters:
+            lines (int): Optional line offset of the returned copy.
+            characters (int): Optional character offset of the returned copy.
+
+        Returns:
+            Copy of this with line and character offsetted by the given
+            amounts.
+
+        Examples:
+            >>> pos = Position(1, 2).translate(10, 20)
+            >>> pos.line, pos.character
+            (11, 22)
+            >>> pos = Position(1, 2).translate(lines=10)
+            >>> pos.line, pos.character
+            (11, 2)
+            >>> pos = Position(1, 2).translate(characters=20)
+            >>> pos.line, pos.character
+            (1, 22)
+        """
+        return Position(
+            self.line + (lines or 0),
+            self.character + (characters or 0))
 
     def compare_to(self, other: Position) -> int:
         ''' Compares two positions.

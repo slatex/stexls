@@ -24,7 +24,7 @@ class TokenWithLocation:
         self.value = value
         self.range = range
     
-    def as_options(self) -> Tuple[List[str], Dict[str, str]]:
+    def as_options(self) -> Tuple[Tuple[List[str], Dict[str, str]], Tuple[List[Range], Dict[str, Range]]]:
         """ Parses the value attribute as a comma seperated
         list of options which are either named and prefixed
         with "<name>=" or unnamed.
@@ -36,16 +36,40 @@ class TokenWithLocation:
             unnamed options "[unnamed,unnamed2]", in this case.
             And as a dictionary of named options:
             {"named1":"value1","named2":"value2"}
+            Additionally returns a tuple of a list of ranges for the
+            unnamed values and a dict from name to named value ranges.
+
+        Examples:
+            >>> token = TokenWithLocation('name=value,1', Range(Position(1, 1), Position(1, 13)))
+            >>> values, ranges = token.as_options()
+            >>> values
+            (['1'], {'name': 'value'})
+            >>> ranges
+            ([[Range (1 12) (1 13)]], {'name': [Range (1 6) (1 12)]})
         """
-        unnamed = []
-        named = {}
+        unnamed: List[str] = []
+        unnamed_ranges: List[Range] = []
+        named: Dict[str, str] = {}
+        named_ranges: Dict[str, Range] = {}
+        offset = 0
         for part in self.value.split(','):
             if '=' in part:
                 name, value = part.split('=', 1)
-                named[name] = value
+                named[name.strip()] = value.strip()
+                new_start = self.range.start.translate(
+                    characters=offset + len(name) + 1)
+                new_end = new_start.translate(
+                    characters=len(value))
+                named_ranges[name.strip()] = Range(new_start, new_end)
             else:
-                unnamed.append(part)
-        return unnamed, named
+                unnamed.append(part.strip())
+                new_start = self.range.start.translate(
+                    characters=offset)
+                new_end = new_start.translate(
+                    characters=len(part))
+                unnamed_ranges.append(Range(new_start, new_end))
+            offset += len(part)
+        return (unnamed, named), (unnamed_ranges, named_ranges)
 
 
     def __repr__(self):

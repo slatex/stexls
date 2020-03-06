@@ -46,12 +46,26 @@ class Position:
 
     def compare_to(self, other: Position) -> int:
         ''' Compares two positions.
+
         Parameters:
             other: Other position to compare to.
+
         Returns:
             1. <0 if self < other.
             2. 0 if self = other.
             3. >0 if self > other.
+
+        Examples:
+            >>> Position(7, 3).compare_to(Position(7, 3))
+            0
+            >>> Position(1, 2).compare_to(Position(5, 42421))
+            -4
+            >>> Position(5, 7).compare_to(Position(2, 19))
+            3
+            >>> Position(1, 6).compare_to(Position(1, 4))
+            2
+            >>> Position(1, 6).compare_to(Position(1, 15))
+            9
         '''
         if self.line != other.line:
             return self.line - other.line

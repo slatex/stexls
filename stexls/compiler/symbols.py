@@ -45,7 +45,7 @@ class TokenWithLocation:
             >>> values
             (['1'], {'name': 'value'})
             >>> ranges
-            ([[Range (1 12) (1 13)]], {'name': [Range (1 6) (1 12)]})
+            ([[Range (1 12) (1 13)]], {'name': [Range (1 6) (1 11)]})
         """
         unnamed: List[str] = []
         unnamed_ranges: List[Range] = []
@@ -68,7 +68,7 @@ class TokenWithLocation:
                 new_end = new_start.translate(
                     characters=len(part))
                 unnamed_ranges.append(Range(new_start, new_end))
-            offset += len(part)
+            offset += len(part) + 1
         return (unnamed, named), (unnamed_ranges, named_ranges)
 
 

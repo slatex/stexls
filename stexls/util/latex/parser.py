@@ -11,7 +11,7 @@ from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParse
 from stexls.util.location import Location, Range, Position
 
 
-__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
+__all__ = ['LatexParser', 'SyntaxErrorInformation', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
 
 
 class Node:

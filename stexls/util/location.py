@@ -2,6 +2,7 @@
 represent positions or ranges in files. '''
 from __future__ import annotations
 from typing import Union, Optional, List
+from pathlib import Path
 
 __all__ = ['Position', 'Range', 'Location']
 
@@ -212,7 +213,7 @@ class Range:
 
 
 class Location:
-    def __init__(self, uri: str, positionOrRange: Union[Position, Range]):
+    def __init__(self, uri: Path, positionOrRange: Union[Position, Range]):
         self.uri = uri
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)

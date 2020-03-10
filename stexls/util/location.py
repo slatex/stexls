@@ -122,14 +122,15 @@ class Position:
 
 class Range:
     ' Represents a range given by a start and end position. '
-    def __init__(self, start: Position, end: Position):
+    def __init__(self, start: Position, end: Position = None):
         ''' Initializes the range.
         Parameters:
             start: Begin position.
             end: End position.
         '''
+        assert isinstance(start, Position)
         self.start = start
-        self.end = end
+        self.end = end or start
 
     def is_empty(self) -> bool:
         ''' Checks wether the range is empty or not.
@@ -218,6 +219,7 @@ class Location:
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)
         else:
+            assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
     def __repr__(self):

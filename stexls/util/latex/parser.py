@@ -1,5 +1,6 @@
 from __future__ import annotations
 import itertools, os, re, copy, antlr4
+from pathlib import Path
 from typing import Iterator, Pattern, List, Optional, Tuple, Callable, Union
 import tempfile
 
@@ -11,7 +12,7 @@ from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParse
 from stexls.util.location import Location, Range, Position
 
 
-__all__ = ['LatexParser', 'SyntaxErrorInformation', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
+__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
 
 
 class Node:
@@ -134,13 +135,20 @@ class Environment(Node):
         The oargs and rargs do not contain text.
     """
     def __init__(self, parser: LatexParser, begin: int, end: int):
-        """ Initializes an environment node with an empty rarg and oarg array.
+        """ Initializes an environment node with an empty name and empty rarg & oarg arrays.
+
+        The name attribute is a token with the location information of where the string which
+        constitutes the name of this environment is located.
+
+        "RArg array" stands for "Required Argument Array" and is the list of arguments in curly braces "{...rargs}".
+        "OArg array" stands for "Optional Argument Array" and is the optional list of arguments in square brackets "[...orgs]".
+
         Parameters:
             begin: Zero indexed begin offset of where the environment's first character is (the first "\\")
             end: Zero indexed end offset of where the environment's last character is (usually a "}")
         """
         super().__init__(parser, begin, end)
-        self.name = None
+        self.name: Optional[Token] = None
         self.rargs: List[Node] = []
         self.oargs: List[Node] = []
 
@@ -215,9 +223,15 @@ class LatexParser:
             encoding (str): Encoding of the file. Defaults to 'utf-8'.
         """
         self.file: str = file
+        self._encoding: str = encoding
+        self.source: str = None
         self.root: Optional[Node] = None
-        self.syntax_errors: List[SyntaxErrorInformation] = None
-        with open(file, encoding=encoding) as fd:
+        self.syntax_errors: List[Tuple[Location, Exception]] = None
+        self.parsed = False
+    
+    def parse(self):
+        self.parsed = True
+        with open(self.file, encoding=self._encoding) as fd:
             self.source: str = fd.read()
         self._line_lengths = [
             len(line) + 1
@@ -234,8 +248,8 @@ class LatexParser:
         walker = antlr4.ParseTreeWalker()
         parse_tree = parser.main()
         walker.walk(listener, parse_tree)
-        self.root = listener.stack[0]
         self.syntax_errors = error_listener.syntax_errors
+        self.root = listener.stack[0]
 
     @staticmethod
     def from_source(source: str) -> LatexParser:
@@ -322,23 +336,6 @@ class LatexParser:
                 stack.extend(current.children)
 
 
-class SyntaxErrorInformation:
-    ' Contains information about a syntax error that occured during parsing. '
-    def __init__(self, file: str, line: int, character: int, message: str):
-        """ Initialize syntax error information container.
-
-        Args:
-            file (str): Path to file which is referenced by line and character.
-            line (int): The zero indexed line the error occured on.
-            character (int): The zero indexed character the error occured on.
-            message (str): Error information message.
-        """
-        self.file = file
-        self.line = line
-        self.character = character
-        self.message = message
-
-
 class _SyntaxErrorErrorListener(ErrorListener):
     ' Error listener that captures syntax errors during parsing. '
     def __init__(self, file: str):
@@ -349,11 +346,13 @@ class _SyntaxErrorErrorListener(ErrorListener):
         """
         super().__init__()
         self.file = file
-        self.syntax_errors: List[SyntaxErrorInformation] = []
+        self.syntax_errors: List[Tuple[Location, Exception]] = []
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
-        info = SyntaxErrorInformation(self.file, line, column, msg)
-        self.syntax_errors.append(info)
+        position = Position(line, column)
+        location = Location(Path(self.file), position)
+        exception = Exception(msg)
+        self.syntax_errors.append((location, exception))
 
 
 class _LatexParserListener(_LatexParserListener):

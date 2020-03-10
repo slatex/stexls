@@ -189,7 +189,7 @@ class Modsig(ParsedEnvironment):
         if not match:
             return
         if len(e.rargs) != 1:
-            raise ValueError(f'RArg count mismatch (expected 1, found {len(e.rargs)}).')
+            raise ValueError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         return Modsig(e.location, TokenWithLocation.from_node(e.rargs[0]))
 
     def __repr__(self):
@@ -230,7 +230,7 @@ class Mhmodnl(ParsedEnvironment):
         if not match:
             return
         if len(e.rargs) != 2:
-            raise ValueError(f'RArg count mismatch (expected 2, found {len(e.rargs)}).')
+            raise ValueError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         return Mhmodnl(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
@@ -263,6 +263,8 @@ class Defi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
+        if i != len(tokens) - int(a):
+            raise ValueError(f'Defi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
 
     @property
     def name(self) -> str:
@@ -293,9 +295,9 @@ class Defi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('RArg count mismatch (expected at least 1, found 0).')
+            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
         if len(e.oargs) > 1:
-            raise ValueError(f'OArg count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return Defi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -333,6 +335,8 @@ class Trefi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
+        if i != len(tokens) - int(a):
+            raise ValueError(f'Trefi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Trefi]:
@@ -340,9 +344,9 @@ class Trefi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('RArg count mismatch (expected at least 1, found 0).')
+            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
         if len(e.oargs) > 1:
-            raise ValueError(f'OArg count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return Trefi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -373,6 +377,8 @@ class Symi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
+        if i != len(tokens):
+            raise ValueError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
     
     @property
     def name(self):
@@ -384,7 +390,7 @@ class Symi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('RArg count mismatch (expected at least 1, found 0).')
+            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
         return Symi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -419,7 +425,7 @@ class Symdef(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('RArg count mismatch: At least one RArg required.')
+            raise ValueError('Argument count mismatch: At least one argument required.')
         return Symdef(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -459,9 +465,9 @@ class GImport(ParsedEnvironment):
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise ValueError('RArg count mismatch (expected 1, found 0).')
+            raise ValueError('Argument count mismatch (expected 1, found 0).')
         if len(e.oargs) > 1:
-            raise ValueError(f'OArg count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
             e.location,
             TokenWithLocation.from_node_union(e.rargs),

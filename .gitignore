@@ -12,3 +12,5 @@ build/
 dist/
 develop/
 *.egg-info
+smglom/
+seq2seq.model.logs/

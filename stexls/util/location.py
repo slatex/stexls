@@ -225,7 +225,7 @@ class Range:
         if index < 0:
             raise ValueError(f'Unable to split on negative index {index}.')
         split = self.start.replace(character=self.start.character + index)
-        if self.end < split:
+        if self.end.is_before(split):
             return self.copy(), self.replace(start=self.end)
         return self.replace(end=split), self.replace(start=split)
 

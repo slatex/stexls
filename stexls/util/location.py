@@ -193,10 +193,17 @@ class Range:
     
     def split(self, index: int) -> Tuple[Range, Range]:
         ''' Splits the range at the given index.
+        
+        If the split lies outside of the range, one range will be the
+        original range, and the other will be empty at the
+        side which was outside.
 
         Parameters:
             index (int): Index offset at which the range should be split
         
+        Raises:
+            ValueError: If index is negative.
+
         Returns:
             Tuple[Range, Range]: First range is in range (self.start, self.start + index)
                 and the other is (self.start + index, self.end).
@@ -208,8 +215,18 @@ class Range:
             [Range (5 5) (5 15)]
             >>> second
             [Range (5 15) (6 10)]
+            >>> range = Range(Position(2, 1), Position(2 5))
+            >>> first, second = range.split(5)
+            >>> first
+            [Range (2 1) (2 5)]
+            >>> second
+            [Range (2 5) (2 5)]
         '''
+        if index < 0:
+            raise ValueError(f'Unable to split on negative index {index}.')
         split = self.start.replace(character=self.start.character + index)
+        if self.end < split:
+            return self.copy(), self.replace(start=self.end)
         return self.replace(end=split), self.replace(start=split)
 
     @staticmethod

@@ -271,5 +271,19 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
+    def replace(self, uri: Path = None, positionOrRange: Union[Position, Range] = None):
+        ''' Creates a copy of this location and replaces uri and/or range if given.
+
+        Parameters:
+            uri: Optional uri replacement.
+            positionOrRange: Optional range replacement.
+        
+        Returns:
+            Location: Copy of this location with uri and/or range replaced.
+        '''
+        return Location(
+            uri or self.uri,
+            (positionOrRange or self.range).copy())
+
     def __repr__(self):
         return f'[Location uri="{self.uri}" range={self.range}]'

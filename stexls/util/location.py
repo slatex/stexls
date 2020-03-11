@@ -161,11 +161,22 @@ class Range:
         ''' Creates a copy with a new start and end.
         If start or end is not None they will be copied and
         not passed as is to the copied range.
+
         Parameters:
             start: Optional new start position.
             end: Optional new end position.
+
         Returns:
             New range instance with provided start and end.
+        
+        Examples:
+            >>> range = Range(Position(10, 5), Position(16, 9))
+            >>> range.replace(Position(1, 1), Position(2, 2))
+            [Range (1 1) (2 2)]
+            >>> range.replace(start=Position(2, 3))
+            [Range (2 3) (16 9)]
+            >>> range.replace(end=Position(11, 1))
+            [Range (10 5) (11 1)]
         '''
         return Range(
             (self.start if start is None else start).copy(),
@@ -179,6 +190,27 @@ class Range:
     def copy(self) -> Range:
         ' Creates a deep copy of self. '
         return Range(self.start.copy(), self.end.copy())
+    
+    def split(self, index: int) -> Tuple[Range, Range]:
+        ''' Splits the range at the given index.
+
+        Parameters:
+            index (int): Index offset at which the range should be split
+        
+        Returns:
+            Tuple[Range, Range]: First range is in range (self.start, self.start + index)
+                and the other is (self.start + index, self.end).
+        
+        Examples:
+            >>> range = Range(Position(5, 5), Position(6, 10))
+            >>> first, second = range.split(10)
+            >>> first
+            [Range (5 5) (5 15)]
+            >>> second
+            [Range (5 15) (6 10)]
+        '''
+        split = self.start.replace(character=self.start.character + index)
+        return self.replace(end=split), self.replace(start=split)
 
     @staticmethod
     def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Optional[Range]:

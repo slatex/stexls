@@ -7,6 +7,8 @@ from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser
 
 __all__ = [
+    'ParsedFile',
+    'ParsedEnvironment',
     'parse',
     'TokenWithLocation',
     'Location',
@@ -25,13 +27,13 @@ class ParsedFile:
     " An object contains information about symbols, locations, imports of an stex source file. "
     def __init__(self, path: Path):
         self.path = path
-        self.modsigs: List[ModsigSymbol] = []
-        self.mhmodnls: List[MhmodnlSymbol] = []
-        self.trefis: List[TrefiSymbol] = []
-        self.defis: List[DefiSymbol] = []
-        self.syms: List[SymiSymbol] = []
-        self.symdefs: List[SymdefSymbol] = []
-        self.gimports: List[GImportSymbol] = []
+        self.modsigs: List[Modsig] = []
+        self.mhmodnls: List[Mhmodnl] = []
+        self.trefis: List[Trefi] = []
+        self.defis: List[Defi] = []
+        self.syms: List[Symi] = []
+        self.symdefs: List[Symdef] = []
+        self.gimports: List[GImport] = []
 
 
 def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:

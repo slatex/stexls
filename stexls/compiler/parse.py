@@ -339,6 +339,54 @@ class Trefi(ParsedEnvironment):
         self.asterisk = asterisk
         if i != len(tokens) - int(a):
             raise ValueError(f'Trefi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
+    
+    def parse_annotations(self) -> Tuple[Optional[str], Optional[str], Optional[Range], Optional[Range]]:
+        ''' Parses module and symbol annotations from optional arguments.
+
+        Returns:
+            A tuple of (module, symbol, module_range, symbol_range).
+            module: Name of the module named in the annotation (trefi[<module>?...] or trefi[<module>]...)
+            symbol: Name of the symbol named in the annotation (trefi[...?<symbol>]...)
+            module_range: The range of the part which names the target module if it exists.
+            symbol_range: The range of the part which names the target symbol if it exists.
+        
+        Examples:
+            >>> range = Range(Position(2, 5), Position(2, 33))
+            >>> token = TokenWithLocation('vector-space?vector-addition', range)
+            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
+            >>> module, symbol, mrange, srange = trefi.parse_annotations()
+            >>> module
+            'vector-space'
+            >>> symbol
+            'vector-addition'
+            >>> mrange
+            [Range (2 5) (2 17)]
+            >>> srange
+            [Range (2 18) (2 33)]
+            >>> range = Range(Position(2, 5), Position(2, 18))
+            >>> token = TokenWithLocation('vector-space2', range)
+            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
+            >>> module, symbol, mrange, srange = trefi.parse_annotations()
+            >>> module
+            'vector-space2'
+            >>> symbol is None
+            True
+            >>> mrange
+            [Range (2 5) (2 18)]
+            >>> srange is None
+            True
+        '''
+        (unnamed, named), (unnamed_range, named_ranges) = self.options.parse_options()
+        if len(unnamed) != 1 or len(unnamed_range) != 1:
+            return None, None, None, None
+        annotation: str = unnamed[0]
+        annotation_range: Range = unnamed_range[0]
+        if '?' in annotation:
+            module_annotation, symbol_annotation = annotation.split('?')
+            module_range, symbol_range = annotation_range.split(annotation.index('?'))
+            symbol_range.start.character += 1
+            return module_annotation, symbol_annotation, module_range, symbol_range
+        return annotation, None, annotation_range, None
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Trefi]:

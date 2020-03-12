@@ -1,0 +1,85 @@
+from __future__ import annotations
+from typing import List
+from enum import Enum
+from stexls.util.location import *
+
+
+__all__ = [
+    'SymbolType',
+    'SymbolIdentifier',
+    'Symbol',
+    'ModuleSymbol',
+    'BindingSymbol',
+    'DefSymbol',
+    'PlaceholderSymbol',
+]
+
+
+class SymbolType(Enum):
+    SYMBOL='symbol'
+    MODULE='module'
+    BINDING='binding'
+    DIRECTORY='directory'
+    PLACEHOLDER='placeholder'
+
+class SymbolIdentifier:
+    def __init__(self, identifier: str, symbol_type: SymbolType):
+        self.identifier = identifier
+        self.symbol_type = symbol_type
+    
+    @property
+    def typed_identifier(self):
+        return self.identifier + '/' + self.symbol_type.name
+    
+    def prepend(self, identifier: str):
+        return SymbolIdentifier(identifier + '.' + self.identifier, self.symbol_type)
+    
+    def append(self, identifier: SymbolIdentifier):
+        return identifier.prepend(self.identifier)
+    
+    def __repr__(self):
+        return self.typed_identifier
+
+
+class Symbol:
+    def __init__(self, location: Location, identifier: SymbolIdentifier, parent: SymbolIdentifier):
+        self.identifier: SymbolIdentifier = identifier
+        self.parent: SymbolIdentifier = parent
+        self.location: Location = location
+
+    @property
+    def qualified_identifier(self) -> SymbolIdentifier:
+        if self.parent is None:
+            return self.identifier
+        return self.parent.append(self.identifier)
+
+    def __hash__(self):
+        return hash(self.qualified_identifier.typed_identifier)
+    
+    def __eq__(self, other: Symbol):
+        if not isinstance(other, Symbol):
+            return False
+        return self.qualified_identifier == other.qualified_identifier
+    
+    def __repr__(self):
+        return f'[Symbol {self.qualified_identifier}]'
+
+
+class ModuleSymbol(Symbol):
+    def __init__(self, location: Location, name: str):
+        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
+
+
+class BindingSymbol(Symbol):
+    def __init__(self, location: Location, lang: str, module: SymbolIdentifier):
+        super().__init__(location, SymbolIdentifier(lang, SymbolType.BINDING), module)
+    
+
+class DefSymbol(Symbol):
+    def __init__(self, location: Location, name: str, module: SymbolIdentifier):
+        super().__init__(location, SymbolIdentifier(name, SymbolType.SYMBOL), module)
+    
+
+class PlaceholderSymbol(Symbol):
+    def __init__(self, name: str, parent: SymbolIdentifier):
+        super().__init__(None, SymbolIdentifier(name, SymbolType.PLACEHOLDER), parent)

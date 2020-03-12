@@ -6,7 +6,7 @@ from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser
 
-__all__ = [
+__all__ = (
     'ParsedFile',
     'ParsedEnvironment',
     'parse',
@@ -19,9 +19,9 @@ __all__ = [
     'Symi',
     'Symdef',
     'GImport',
-    'GUse',
     'GStructure',
-]
+    'GUse',
+)
 
 class ParsedFile:
     " An object contains information about symbols, locations, imports of an stex source file. "
@@ -47,13 +47,10 @@ def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:
     except Exception as e1:
         if debug_exceptions:
             raise
-        e2 = None
         try:
             with open(path, mode='r') as f:
                 lines = f.readlines()
-        except Exception as e2:
-            if debug_exceptions:
-                raise
+        except:
             lines = []
         last_line = len(lines)
         last_character = len(lines[-1]) if lines else 0
@@ -61,8 +58,6 @@ def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:
         whole_file_range = Range(Position(0, 0), end_position)
         whole_file_location = Location(path, whole_file_range)
         exceptions.append((whole_file_location, e1))
-        if e2 is not None:
-            exceptions.append((whole_file_location, e2))
     parsed_file.exceptions = exceptions
     return parsed_file
 
@@ -337,9 +332,29 @@ class Trefi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
-        if i != len(tokens) - int(a):
-            raise ValueError(f'Trefi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
+        actual = len(tokens) - int(a)
+        if i != actual:
+            raise ValueError(f'Trefi argument count mismatch: Expected {i} vs. actual {actual}.')
+        if self.options and (not self.m and '?' in self.options.text):
+            raise ValueError('Questionmark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
+        if self.m and not self.options:
+            raise ValueError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     
+    @property
+    def target_symbol(self) -> str:
+        ''' Parses the targeted symbol's name.
+
+        The target's name is either given in the annotations
+        by using the ?<symbol> syntax or else it is generated
+        by joining the tokens with a '-' character.
+        '''
+        _, target_symbol, _, _ = self.parse_annotations()
+        if target_symbol is not None:
+            return target_symbol
+        tokens = (t.text for t in self.tokens[int(self.a):])
+        generated = '-'.join(tokens)
+        return generated
+
     def parse_annotations(self) -> Tuple[Optional[str], Optional[str], Optional[Range], Optional[Range]]:
         ''' Parses module and symbol annotations from optional arguments.
 
@@ -431,7 +446,7 @@ class Symi(ParsedEnvironment):
             raise ValueError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
     
     @property
-    def name(self):
+    def name(self) -> str:
         return '-'.join(token.text for token in self.tokens)
 
     @classmethod
@@ -463,6 +478,8 @@ class Symdef(ParsedEnvironment):
     
     @property
     def name(self) -> str:
+        if self.options is None:
+            return self.tokens[0].text
         values, ranges = self.options.parse_options()
         name = values[-1].get('name')
         if name is not None:
@@ -489,25 +506,55 @@ class Symdef(ParsedEnvironment):
 
 class GImport(ParsedEnvironment):
     PATTERN = re.compile(r'gimport(\*)?')
-    def __init__(self, location: Location, target: TokenWithLocation, options: Optional[TokenWithLocation], asterisk: bool):
+    def __init__(
+        self,
+        location: Location,
+        target: TokenWithLocation,
+        options: Optional[TokenWithLocation],
+        asterisk: bool):
         super().__init__(location)
         self.target = target
         self.options = options
         self.asterisk = asterisk
     
     @property
-    def target_identifier(self) -> str:
-        module = '/' + self.target.text
-        if self.options:
-            (unnamed, named), ranges = self.options.parse_options()
-            if unnamed:
-                return unnamed[0] + module
-        # get index of "source" directory in the path of the file that contains this import
-        source_index = [p.stem for p in self.location.uri.parents].index('source')
-        # construct the default repo identifier by using the cwd stem: E.g.: 'smglom'
-        # then concatenating the stem of the directory one level above the "source" directory
-        repo = Path.cwd().stem + '/' + self.location.uri.parents[source_index - 1].stem
-        return repo + module
+    def repository_path_annotation(self) -> Optional[Path]:
+        ''' Returns the path to the repository's source dir the oargs annotation points to.
+
+        Examples:
+            >>> options = TokenWithLocation('smglom/example-repo', None)
+            >>> gimport = GImport(None, None, options, False)
+            >>> gimport.repository_path_annotation.as_posix()
+            'smglom/example-repo/source'
+        '''
+        if self.options is None:
+            return None
+        return Path(self.options.text) / 'source'
+
+    @property
+    def module_path(self) -> Path:
+        ''' Returns the path to the module file this gimport points to.
+
+        Examples:
+            >>> path = Path('path/to/smglom/repo/source/module.tex')
+            >>> location = Location(path, None)
+            >>> target = TokenWithLocation('target-module')
+            >>> gimport = GImport(location, target, None, False)
+            >>> gimport.module_path.as_posix() # target module in same repo
+            'path/to/smglom/repo/source/target-module.tex
+            >>> options = TokenWithLocation('smglom/other-repo', None)
+            >>> gimport = GImport(location, target, options, False)
+            >>> gimport.module_path.as_posix() # target module in other repo
+            'smglom/other-repo/source/target-module.tex'
+        '''
+        annotation = self.repository_path_annotation
+        if annotation:
+            return annotation / (self.target_module_name + '.tex')
+        return self.location.uri.parents[0] / (self.target_module_name + '.tex')
+
+    @property
+    def target_module_name(self) -> str:
+        return self.target.text
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GImport]:
@@ -515,7 +562,7 @@ class GImport(ParsedEnvironment):
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise ValueError('Argument count mismatch (expected 1, found 0).')
+            raise ValueError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         if len(e.oargs) > 1:
             raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
@@ -534,17 +581,20 @@ class GStructure(ParsedEnvironment):
     def __init__(self, location: Location, asterisk: bool):
         super().__init__(location)
         self.asterisk = asterisk
-        raise NotImplementedError
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GStructure]:
         match = GStructure.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
+        raise NotImplementedError
 
 
-class GUseStructuredText(ParsedEnvironment):
+class GUse(ParsedEnvironment):
     def __init__(self, location):
         super().__init__(location)
+    
+    @staticmethod
+    def from_environment(e: Environment) -> Optional[GUse]:
         raise NotImplementedError
 

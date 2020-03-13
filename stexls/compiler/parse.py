@@ -219,7 +219,7 @@ class Mhmodnl(ParsedEnvironment):
             >>> binding.path_to_module_file.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
-        return self.location.uri.parents[0] / (self.name.text + '.tex')
+        return (self.location.uri.parents[0] / (self.name.text + '.tex')).absolute()
     
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Mhmodnl]:

@@ -13,19 +13,24 @@ class StexObject:
     def __init__(self):
         self.compiled_files: Set[Path] = set()
         self.dependend_files: Set[Path] = set()
-        self.symbol_table: Dict[SymbolIdentifier, Symbol] = {}
+        self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
         self.references: Dict[Path, Dict[Range, SymbolIdentifier]] = defaultdict(dict)
         self.errors: Dict[Location, Exception] = {}
-
-    def add_symbol(self, symbol: Symbol, duplicate_allowed: bool = False) -> Optional[Symbol]:
-        if symbol in self.symbol_table:
-            if duplicate_allowed:
-                return self.symbol_table[symbol]
-            raise ValueError(f'Duplicate symbol definition of {symbol}: Previously defined at "{self.symbol_table[symbol].location}"')
-        self.symbol_table[symbol.qualified_identifier] = symbol
-        if duplicate_allowed:
-            return symbol
     
+    def add_reference(self, location: Location, referenced_id: SymbolIdentifier):
+        self.references[location.uri][location.range] = referenced_id
+
+    def add_symbol(self, symbol: Symbol, export: bool = False, duplicate_allowed: bool = False):
+        symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
+        if symbol.qualified_identifier in self.symbol_table:
+            if duplicate_allowed:
+                for duplicate in self.symbol_table[symbol.qualified_identifier]:
+                    if duplicate.access_modifier != symbol.access_modifier:
+                        raise ValueError(f'Duplicate symbol definition of {symbol.qualified_identifier} at "{symbol.location}" and "{duplicate.location}" where access modifiers are different: {symbol.access_modifier.name} vs. {duplicate.access_modifier.name}')
+            else:
+                raise ValueError(f'Duplicate symbol definition of {symbol.qualified_identifier}: Previously defined at "{self.symbol_table[symbol].location}"')
+        self.symbol_table[symbol.qualified_identifier].append(symbol)
+
     @staticmethod
     def compile(parsed: ParsedFile) -> Optional[StexObject]:
         obj = StexObject()
@@ -64,22 +69,26 @@ def _compile_gimport(module: ModuleSymbol, gimport: GImport, obj: StexObject):
     repository_path = gimport.repository_path_annotation
     module_path = gimport.module_path
     if repository_path:
-        obj.dependend_files.add(module_path)
-    target_module_id = SymbolIdentifier(gimport.target_module_name, SymbolType.MODULE)
-    imported_symbol_id = module.qualified_identifier.append(target_module_id)
-    obj.references[gimport.location.uri][gimport.location.range] = target_module_id
-    obj.symbol_table[imported_symbol_id] = target_module_id
+        obj.dependend_files.add(module_path.absolute())
+    target_module_placeholder = PlaceholderSymbol(
+        gimport.target_module_name, module.qualified_identifier)
+    referenced_module_id = SymbolIdentifier(gimport.target_module_name, SymbolType.MODULE)
+    obj.add_reference(gimport.location, referenced_module_id)
+    obj.add_symbol(target_module_placeholder, export=True)
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
-    pass
+    symbol = DefSymbol(sym.location, sym.name, module.qualified_identifier)
+    obj.add_symbol(symbol, export=True)
 
 def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
-    pass
+    symbol = DefSymbol(symdef.location, symdef.name, module.qualified_identifier)
+    obj.add_symbol(symbol, duplicate_allowed=True, export=True)
 
 def _compile_mhmodnl(mhmodnl: Mhmodnl, obj: StexObject, parsed_file: ParsedFile):
     module_id = SymbolIdentifier(mhmodnl.name.text, SymbolType.MODULE)
     binding = BindingSymbol(mhmodnl.location, lang=mhmodnl.lang.text, module=module_id)
-    obj.add_symbol(binding)
+    obj.add_dependency(mhmodnl.location, mhmodnl.path_to_module_file)
+    obj.add_symbol(binding, export=True)
     for invalid_environment in itertools.chain(
         parsed_file.modsigs,
         parsed_file.gimports,
@@ -100,7 +109,7 @@ def _compile_mhmodnl(mhmodnl: Mhmodnl, obj: StexObject, parsed_file: ParsedFile)
 def _compile_defi(binding: BindingSymbol, defi: Defi, obj: StexObject):
     defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)
     symbol_id = binding.parent.append(defi_id)
-    obj.references[defi.location.uri][defi.location.range] = symbol_id
+    obj.add_reference(defi.location, symbol_id)
 
 def _compile_trefi(binding: BindingSymbol, trefi: Trefi, obj: StexObject):
     target_module, _, module_range, symbol_range = trefi.parse_annotations()
@@ -110,7 +119,7 @@ def _compile_trefi(binding: BindingSymbol, trefi: Trefi, obj: StexObject):
         target_id = SymbolIdentifier(target_module, SymbolType.MODULE)
         module_id = binding.parent.append(target_id)
     symbol_id = module_id.append(SymbolIdentifier(trefi.target_symbol, SymbolType.SYMBOL))
-    obj.references[trefi.location.uri][trefi.location.range] = symbol_id
+    obj.add_reference(trefi.location, symbol_id)
     if module_range is not None:
         module_location = trefi.location.replace(positionOrRange=module_range)
-        obj.references[module_location.uri][module_location.range] = module_id
+        obj.add_reference(module_location, module_id)

@@ -6,6 +6,7 @@ from stexls.util.location import *
 
 __all__ = [
     'SymbolType',
+    'AccessModifier',
     'SymbolIdentifier',
     'Symbol',
     'ModuleSymbol',
@@ -22,6 +23,11 @@ class SymbolType(Enum):
     DIRECTORY='directory'
     PLACEHOLDER='placeholder'
 
+
+class AccessModifier(Enum):
+    PUBLIC='public'
+    PRIVATE='private'
+
 class SymbolIdentifier:
     def __init__(self, identifier: str, symbol_type: SymbolType):
         self.identifier = identifier
@@ -36,6 +42,14 @@ class SymbolIdentifier:
     
     def append(self, identifier: SymbolIdentifier):
         return identifier.prepend(self.identifier)
+
+    def __hash__(self):
+        return hash(self.typed_identifier)
+
+    def __eq__(self, other: SymbolIdentifier):
+        if not isinstance(other, SymbolIdentifier):
+            return False
+        return self.identifier == other.identifier and self.symbol_type == other.symbol_type
     
     def __repr__(self):
         return self.typed_identifier
@@ -46,6 +60,7 @@ class Symbol:
         self.identifier: SymbolIdentifier = identifier
         self.parent: SymbolIdentifier = parent
         self.location: Location = location
+        self.access_modifier: AccessModifier = AccessModifier.PRIVATE
 
     @property
     def qualified_identifier(self) -> SymbolIdentifier:
@@ -62,7 +77,7 @@ class Symbol:
         return self.qualified_identifier == other.qualified_identifier
     
     def __repr__(self):
-        return f'[Symbol {self.qualified_identifier}]'
+        return f'[{self.access_modifier.value} Symbol {self.qualified_identifier}]'
 
 
 class ModuleSymbol(Symbol):

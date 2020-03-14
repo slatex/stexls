@@ -271,6 +271,15 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
+    @property
+    def one(self) -> Location:
+        ' Transforms zero-indexed location to one-indexed location by adding one to every line and character offset. '
+        return Location(
+            self.uri,
+            Range(
+                self.range.start.translate(1, 1),
+                self.range.end.translate(1, 1)))
+
     def format_link(self) -> str:
         return f'{self.uri.as_posix()}:{self.range.start.line}:{self.range.start.character}'
 

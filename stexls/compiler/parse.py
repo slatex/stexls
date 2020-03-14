@@ -1,10 +1,13 @@
 from __future__ import annotations
 from typing import Optional, Tuple, List, Dict
 import re
+from collections import defaultdict
 from pathlib import Path
 from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser
+from .exceptions import CompilerException, CompilerWarning
+from stexls.util.latex.exceptions import LatexException
 
 __all__ = (
     'ParsedFile',
@@ -34,9 +37,10 @@ class ParsedFile:
         self.syms: List[Symi] = []
         self.symdefs: List[Symdef] = []
         self.gimports: List[GImport] = []
+        self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
 
-def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:
+def parse(path: Path) -> ParsedFile:
     parsed_file = ParsedFile(path)
     exceptions: List[Tuple[Location, Exception]] = []
     try:
@@ -44,9 +48,7 @@ def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:
         parser.parse()
         exceptions = parser.syntax_errors or []
         parser.walk(lambda env: _visitor(env, parsed_file, exceptions))
-    except Exception as e1:
-        if debug_exceptions:
-            raise
+    except (CompilerException, LatexException) as ex:
         try:
             with open(path, mode='r') as f:
                 lines = f.readlines()
@@ -57,11 +59,12 @@ def parse(path: Path, debug_exceptions: bool = False) -> ParsedFile:
         end_position = Position(last_line, last_character)
         whole_file_range = Range(Position(0, 0), end_position)
         whole_file_location = Location(path, whole_file_range)
-        exceptions.append((whole_file_location, e1))
-    parsed_file.exceptions = exceptions
+        exceptions.append((whole_file_location, ex))
+    for loc, e in exceptions:
+        parsed_file.errors[loc].append(e)
     return parsed_file
 
-def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[Location, Exception]], debug_exceptions: bool = True):
+def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[Location, Exception]]):
     try:
         module = Modsig.from_environment(env)
         if module:
@@ -91,9 +94,7 @@ def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[L
         if gimport:
             parsed_file.gimports.append(gimport)
             return
-    except Exception as e:
-        if debug_exceptions:
-            raise
+    except CompilerException as e:
         exceptions.append((env.location, e))
         return
 
@@ -186,7 +187,7 @@ class Modsig(ParsedEnvironment):
         if not match:
             return
         if len(e.rargs) != 1:
-            raise ValueError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
+            raise CompilerException(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         return Modsig(e.location, TokenWithLocation.from_node(e.rargs[0]))
 
     def __repr__(self):
@@ -227,7 +228,7 @@ class Mhmodnl(ParsedEnvironment):
         if not match:
             return
         if len(e.rargs) != 2:
-            raise ValueError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+            raise CompilerException(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         return Mhmodnl(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
@@ -246,8 +247,8 @@ class Defi(ParsedEnvironment):
         tokens: List[TokenWithLocation],
         options: Optional[TokenWithLocation],
         m: bool,
-        capital: bool,
         a: bool,
+        capital: bool,
         i: int,
         s: bool,
         asterisk: bool):
@@ -261,7 +262,7 @@ class Defi(ParsedEnvironment):
         self.s = s
         self.asterisk = asterisk
         if i != len(tokens) - int(a):
-            raise ValueError(f'Defi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
+            raise CompilerException(f'Defi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
 
     @property
     def name(self) -> str:
@@ -292,9 +293,9 @@ class Defi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
         if len(e.oargs) > 1:
-            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return Defi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -334,11 +335,11 @@ class Trefi(ParsedEnvironment):
         self.asterisk = asterisk
         actual = len(tokens) - int(a)
         if i != actual:
-            raise ValueError(f'Trefi argument count mismatch: Expected {i} vs. actual {actual}.')
+            raise CompilerException(f'Trefi argument count mismatch: Expected {i} vs. actual {actual}.')
         if self.options and (not self.m and '?' in self.options.text):
-            raise ValueError('Questionmark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
+            raise CompilerException('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
         if self.m and not self.options:
-            raise ValueError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
+            raise CompilerException('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     
     @property
     def target_symbol(self) -> str:
@@ -391,6 +392,8 @@ class Trefi(ParsedEnvironment):
             >>> srange is None
             True
         '''
+        if self.options is None:
+            return None, None, None, None
         (unnamed, named), (unnamed_range, named_ranges) = self.options.parse_options()
         if len(unnamed) != 1 or len(unnamed_range) != 1:
             return None, None, None, None
@@ -409,13 +412,13 @@ class Trefi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
         if len(e.oargs) > 1:
-            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return Trefi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
-            TokenWithLocation.from_node_union(e.oargs),
+            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
             'm' in match.group(1),
             'a' in match.group(1),
             match.group(2) == 'T',
@@ -443,7 +446,7 @@ class Symi(ParsedEnvironment):
         self.s = s
         self.asterisk = asterisk
         if i != len(tokens):
-            raise ValueError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
+            raise CompilerException(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
     
     @property
     def name(self) -> str:
@@ -455,7 +458,7 @@ class Symi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
         return Symi(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -492,7 +495,7 @@ class Symdef(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise ValueError('Argument count mismatch: At least one argument required.')
+            raise CompilerException('Argument count mismatch: At least one argument required.')
         return Symdef(
             e.location,
             list(map(TokenWithLocation.from_node, e.rargs)),
@@ -562,9 +565,9 @@ class GImport(ParsedEnvironment):
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise ValueError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
+            raise CompilerException(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         if len(e.oargs) > 1:
-            raise ValueError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
             e.location,
             TokenWithLocation.from_node_union(e.rargs),

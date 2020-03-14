@@ -96,5 +96,5 @@ class DefSymbol(Symbol):
     
 
 class PlaceholderSymbol(Symbol):
-    def __init__(self, name: str, parent: SymbolIdentifier):
-        super().__init__(None, SymbolIdentifier(name, SymbolType.PLACEHOLDER), parent)
+    def __init__(self, location: Location, name: str, parent: SymbolIdentifier):
+        super().__init__(location, SymbolIdentifier(name, SymbolType.PLACEHOLDER), parent)

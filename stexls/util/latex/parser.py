@@ -11,6 +11,7 @@ from stexls.util.latex.grammar.out.LatexParserListener import LatexParserListene
 from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParser
 from stexls.util.location import Location, Range, Position
 
+from .exceptions import LatexException
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
 
@@ -409,7 +410,7 @@ class _LatexParserListener(_LatexParserListener):
         expected_env_name = self.stack[-1].name.lexeme.strip()
         actual_env_name = str(ctx.TOKEN()).strip()
         if expected_env_name != actual_env_name:
-            raise RuntimeError(f"Environment unbalanced:"
+            raise LatexException(f"Environment unbalanced:"
                                f" Expected {expected_env_name} found {actual_env_name}")
 
     def exitMath(self, ctx: _LatexParser.MathContext):

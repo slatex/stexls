@@ -271,6 +271,9 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
+    def format_link(self) -> str:
+        return f'{self.uri.as_posix()}:{self.range.start.line}:{self.range.start.character}'
+
     def replace(self, uri: Path = None, positionOrRange: Union[Position, Range] = None):
         ''' Creates a copy of this location and replaces uri and/or range if given.
 

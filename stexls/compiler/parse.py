@@ -220,7 +220,7 @@ class Mhmodnl(ParsedEnvironment):
             >>> binding.path_to_module_file.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
-        return (self.location.uri.parents[0] / (self.name.text + '.tex')).absolute()
+        return (self.location.uri.parents[0] / (self.name.text + '.tex'))
     
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Mhmodnl]:
@@ -391,10 +391,22 @@ class Trefi(ParsedEnvironment):
             [Range (2 5) (2 18)]
             >>> srange is None
             True
+            >>> range = Range(Position(2, 5), Position(2, 25))
+            >>> token = TokenWithLocation('?vector-space-symbol', range)
+            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
+            >>> module, symbol, mrange, srange = trefi.parse_annotations()
+            >>> module is None
+            True
+            >>> symbol
+            'vector-space-symbol'
+            >>> mrange is None
+            True
+            >>> srange
+            [Range (2 6) (2 25)]
         '''
         if self.options is None:
             return None, None, None, None
-        (unnamed, named), (unnamed_range, named_ranges) = self.options.parse_options()
+        (unnamed, _), (unnamed_range, _) = self.options.parse_options()
         if len(unnamed) != 1 or len(unnamed_range) != 1:
             return None, None, None, None
         annotation: str = unnamed[0]
@@ -403,7 +415,10 @@ class Trefi(ParsedEnvironment):
             module_annotation, symbol_annotation = annotation.split('?')
             module_range, symbol_range = annotation_range.split(annotation.index('?'))
             symbol_range.start.character += 1
-            return module_annotation, symbol_annotation, module_range, symbol_range
+            if module_annotation:
+                return module_annotation, symbol_annotation, module_range, symbol_range
+            else:
+                return None, symbol_annotation, None, symbol_range
         return annotation, None, annotation_range, None
 
     @classmethod

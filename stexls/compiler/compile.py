@@ -17,7 +17,7 @@ class StexObject:
         self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
         self.references: Dict[Path, Dict[Range, SymbolIdentifier]] = defaultdict(dict)
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
-    
+
     def format(self):
         formatted = 'Contains files:'
         for f in self.compiled_files:
@@ -36,7 +36,7 @@ class StexObject:
         else:
             for id, ss in self.symbol_table.items():
                 for s in ss:
-                    formatted += '\n\t' + str(s)
+                    formatted += '\n\t' + s.location.format_link() + ':' + str(s)
 
         formatted += '\n\nReferences:'
         if not self.references:
@@ -44,7 +44,7 @@ class StexObject:
         else:
             for path, d in self.references.items():
                 for r, id in d.items():
-                    formatted += '\n\t' + (str(id) + ': ').ljust(48) + str(r)
+                    formatted += '\n\t' + Location(path, r).format_link() + ':' + str(id)
         
         formatted += '\n\nErrors:'
         if not self.errors:
@@ -52,13 +52,12 @@ class StexObject:
         else:
             for loc, ee in self.errors.items():
                 for e in ee:
-                    formatted += '\n\t' + str(e)
+                    formatted += '\n\t' + loc.format_link() + ':' + str(e)
         
         return formatted
-
     
     def add_dependency(self, location: Location, file: Path):
-        self.dependend_files[file.absolute()].add(location)
+        self.dependend_files[file].add(location)
     
     def add_reference(self, location: Location, referenced_id: SymbolIdentifier):
         self.references[location.uri][location.range] = referenced_id
@@ -103,12 +102,13 @@ class StexObject:
 
 
 def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
-    module = ModuleSymbol(modsig.location, modsig.name.text)
     for invalid_environment in itertools.chain(
         parsed_file.mhmodnls,
         parsed_file.defis,
         parsed_file.trefis):
         obj.errors[invalid_environment.location] = Warning(f'Invalid environment of type {type(invalid_environment).__name__} in mhmodnl.')
+    module = ModuleSymbol(modsig.location, modsig.name.text)
+    obj.add_symbol(module, export=True)
     for gimport in parsed_file.gimports:
         try:
             _compile_gimport(module, gimport, obj)
@@ -126,14 +126,12 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
             obj.errors[symd.location].append(e)
 
 def _compile_gimport(module: ModuleSymbol, gimport: GImport, obj: StexObject):
-    repository_path = gimport.repository_path_annotation
     module_path = gimport.module_path
     target_module_placeholder = PlaceholderSymbol(
         gimport.location, gimport.target_module_name, module.qualified_identifier)
     referenced_module_id = SymbolIdentifier(gimport.target_module_name, SymbolType.MODULE)
     obj.add_symbol(target_module_placeholder, export=True)
-    if repository_path:
-        obj.add_dependency(gimport.location, module_path)
+    obj.add_dependency(gimport.location, module_path)
     obj.add_reference(gimport.location, referenced_module_id)
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
@@ -172,13 +170,10 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject):
     obj.add_reference(defi.location, symbol_id)
 
 def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
-    target_module, _, module_range, symbol_range = trefi.parse_annotations()
-    if target_module is not None:
-        target_id = SymbolIdentifier(target_module, SymbolType.MODULE)
-        module_id = module_id.append(target_id)
-    target_id = SymbolIdentifier(trefi.target_symbol, SymbolType.SYMBOL)
-    target_symbol_id = module_id.append(target_id)
-    obj.add_reference(trefi.location, target_symbol_id)
-    if module_range is not None:
+    target_module, target_symbol, module_range, _ = trefi.parse_annotations()
+    if target_module:
+        module_id = SymbolIdentifier(target_module, SymbolType.MODULE)
         module_location = trefi.location.replace(positionOrRange=module_range)
         obj.add_reference(module_location, module_id)
+    target_symbol_id = module_id.append(SymbolIdentifier(target_symbol or trefi.target_symbol, SymbolType.SYMBOL))
+    obj.add_reference(trefi.location, target_symbol_id)

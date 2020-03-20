@@ -5,6 +5,7 @@ import itertools
 import collections
 import asyncio
 import fnmatch
+from pathlib import Path
 
 __all__ = ['WorkspaceWatcher', 'AsyncFileWatcher']
 
@@ -16,16 +17,16 @@ class WorkspaceWatcher:
     checked at once.
     """
     Changes = collections.namedtuple('Changes', ['created', 'modified', 'deleted'])
-    def __init__(self, folder: str, filter: 'glob' = None):
+    def __init__(self, folder: Path, filter: 'glob' = None):
         """Initializes the watcher with a root folder and an optional ignore pattern.
 
         Args:
-            folder (str): Root folder of the workspace.
-            filter (str, optional): Filters files that do not match the glob pattern.
+            folder (Path): Root folder of the workspace.
+            filter (glob, optional): Filters files that do not match the glob pattern.
         """
-        self.folder = folder
+        self.folder = folder if isinstance(folder, Path) else Path(folder)
         self.filter = filter
-        self.files: Dict[str, float] = {}
+        self.files: Dict[Path, float] = {}
 
     def __getstate__(self):
         return (self.folder, self.filter, self.files)
@@ -59,7 +60,7 @@ class WorkspaceWatcher:
         if self.filter:
             files = fnmatch.filter(files, self.filter)
         # create new index of files and modified times
-        files = dict(map(lambda x: (x, os.path.getmtime(x)), files))
+        files = dict(map(lambda x: (Path(x), os.path.getmtime(x)), files))
         # newly created files are the difference of files before and after update
         new_files = set(files)
         created = new_files.difference(old_files)

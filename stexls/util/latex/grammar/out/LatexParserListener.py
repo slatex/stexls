@@ -26,12 +26,12 @@ class LatexParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by LatexParser#inlineEnv.
-    def enterInlineEnv(self, ctx:LatexParser.InlineEnvContext):
+    # Enter a parse tree produced by LatexParser#math.
+    def enterMath(self, ctx:LatexParser.MathContext):
         pass
 
-    # Exit a parse tree produced by LatexParser#inlineEnv.
-    def exitInlineEnv(self, ctx:LatexParser.InlineEnvContext):
+    # Exit a parse tree produced by LatexParser#math.
+    def exitMath(self, ctx:LatexParser.MathContext):
         pass
 
 
@@ -62,30 +62,30 @@ class LatexParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by LatexParser#math.
-    def enterMath(self, ctx:LatexParser.MathContext):
+    # Enter a parse tree produced by LatexParser#inlineEnv.
+    def enterInlineEnv(self, ctx:LatexParser.InlineEnvContext):
         pass
 
-    # Exit a parse tree produced by LatexParser#math.
-    def exitMath(self, ctx:LatexParser.MathContext):
-        pass
-
-
-    # Enter a parse tree produced by LatexParser#token.
-    def enterToken(self, ctx:LatexParser.TokenContext):
-        pass
-
-    # Exit a parse tree produced by LatexParser#token.
-    def exitToken(self, ctx:LatexParser.TokenContext):
+    # Exit a parse tree produced by LatexParser#inlineEnv.
+    def exitInlineEnv(self, ctx:LatexParser.InlineEnvContext):
         pass
 
 
-    # Enter a parse tree produced by LatexParser#oarg.
-    def enterOarg(self, ctx:LatexParser.OargContext):
+    # Enter a parse tree produced by LatexParser#args.
+    def enterArgs(self, ctx:LatexParser.ArgsContext):
         pass
 
-    # Exit a parse tree produced by LatexParser#oarg.
-    def exitOarg(self, ctx:LatexParser.OargContext):
+    # Exit a parse tree produced by LatexParser#args.
+    def exitArgs(self, ctx:LatexParser.ArgsContext):
+        pass
+
+
+    # Enter a parse tree produced by LatexParser#text.
+    def enterText(self, ctx:LatexParser.TextContext):
+        pass
+
+    # Exit a parse tree produced by LatexParser#text.
+    def exitText(self, ctx:LatexParser.TextContext):
         pass
 
 
@@ -98,12 +98,48 @@ class LatexParserListener(ParseTreeListener):
         pass
 
 
-    # Enter a parse tree produced by LatexParser#args.
-    def enterArgs(self, ctx:LatexParser.ArgsContext):
+    # Enter a parse tree produced by LatexParser#oarg.
+    def enterOarg(self, ctx:LatexParser.OargContext):
         pass
 
-    # Exit a parse tree produced by LatexParser#args.
-    def exitArgs(self, ctx:LatexParser.ArgsContext):
+    # Exit a parse tree produced by LatexParser#oarg.
+    def exitOarg(self, ctx:LatexParser.OargContext):
+        pass
+
+
+    # Enter a parse tree produced by LatexParser#arglist.
+    def enterArglist(self, ctx:LatexParser.ArglistContext):
+        pass
+
+    # Exit a parse tree produced by LatexParser#arglist.
+    def exitArglist(self, ctx:LatexParser.ArglistContext):
+        pass
+
+
+    # Enter a parse tree produced by LatexParser#argument.
+    def enterArgument(self, ctx:LatexParser.ArgumentContext):
+        pass
+
+    # Exit a parse tree produced by LatexParser#argument.
+    def exitArgument(self, ctx:LatexParser.ArgumentContext):
+        pass
+
+
+    # Enter a parse tree produced by LatexParser#argumentName.
+    def enterArgumentName(self, ctx:LatexParser.ArgumentNameContext):
+        pass
+
+    # Exit a parse tree produced by LatexParser#argumentName.
+    def exitArgumentName(self, ctx:LatexParser.ArgumentNameContext):
+        pass
+
+
+    # Enter a parse tree produced by LatexParser#argumentValue.
+    def enterArgumentValue(self, ctx:LatexParser.ArgumentValueContext):
+        pass
+
+    # Exit a parse tree produced by LatexParser#argumentValue.
+    def exitArgumentValue(self, ctx:LatexParser.ArgumentValueContext):
         pass
 
 

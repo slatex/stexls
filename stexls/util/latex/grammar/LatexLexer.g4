@@ -1,13 +1,13 @@
 lexer grammar LatexLexer;
 
 WS: [ \t\r\n]+ -> skip;
-
-COMMENT: '%' .*? '\r'?'\n' -> skip;
-
-OPEN_SQUARE: '[';
-CLOSED_SQUARE: ']';
+COMMENT: '%' ~('\n')* -> skip;
 OPEN_BRACE: '{';
 CLOSED_BRACE: '}';
+OPEN_BRACKET: '[';
+CLOSED_BRACKET: ']';
+EQUALS: '=';
+COMMA: ',';
 
 MATH_ENV
     : '$$'.+?'$$'
@@ -30,10 +30,12 @@ MATH_ENV
     | '\\begin' WS? '{' WS? 'verbatim' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '*' WS? '}'
     ;
 
-BEGIN: '\\begin';
+ESCAPE: '\\' -> skip, pushMode(ESCAPE_MODE);
 
-END: '\\end';
+TEXT: ~('$'|'['|'{'|'%'|'}'|']'|'\\'|','|'=')+;
 
-INLINE_ENV_NAME: '\\' [a-zA-Z_]+ '*'?;
-
-TOKEN: (~('$'|'['|'{'|'%'|'}'|']'|'\\') | '\\' ('$'|'{'|'%'|'}'|'\\'|'!'|'@'|'#'|'^'|'&'|'*'|'_'|'+'|'-'|'\''|'|'|';'|':'|'"'|'<'|'>'|'?'|','|'.'|'/'))+;
+mode ESCAPE_MODE;
+BEGIN: 'begin' -> popMode;
+END: 'end' -> popMode;
+INLINE_ENV_NAME: [a-zA-Z_]+ '*'? -> popMode;
+ESCAPED_TEXT: . -> popMode, type(TEXT);

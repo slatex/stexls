@@ -1,7 +1,7 @@
 from __future__ import annotations
 import itertools, os, re, copy, antlr4
 from pathlib import Path
-from typing import Iterator, Pattern, List, Optional, Tuple, Callable, Union
+from typing import Iterator, Pattern, List, Optional, Tuple, Callable, Union, Dict
 import tempfile
 
 from antlr4.error.ErrorListener import ErrorListener
@@ -13,7 +13,11 @@ from stexls.util.location import Location, Range, Position
 
 from .exceptions import LatexException
 
-__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node']
+__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node', 'SyntaxErrorException']
+
+
+class SyntaxErrorException(Exception):
+    pass
 
 
 class Node:
@@ -52,17 +56,19 @@ class Node:
 
     @property
     def text(self) -> str:
-        " The text this node contains. "
+        ' Returns the text inside begin and end offset. '
         return self.parser.get_text_by_offset(self.begin, self.end)
 
     @property
     def text_inside(self) -> str:
-        " Get text spanned by first and last child nodes. Equal to self.text if there are no children. "
+        ''' Get text spanned by first and last child nodes.
+        
+        Equal to self.text if there are no children.
+        '''
         if not self.children:
             return self.text
-        else:
-            start = self.children[0].begin
-            stop = self.children[-1].end
+        start = self.children[0].begin
+        stop = self.children[-1].end
         return self.parser.get_text_by_offset(start, stop)
 
     def add(self, node: Node):
@@ -80,7 +86,7 @@ class Node:
 
     @property
     def envs(self) -> List[Environment]:
-        ' Recursively determines all environments this node is contained in. '
+        ' Lists all PARENT environments this node is contained in. '
         env = (self.env_name,) if self.env_name else ()
         if not self.parent:
             return env
@@ -95,6 +101,11 @@ class Node:
         ' Iterator with only the nodes with environments that match the given pattern. '
         for child in self.children:
             yield from child.finditer(env_pattern)
+
+    @classmethod
+    def from_ctx(cls, ctx: 'ParserRuleContext', parser, **kwargs):
+        range = _LatexParserListener._get_ctx_range(ctx)
+        return cls(parser, *range, **kwargs)
 
 
 class Token(Node):
@@ -119,6 +130,29 @@ class Token(Node):
 
     def __repr__(self):
         return f'[Token begin={self.begin} end={self.end} "{self.lexeme.strip()}"]'
+
+
+class OArgument(Node):
+    def __init__(self, parser: LatexParser, begin: int, end: int):
+        super().__init__(parser, begin, end)
+        self.name: Token = None
+        self.value: Token = None
+
+    @property
+    def tokens(self):
+        yield from ()
+
+    def add_value(self, value: Token):
+        if self.value is not None:
+            raise ValueError('CommaSeparatedArgument already has a value assigned.')
+        self.add(value)
+        self.value = value
+
+    def add_name(self, name: Token):
+        if self.name is not None:
+            raise ValueError('CommaSeparatedArgument already has a name assigned.')
+        self.add(name)
+        self.name = name
 
 
 class MathToken(Token):
@@ -149,32 +183,25 @@ class Environment(Node):
             end: Zero indexed end offset of where the environment's last character is (usually a "}")
         """
         super().__init__(parser, begin, end)
-        self.name: Optional[Token] = None
+        self.oargs: List[OArgument] = []
         self.rargs: List[Node] = []
-        self.oargs: List[Node] = []
+        self.name: Node = None
 
-    def add_oarg(self, oarg: Node):
-        ' Register an OArg. '
-        if oarg.parent is not None:
-            raise ValueError("OArg can't be added to environment: OArg already has a parent.")
+    def add_oarg(self, oarg: OArgument):
+        ' Registers an OArg. '
         self.oargs.append(oarg)
-        oarg.parent = self
+        self.add(oarg)
 
     def add_rarg(self, rarg: Node):
         ' Registers an RArg. '
-        if rarg.parent is not None:
-            raise ValueError("RArg can't be added to environment: RArg already has a parent.")
         self.rargs.append(rarg)
-        rarg.parent = self
+        self.add(rarg)
 
-    def add_name(self, name_token: Token):
+    def add_name(self, name: Node):
         ' Adds a token as a name provider. '
         if self.name is not None:
             raise ValueError('Environment already has a name provider token.')
-        if name_token.parent is not None:
-            raise ValueError('Environment name provider token already has a parent.')
-        self.name = name_token
-        name_token.parent = self
+        self.name = name
 
     @property
     def env_name(self) -> str:
@@ -185,7 +212,15 @@ class Environment(Node):
             raise RuntimeError(
                 'Unable to get environment name,'
                 'because no name token was provided.')
-        return self.name.lexeme.strip()
+        return self.name.text_inside.strip()
+
+    @property
+    def tokens(self):
+        ' Returns tokens that are neither OArg nor RArgs. '
+        for child in self.children:
+            if child in self.oargs or child in self.rargs:
+                continue
+            yield from child.tokens
 
     def finditer(self, env_pattern: Pattern) -> Iterator[Node]:
         if re.fullmatch(env_pattern, self.name.lexeme):
@@ -202,12 +237,15 @@ class InlineEnvironment(Environment):
         environment contain the text.
         Written something like:
         \\name[<oargs>]{<rarg>}{<rarg>}
+        
+        Tokens yielded from inline environments
+        are the tokens from <rarg>s.
     """
     @property
     def tokens(self):
+        ' Inline environments only have public tokens in their rargs. '
         for arg in self.rargs:
             yield from arg.tokens
-        yield from super().tokens
 
 
 class LatexParser:
@@ -347,12 +385,12 @@ class _SyntaxErrorErrorListener(ErrorListener):
         """
         super().__init__()
         self.file = file
-        self.syntax_errors: List[Tuple[Location, Exception]] = []
+        self.syntax_errors: List[Tuple[Location, SyntaxErrorException]] = []
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
         position = Position(line, column)
         location = Location(Path(self.file), position)
-        exception = Exception(msg)
+        exception = SyntaxErrorException(msg)
         self.syntax_errors.append((location, exception))
 
 
@@ -368,20 +406,38 @@ class _LatexParserListener(_LatexParserListener):
         return ctx.start.start, ctx.stop.stop + 1
 
     def enterMain(self, ctx: _LatexParser.MainContext):
-        range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(self.parser, *range)
-        self.stack.append(node)
+        self.stack.append(Node.from_ctx(ctx, self.parser))
 
     def exitMain(self, ctx: _LatexParser.MainContext):
-        assert len(self.stack) == 1, "Broken parser stack."
+        if len(self.stack) != 1:
+            raise RuntimeError(f'Broken parser stack: {self.stack}')
+
+    def exitMath(self, ctx: _LatexParser.MathContext):
+        lexeme = str(ctx.MATH_ENV())
+        node = MathToken.from_ctx(ctx, self.parser, lexeme=lexeme)
+        self.stack[-1].add(node)
+
+    def enterEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
+        node = Environment.from_ctx(ctx, self.parser)
+        self.stack.append(node)
+
+    def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
+        env: Environment = self.stack.pop()
+        if not isinstance(env, Environment):
+            raise RuntimeError(f'Broken parser stack. Environment expected: {self.stack}')
+        expected_env_name = env.env_name
+        actual_env_name = str(ctx.TEXT()).strip()
+        if expected_env_name != actual_env_name:
+            raise LatexException(
+                f"Environment unbalanced:"
+                f" Expected {expected_env_name} found {actual_env_name}")
+        self.stack[-1].add(env)
 
     def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
-        range = _LatexParserListener._get_ctx_range(ctx)
-        env = InlineEnvironment(self.parser, *range)
+        env = InlineEnvironment.from_ctx(ctx, self.parser)
         env_name_ctx = ctx.INLINE_ENV_NAME()
-        env_name = str(env_name_ctx)[1:]
-        env_name_range = (env_name_ctx.getSymbol().start, env_name_ctx.getSymbol().stop)
-        token = Token(self.parser, *env_name_range, env_name)
+        env_name_range = (env_name_ctx.getSymbol().start, env_name_ctx.getSymbol().stop + 1)
+        token = Token(self.parser, *env_name_range, lexeme=str(env_name_ctx))
         env.add_name(token)
         self.stack.append(env)
 
@@ -389,59 +445,45 @@ class _LatexParserListener(_LatexParserListener):
         env = self.stack.pop()
         self.stack[-1].add(env)
 
-    def enterEnv(self, ctx: _LatexParser.EnvContext):
-        range = _LatexParserListener._get_ctx_range(ctx)
-        env = Environment(self.parser, *range)
-        self.stack.append(env)
-
-    def exitEnv(self, ctx: _LatexParser.EnvContext):
-        env = self.stack.pop()
-        self.stack[-1].add(env)
-
-    def exitEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
-        assert isinstance(self.stack[-1], Environment), "Broken parser stack."
-        lexeme = str(ctx.TOKEN())
-        range = _LatexParserListener._get_ctx_range(ctx)
-        token = Token(self.parser, *range, lexeme)
-        self.stack[-1].add_name(token)
-
-    def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
-        assert isinstance(self.stack[-1], Environment), "Broken parser stack."
-        expected_env_name = self.stack[-1].name.lexeme.strip()
-        actual_env_name = str(ctx.TOKEN()).strip()
-        if expected_env_name != actual_env_name:
-            raise LatexException(f"Environment unbalanced:"
-                               f" Expected {expected_env_name} found {actual_env_name}")
-
-    def exitMath(self, ctx: _LatexParser.MathContext):
-        lexeme = str(ctx.MATH_ENV())
-        range = _LatexParserListener._get_ctx_range(ctx)
-        math = MathToken(self.parser, *range, lexeme)
-        self.stack[-1].add(math)
-
-    def exitToken(self, ctx: _LatexParser.TokenContext):
-        token_ctx = ctx.TOKEN()
-        lexeme = str(token_ctx)
-        range = _LatexParserListener._get_ctx_range(ctx)
-        token = Token(self.parser, *range, lexeme)
+    def exitText(self, ctx: _LatexParser.TextContext):
+        lexeme = ctx.getText()
+        token = Token(self.parser, ctx.start.start, ctx.stop.stop+1, lexeme)
         self.stack[-1].add(token)
 
-    def enterOarg(self, ctx: _LatexParser.OargContext):
-        range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(self.parser, *range)
-        self.stack.append(node)
-
-    def exitOarg(self, ctx: _LatexParser.OargContext):
-        oarg = self.stack.pop()
-        assert isinstance(self.stack[-1], Environment), "Broken parser stack."
-        self.stack[-1].add_oarg(oarg)
-
     def enterRarg(self, ctx: _LatexParser.RargContext):
-        range = _LatexParserListener._get_ctx_range(ctx)
-        node = Node(self.parser, *range)
+        node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
     def exitRarg(self, ctx: _LatexParser.RargContext):
         rarg = self.stack.pop()
-        assert isinstance(self.stack[-1], Environment), "Broken parser stack."
-        self.stack[-1].add_rarg(rarg)
+        env: Environment = self.stack[-1]
+        if not isinstance(env, Environment):
+            raise ValueError(f'Expected stack top to be of type Environment found: {self.stack}')
+        if not env.name:
+            env.add_name(rarg)
+        else:
+            env.add_rarg(rarg)
+
+    def enterArgument(self, ctx:_LatexParser.ArgumentContext):
+        node = OArgument.from_ctx(ctx, self.parser)
+        self.stack.append(node)
+
+    def exitArgument(self, ctx:_LatexParser.ArgumentContext):
+        node = self.stack.pop()
+        if not isinstance(self.stack[-1], Environment):
+            raise RuntimeError(f'Expected stack top to be of typ Environment: {self.stack}')
+        self.stack[-1].add_oarg(node)
+
+    def exitArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
+        oarg: OArgument = self.stack[-1]
+        if not isinstance(oarg, OArgument):
+            raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
+        token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
+        oarg.add_name(token)
+
+    def exitArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
+        oarg: OArgument = self.stack[-1]
+        if not isinstance(oarg, OArgument):
+            raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
+        token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
+        oarg.add_value(token)

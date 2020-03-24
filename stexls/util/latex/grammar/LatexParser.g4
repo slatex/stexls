@@ -1,25 +1,46 @@
 parser grammar LatexParser;
 options { tokenVocab=LatexLexer; }
 
-main: body EOF;
+main: body* EOF;
 
-body: (math | env | inlineEnv | token | '{' body '}' | '[' body ']')*;
-
-inlineEnv: INLINE_ENV_NAME args?;
-
-env: envBegin args? body envEnd;
-
-envBegin: BEGIN '{' TOKEN '}';
-
-envEnd: END '{' TOKEN '}';
+body
+    : math
+    | env
+    | inlineEnv
+    | text
+    | '{' body* '}'
+    ;
 
 math: MATH_ENV;
 
-token: TOKEN;
+env: envBegin body* envEnd;
 
-oarg: '[' body ']';
+envBegin: BEGIN args+;
 
-rarg: '{' body '}';
+envEnd: END '{' TEXT '}';
+
+inlineEnv: INLINE_ENV_NAME args?;
 
 args: (rarg | oarg)+;
 
+text: TEXT | '[' | ']' | '=' | ',';
+
+rarg: '{' body* '}';
+
+oarg: '[' arglist ']';
+
+arglist: argument (',' argument)*;
+
+argument
+    : argumentName argumentValue?
+    | argumentValue
+    ;
+
+argumentName
+    : name=text '='
+    ;
+
+argumentValue
+    : '{' text* '}'
+    | text+
+    ;

@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict, Set
 import re
+import multiprocessing
 from collections import defaultdict
 from pathlib import Path
 from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
-from stexls.util.latex.parser import Environment, Node, LatexParser
+from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
 from .exceptions import CompilerException, CompilerWarning
 from stexls.util.latex.exceptions import LatexException
 
@@ -13,6 +14,7 @@ __all__ = (
     'ParsedFile',
     'ParsedEnvironment',
     'parse',
+    'parse_recursive',
     'TokenWithLocation',
     'Location',
     'Modsig',
@@ -39,6 +41,33 @@ class ParsedFile:
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
+
+def parse_recursive(path: Path) -> Tuple[List[ParsedFile], Dict[Location, List[Exception]]]:
+    paths = [path]
+    visited = set()
+    result: List[ParsedFile] = []
+    exceptions: Dict[Location, List[Exception]] = {}
+    with multiprocessing.Pool() as pool:
+        while paths:
+            parsed_files = pool.map(parse, paths)
+            for path in paths:
+                visited.add(path)
+            result.extend(parsed_files)
+            paths = []
+            for file in parsed_files:
+                module_paths = []
+                for mhmodnl in file.mhmodnls:
+                    module_paths.append((mhmodnl.location, mhmodnl.path_to_module_file, mhmodnl.name))
+                for gimport in file.gimports:
+                    module_paths.append((gimport.location, gimport.module_path, gimport.target))
+                for location, module_path, module_name in module_paths:
+                    if module_path in visited or module_path in paths:
+                        continue
+                    if not module_path.is_file():
+                        exceptions.setdefault(location, []).append(Exception(f'Unable to import module "{module_name}": "{module_path}" is not a file.'))
+                    else:
+                        paths.append(module_path)
+    return list(reversed(result)), exceptions
 
 def parse(path: Path) -> ParsedFile:
     parsed_file = ParsedFile(path)
@@ -103,61 +132,54 @@ class TokenWithLocation:
     def __init__(self, text: str, range: Range):
         self.text = text
         self.range = range
-    
-    def parse_options(self) -> Tuple[Tuple[List[str], Dict[str, str]], Tuple[List[Range], Dict[str, Range]]]:
-        """ Parses the text attribute as a comma seperated
-        list of options which are either named and prefixed
-        with "<name>=" or unnamed.
-
-        TODO: This fails when summarizing optional arguments.
-        E.g.: \symdef[noverb]{NumberPrimeNumber}[1]{...}
-        In this case, "noverb" and "1" will be summarized to "noverb,1" and the position of the "1" token will be wrong.
-
-        Returns:
-            The string is parsed as a tuple of a list of the
-            unnamed options "[unnamed,unnamed2]", in this case.
-            And as a dictionary of named options:
-            {"named1":"value1","named2":"value2"}
-            Additionally returns a tuple of a list of ranges for the
-            unnamed values and a dict from name to named value ranges.
-
-        Examples:
-            >>> token = TokenWithLocation('name=value,1', Range(Position(1, 1), Position(1, 13)))
-            >>> values, ranges = token.parse_options()
-            >>> values
-            (['1'], {'name': 'value'})
-            >>> ranges
-            ([[Range (1 12) (1 13)]], {'name': [Range (1 6) (1 11)]})
-        """
-        unnamed: List[str] = []
-        unnamed_ranges: List[Range] = []
-        named: Dict[str, str] = {}
-        named_ranges: Dict[str, Range] = {}
-        offset = 0
-        for line in self.text.split('\n'):
-            for part in line.split(','):
-                if '=' in part:
-                    name, value = part.split('=', 1)
-                    named[name.strip()] = value.strip()
-                    new_start = self.range.start.translate(
-                        characters=offset + len(name) + 1) # +1 for '=' char
-                    new_end = new_start.translate(
-                        characters=len(value))
-                    named_ranges[name.strip()] = Range(new_start, new_end)
-                else:
-                    unnamed.append(part.strip())
-                    new_start = self.range.start.translate(
-                        characters=offset)
-                    new_end = new_start.translate(
-                        characters=len(part))
-                    unnamed_ranges.append(Range(new_start, new_end))
-                offset += len(part) + 1 # +1 for ',' character
-            offset += 1 # +1 for line end
-        return (unnamed, named), (unnamed_ranges, named_ranges)
-
 
     def __repr__(self):
         return self.text
+    
+    @staticmethod
+    def parse_oargs(oargs: List[OArgument]) -> Tuple[List[TokenWithLocation], Dict[str, TokenWithLocation]]:
+        unnamed = [
+            TokenWithLocation.from_node(oarg.value)
+            for oarg in oargs
+            if oarg.name is None
+        ]
+        named = {
+            oarg.name.text[:-1]: TokenWithLocation.from_node(oarg.value)
+            for oarg in oargs
+            if oarg.name is not None
+        }
+        return unnamed, named
+
+    def split(self, index: int, offset: int = 0) -> Optional[Tuple[TokenWithLocation, TokenWithLocation]]:
+        ''' Splits the token at the specified index.
+
+        Arguments:
+            index: The index on where to split the token.
+            offset: Optional character offset of second split.
+        
+        Examples:
+            >>> range = Range(Position(1, 5), Position(1, 18))
+            >>> text = 'module?symbol'
+            >>> token = TokenWithLocation(text, range)
+            >>> left, right = token.split(text.index('?'), offset=1)
+            >>> left
+            'module'
+            >>> left.range
+            [Range (1 5) (1 11)]
+            >>> right
+            'symbol'
+            >>> right.range
+            [Range (1 12) (1 18)]
+            >>> _, right = token.split(text.index('?'), offset=0)
+            >>> right
+            '?symbol'
+            >>> right.range
+            [Range (1 11) (1 18)]
+        '''
+        ltext = self.text[:index]
+        rtext = self.text[index + offset:]
+        lrange, rrange = self.range.split(index)
+        return TokenWithLocation(ltext, lrange), TokenWithLocation(rtext, rrange)
 
     @staticmethod
     def from_node(node: Node) -> TokenWithLocation:
@@ -186,9 +208,9 @@ class Modsig(ParsedEnvironment):
         match = Modsig.PATTERN.fullmatch(e.env_name)
         if not match:
             return
-        if len(e.rargs) != 1:
-            raise CompilerException(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
-        return Modsig(e.location, TokenWithLocation.from_node(e.rargs[0]))
+        return Modsig(
+            e.location,
+            TokenWithLocation.from_node(e.name))
 
     def __repr__(self):
         return f'[Modsig name={self.name.text}]'
@@ -220,7 +242,7 @@ class Mhmodnl(ParsedEnvironment):
             >>> binding.path_to_module_file.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
-        return (self.location.uri.parents[0] / (self.name.text + '.tex'))
+        return (self.location.uri.parents[0] / (self.name.text + '.tex')).absolute()
     
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Mhmodnl]:
@@ -245,7 +267,7 @@ class Defi(ParsedEnvironment):
         self,
         location: Location,
         tokens: List[TokenWithLocation],
-        options: Optional[TokenWithLocation],
+        name_arg: Optional[TokenWithLocation],
         m: bool,
         a: bool,
         capital: bool,
@@ -254,7 +276,7 @@ class Defi(ParsedEnvironment):
         asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
-        self.options = options
+        self.name_arg = name_arg
         self.m = m
         self.capital = capital
         self.a = a
@@ -266,23 +288,8 @@ class Defi(ParsedEnvironment):
 
     @property
     def name(self) -> str:
-        '''
-        Examples:
-            >>> defi_explicit = Defi(None, None, TokenWithLocation('name=defi-name', None), False, False, False, 0, False, False)
-            >>> defi_explicit.name
-            'defi-name'
-            >>> defi_generated = Defi(None, [TokenWithLocation('defi', None), TokenWithLocation('name', None), TokenWithLocation('generated', None)], None, False, False, False, 0, False, False)
-            >>> defi_generated.name
-            'defi-name-generated'
-            >>> adefi_generated = Defi(None, [TokenWithLocation('defi', None), TokenWithLocation('name', None), TokenWithLocation('generated', None)], None, False, False, True, 0, False, False)
-            >>> adefi_generated.name
-            'name-generated'
-        '''
-        if self.options:
-            values, ranges = self.options.parse_options()
-            name = values[-1].get('name')
-            if name:
-                return name
+        if self.name_arg:
+            return self.name_arg.text
         if self.a:
             return '-'.join(t.text for t in self.tokens[1:])
         return '-'.join(t.text for t in self.tokens)
@@ -294,21 +301,20 @@ class Defi(ParsedEnvironment):
             return None
         if not e.rargs:
             raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
-        if len(e.oargs) > 1:
-            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
         return Defi(
-            e.location,
-            list(map(TokenWithLocation.from_node, e.rargs)),
-            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
-            'm' in match.group(1),
-            'a' in match.group(1),
-            match.group(2) == 'D',
-            roman_numerals.roman2int(match.group(3)),
-            match.group(4) is not None,
-            match.group(5) is not None)
+            location=e.location,
+            tokens=list(map(TokenWithLocation.from_node, e.rargs)),
+            name_arg=named.get('name'),
+            m='m' in match.group(1),
+            a='a' in match.group(1),
+            capital=match.group(2) == 'D',
+            i=roman_numerals.roman2int(match.group(3)),
+            s=match.group(4) is not None,
+            asterisk=match.group(5) is not None)
 
     def __repr__(self):
-        return f'[Defi options="{self.options if self.options else ""}" tokens={self.tokens}]'
+        return f'[Defi tokens={self.tokens}]'
 
 
 class Trefi(ParsedEnvironment):
@@ -317,7 +323,7 @@ class Trefi(ParsedEnvironment):
         self,
         location: Location,
         tokens: List[TokenWithLocation],
-        options: Optional[TokenWithLocation],
+        target_annotation: Optional[TokenWithLocation],
         m: bool,
         a: bool,
         capital: bool,
@@ -326,7 +332,7 @@ class Trefi(ParsedEnvironment):
         asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
-        self.options = options
+        self.target_annotation = target_annotation
         self.m = m
         self.a = a
         self.capital = capital
@@ -336,9 +342,10 @@ class Trefi(ParsedEnvironment):
         actual = len(tokens) - int(a)
         if i != actual:
             raise CompilerException(f'Trefi argument count mismatch: Expected {i} vs. actual {actual}.')
-        if self.options and (not self.m and '?' in self.options.text):
+        has_q = self.target_annotation and '?' in self.target_annotation.text
+        if not self.m and has_q:
             raise CompilerException('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
-        if self.m and not self.options:
+        if self.m and not has_q:
             raise CompilerException('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     
     @property
@@ -349,77 +356,27 @@ class Trefi(ParsedEnvironment):
         by using the ?<symbol> syntax or else it is generated
         by joining the tokens with a '-' character.
         '''
-        _, target_symbol, _, _ = self.parse_annotations()
-        if target_symbol is not None:
-            return target_symbol
+        if self.target_annotation and '?' in self.target_annotation.text:
+            return self.target_annotation.text.split('?')[-1].strip()
         tokens = (t.text for t in self.tokens[int(self.a):])
         generated = '-'.join(tokens)
-        return generated
+        return generated.strip()
 
-    def parse_annotations(self) -> Tuple[Optional[str], Optional[str], Optional[Range], Optional[Range]]:
-        ''' Parses module and symbol annotations from optional arguments.
-
-        Returns:
-            A tuple of (module, symbol, module_range, symbol_range).
-            module: Name of the module named in the annotation (trefi[<module>?...] or trefi[<module>]...)
-            symbol: Name of the symbol named in the annotation (trefi[...?<symbol>]...)
-            module_range: The range of the part which names the target module if it exists.
-            symbol_range: The range of the part which names the target symbol if it exists.
+    @property
+    def target_module(self) -> Optional[TokenWithLocation]:
+        ''' Parses the targeted module's name if specified in oargs.
         
-        Examples:
-            >>> range = Range(Position(2, 5), Position(2, 33))
-            >>> token = TokenWithLocation('vector-space?vector-addition', range)
-            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
-            >>> module, symbol, mrange, srange = trefi.parse_annotations()
-            >>> module
-            'vector-space'
-            >>> symbol
-            'vector-addition'
-            >>> mrange
-            [Range (2 5) (2 17)]
-            >>> srange
-            [Range (2 18) (2 33)]
-            >>> range = Range(Position(2, 5), Position(2, 18))
-            >>> token = TokenWithLocation('vector-space2', range)
-            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
-            >>> module, symbol, mrange, srange = trefi.parse_annotations()
-            >>> module
-            'vector-space2'
-            >>> symbol is None
-            True
-            >>> mrange
-            [Range (2 5) (2 18)]
-            >>> srange is None
-            True
-            >>> range = Range(Position(2, 5), Position(2, 25))
-            >>> token = TokenWithLocation('?vector-space-symbol', range)
-            >>> trefi = Trefi(None, [], token, False, False, False, 0, False, False)
-            >>> module, symbol, mrange, srange = trefi.parse_annotations()
-            >>> module is None
-            True
-            >>> symbol
-            'vector-space-symbol'
-            >>> mrange is None
-            True
-            >>> srange
-            [Range (2 6) (2 25)]
+        Returns None if no module is explicitly named.
         '''
-        if self.options is None:
-            return None, None, None, None
-        (unnamed, _), (unnamed_range, _) = self.options.parse_options()
-        if len(unnamed) != 1 or len(unnamed_range) != 1:
-            return None, None, None, None
-        annotation: str = unnamed[0]
-        annotation_range: Range = unnamed_range[0]
-        if '?' in annotation:
-            module_annotation, symbol_annotation = annotation.split('?')
-            module_range, symbol_range = annotation_range.split(annotation.index('?'))
-            symbol_range.start.character += 1
-            if module_annotation:
-                return module_annotation, symbol_annotation, module_range, symbol_range
-            else:
-                return None, symbol_annotation, None, symbol_range
-        return annotation, None, annotation_range, None
+        if self.target_annotation:
+            if '?' in self.target_annotation.text:
+                index = self.target_annotation.text.index('?')
+                left, _ = self.target_annotation.split(index, 1)
+                if left.text:
+                    return left # return left in case of <module>?<symbol>
+                return None # return None in case of ?symbol
+            return self.target_annotation # return the whole thing in case of [module]
+        return None # return None if no oargs are given
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Trefi]:
@@ -428,37 +385,66 @@ class Trefi(ParsedEnvironment):
             return None
         if not e.rargs:
             raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
-        if len(e.oargs) > 1:
-            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+        if len(e.unnamed_args) > 1:
+            raise CompilerException(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(options)}')
+        annotations = (
+            TokenWithLocation.from_node(e.unnamed_args[0])
+            if e.unnamed_args
+            else None
+        )
+        tokens = list(map(TokenWithLocation.from_node, e.rargs))
         return Trefi(
-            e.location,
-            list(map(TokenWithLocation.from_node, e.rargs)),
-            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
-            'm' in match.group(1),
-            'a' in match.group(1),
-            match.group(2) == 'T',
-            roman_numerals.roman2int(match.group(3)),
-            match.group(4) is not None,
-            match.group(5) is not None,
+            location=e.location,
+            tokens=tokens,
+            target_annotation=annotations,
+            m='m' in match.group(1),
+            a='a' in match.group(1),
+            capital=match.group(2) == 'T',
+            i=roman_numerals.roman2int(match.group(3)),
+            s=match.group(4) is not None,
+            asterisk=match.group(5) is not None,
         )
 
     def __repr__(self):
-        return f'[Trefi options="{self.options if self.options else ""}" tokens={self.tokens}]'
+        return f'[Trefi module="{self.target_module}" symbol="{self.target_symbol}"]'
+
+
+class _NoverbHandler:
+    def __init__(
+        self,
+        unnamed: List[TokenWithLocation],
+        named: Dict[str, TokenWithLocation]):
+        self.unnamed = unnamed
+        self.named = named
+
+    @property
+    def is_all(self) -> bool:
+        return any(arg.text == 'noverb' for arg in self.unnamed)
+
+    @property
+    def langs(self) -> Set[str]:
+        noverb: TokenWithLocation = self.named.get('noverb')
+        if noverb is None:
+            return set()
+        if (noverb.text[0], noverb.text[-1]) == ('{', '}'):
+            return set(noverb.text[1:-1].split(','))
+        return set([noverb.text])
 
 
 class Symi(ParsedEnvironment):
-    PATTERN = re.compile(r'sym([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'sym([ivx]+)(\*)?')
     def __init__(
         self,
         location: Location,
         tokens: List[TokenWithLocation],
+        unnamed_args: List[TokenWithLocation],
+        named_args: Dict[str, TokenWithLocation],
         i: int,
-        s: bool,
         asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
+        self.noverb = _NoverbHandler(unnamed_args, named_args)
         self.i = i
-        self.s = s
         self.asterisk = asterisk
         if i != len(tokens):
             raise CompilerException(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
@@ -474,35 +460,38 @@ class Symi(ParsedEnvironment):
             return None
         if not e.rargs:
             raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
+        unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return Symi(
-            e.location,
-            list(map(TokenWithLocation.from_node, e.rargs)),
-            roman_numerals.roman2int(match.group(1)),
-            match.group(2) is not None,
-            match.group(3) is not None,
+            location=e.location,
+            tokens=list(map(TokenWithLocation.from_node, e.rargs)),
+            unnamed_args=unnamed,
+            named_args=named,
+            i=roman_numerals.roman2int(match.group(1)),
+            asterisk=match.group(2) is not None,
         )
 
     def __repr__(self):
-        return f'[Sym{"*"*self.asterisk} i={self.i} s={self.s} tokens={self.tokens}]'
+        return f'[Sym{"*"*self.asterisk} i={self.i} tokens={self.tokens}]'
 
 
 class Symdef(ParsedEnvironment):
     PATTERN = re.compile(r'symdef(\*)?')
-    def __init__(self, location: Location, tokens: List[TokenWithLocation], options: Optional[TokenWithLocation], asterisk: bool):
+    def __init__(
+        self,
+        location: Location,
+        tokens: List[TokenWithLocation],
+        target_annotation: Optional[TokenWithLocation],
+        asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
-        self.options = options
+        self.target_annotation = target_annotation
         self.asterisk = asterisk
     
     @property
     def name(self) -> str:
-        if self.options is None:
+        if self.target_annotation is None:
             return self.tokens[0].text
-        values, ranges = self.options.parse_options()
-        name = values[-1].get('name')
-        if name is not None:
-            return name
-        return self.tokens[0].text
+        return self.target_annotation.text
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Symdef]:
@@ -511,15 +500,17 @@ class Symdef(ParsedEnvironment):
             return None
         if not e.rargs:
             raise CompilerException('Argument count mismatch: At least one argument required.')
+        tokens = list(map(TokenWithLocation.from_node, e.rargs))
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
         return Symdef(
-            e.location,
-            list(map(TokenWithLocation.from_node, e.rargs)),
-            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
-            match.group(1) is not None,
+            location=e.location,
+            tokens=tokens,
+            target_annotation=named.get('name'),
+            asterisk=match.group(1) is not None,
         )
 
     def __repr__(self):
-        return f'[Symdef{"*"*self.asterisk} options="{self.options if self.options else ""}" tokens={self.tokens}]'
+        return f'[Symdef{"*"*self.asterisk} target="{self.target_annotation or ""}" tokens={self.tokens}]'
 
 
 class GImport(ParsedEnvironment):
@@ -542,12 +533,14 @@ class GImport(ParsedEnvironment):
         Examples:
             >>> options = TokenWithLocation('smglom/example-repo', None)
             >>> gimport = GImport(None, None, options, False)
-            >>> gimport.repository_path_annotation.as_posix()
-            'smglom/example-repo/source'
+            >>> actual = gimport.repository_path_annotation.as_posix()
+            >>> expected = Path('smglom/example-repo/source').absolute()
+            >>> expected == actual
+            True
         '''
         if self.options is None:
             return None
-        return Path(self.options.text) / 'source'
+        return Path(self.options.text).absolute() / 'source'
 
     @property
     def module_path(self) -> Path:

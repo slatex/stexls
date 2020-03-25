@@ -203,6 +203,22 @@ class Environment(Node):
         self.rargs: List[Node] = []
         self.name: Node = None
 
+    @property
+    def unnamed_args(self) -> List[Node]:
+        return [
+            oarg.value
+            for oarg in self.oargs
+            if oarg.name is None
+        ]
+
+    @property
+    def named_args(self) -> Dict[str, Node]:
+        return {
+            oarg.name.text: oarg.value
+            for oarg in self.oargs
+            if oarg.name is not None
+        }
+
     def add_oarg(self, oarg: OArgument):
         ' Registers an OArg. '
         oarg.parent = self

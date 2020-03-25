@@ -427,7 +427,7 @@ class _LatexParserListener(_LatexParserListener):
 
     def exitMain(self, ctx: _LatexParser.MainContext):
         if len(self.stack) != 1:
-            raise RuntimeError(f'Broken parser stack: {self.stack}')
+            raise LatexException(f'Broken parser stack: {self.stack}')
 
     def exitMath(self, ctx: _LatexParser.MathContext):
         lexeme = str(ctx.MATH_ENV())
@@ -451,7 +451,7 @@ class _LatexParserListener(_LatexParserListener):
     def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         env: Environment = self.stack.pop()
         if not isinstance(env, Environment):
-            raise RuntimeError(f'Broken parser stack. Environment expected: {self.stack}')
+            raise LatexException(f'Broken parser stack. Environment expected: {self.stack}')
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
@@ -487,7 +487,7 @@ class _LatexParserListener(_LatexParserListener):
         rarg = self.stack.pop()
         env: Environment = self.stack[-1]
         if not isinstance(env, Environment):
-            raise ValueError(f'Expected stack top to be of type Environment found: {self.stack}')
+            raise LatexException(f'Expected stack top to be of type Environment found: {self.stack}')
         if not env.name:
             env.add_name(rarg)
         else:
@@ -500,7 +500,7 @@ class _LatexParserListener(_LatexParserListener):
     def exitArgument(self, ctx:_LatexParser.ArgumentContext):
         node = self.stack.pop()
         if not isinstance(self.stack[-1], Environment):
-            raise RuntimeError(f'Expected stack top to be of typ Environment: {self.stack}')
+            raise LatexException(f'Expected stack top to be of typ Environment: {self.stack}')
         self.stack[-1].add_oarg(node)
 
     def enterArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
@@ -511,7 +511,7 @@ class _LatexParserListener(_LatexParserListener):
         name = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
+            raise LatexException(f'Expected stack to be of type OArgument: {self.stack}')
         oarg.add_name(name)
 
     def enterArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
@@ -522,5 +522,5 @@ class _LatexParserListener(_LatexParserListener):
         value = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
+            raise LatexException(f'Expected stack to be of type OArgument: {self.stack}')
         oarg.add_value(value)

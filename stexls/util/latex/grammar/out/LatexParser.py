@@ -12,7 +12,7 @@ else:
 def serializedATN():
     with StringIO() as buf:
         buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\20")
-        buf.write("|\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b")
+        buf.write("z\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b")
         buf.write("\t\b\4\t\t\t\4\n\t\n\4\13\t\13\4\f\t\f\4\r\t\r\4\16\t")
         buf.write("\16\4\17\t\17\4\20\t\20\3\2\7\2\"\n\2\f\2\16\2%\13\2\3")
         buf.write("\2\3\2\3\3\3\3\3\3\3\3\3\3\3\3\7\3/\n\3\f\3\16\3\62\13")
@@ -22,34 +22,33 @@ def serializedATN():
         buf.write("\n\3\13\3\13\7\13[\n\13\f\13\16\13^\13\13\3\13\3\13\3")
         buf.write("\f\3\f\3\f\3\f\3\r\3\r\3\r\7\ri\n\r\f\r\16\rl\13\r\3\16")
         buf.write("\3\16\5\16p\n\16\3\16\5\16s\n\16\3\17\3\17\3\17\3\20\3")
-        buf.write("\20\5\20z\n\20\3\20\2\2\21\2\4\6\b\n\f\16\20\22\24\26")
-        buf.write("\30\32\34\36\2\3\4\2\7\n\r\r\2|\2#\3\2\2\2\4\64\3\2\2")
-        buf.write("\2\6\66\3\2\2\2\b8\3\2\2\2\nA\3\2\2\2\fG\3\2\2\2\16L\3")
-        buf.write("\2\2\2\20R\3\2\2\2\22V\3\2\2\2\24X\3\2\2\2\26a\3\2\2\2")
-        buf.write("\30e\3\2\2\2\32r\3\2\2\2\34t\3\2\2\2\36y\3\2\2\2 \"\5")
-        buf.write("\4\3\2! \3\2\2\2\"%\3\2\2\2#!\3\2\2\2#$\3\2\2\2$&\3\2")
-        buf.write("\2\2%#\3\2\2\2&\'\7\2\2\3\'\3\3\2\2\2(\65\5\6\4\2)\65")
-        buf.write("\5\b\5\2*\65\5\16\b\2+\65\5\22\n\2,\60\7\5\2\2-/\5\4\3")
-        buf.write("\2.-\3\2\2\2/\62\3\2\2\2\60.\3\2\2\2\60\61\3\2\2\2\61")
-        buf.write("\63\3\2\2\2\62\60\3\2\2\2\63\65\7\6\2\2\64(\3\2\2\2\64")
-        buf.write(")\3\2\2\2\64*\3\2\2\2\64+\3\2\2\2\64,\3\2\2\2\65\5\3\2")
-        buf.write("\2\2\66\67\7\13\2\2\67\7\3\2\2\28<\5\n\6\29;\5\4\3\2:")
-        buf.write("9\3\2\2\2;>\3\2\2\2<:\3\2\2\2<=\3\2\2\2=?\3\2\2\2><\3")
-        buf.write("\2\2\2?@\5\f\7\2@\t\3\2\2\2AC\7\16\2\2BD\5\20\t\2CB\3")
-        buf.write("\2\2\2DE\3\2\2\2EC\3\2\2\2EF\3\2\2\2F\13\3\2\2\2GH\7\17")
-        buf.write("\2\2HI\7\5\2\2IJ\7\r\2\2JK\7\6\2\2K\r\3\2\2\2LN\7\20\2")
-        buf.write("\2MO\5\20\t\2NM\3\2\2\2NO\3\2\2\2O\17\3\2\2\2PS\5\24\13")
-        buf.write("\2QS\5\26\f\2RP\3\2\2\2RQ\3\2\2\2ST\3\2\2\2TR\3\2\2\2")
-        buf.write("TU\3\2\2\2U\21\3\2\2\2VW\t\2\2\2W\23\3\2\2\2X\\\7\5\2")
-        buf.write("\2Y[\5\4\3\2ZY\3\2\2\2[^\3\2\2\2\\Z\3\2\2\2\\]\3\2\2\2")
-        buf.write("]_\3\2\2\2^\\\3\2\2\2_`\7\6\2\2`\25\3\2\2\2ab\7\7\2\2")
-        buf.write("bc\5\30\r\2cd\7\b\2\2d\27\3\2\2\2ej\5\32\16\2fg\7\n\2")
-        buf.write("\2gi\5\32\16\2hf\3\2\2\2il\3\2\2\2jh\3\2\2\2jk\3\2\2\2")
-        buf.write("k\31\3\2\2\2lj\3\2\2\2mo\5\34\17\2np\5\36\20\2on\3\2\2")
-        buf.write("\2op\3\2\2\2ps\3\2\2\2qs\5\36\20\2rm\3\2\2\2rq\3\2\2\2")
-        buf.write("s\33\3\2\2\2tu\5\22\n\2uv\7\t\2\2v\35\3\2\2\2wz\5\22\n")
-        buf.write("\2xz\5\4\3\2yw\3\2\2\2yx\3\2\2\2z\37\3\2\2\2\17#\60\64")
-        buf.write("<ENRT\\jory")
+        buf.write("\20\3\20\2\2\21\2\4\6\b\n\f\16\20\22\24\26\30\32\34\36")
+        buf.write("\2\3\4\2\7\n\r\r\2y\2#\3\2\2\2\4\64\3\2\2\2\6\66\3\2\2")
+        buf.write("\2\b8\3\2\2\2\nA\3\2\2\2\fG\3\2\2\2\16L\3\2\2\2\20R\3")
+        buf.write("\2\2\2\22V\3\2\2\2\24X\3\2\2\2\26a\3\2\2\2\30e\3\2\2\2")
+        buf.write("\32r\3\2\2\2\34t\3\2\2\2\36w\3\2\2\2 \"\5\4\3\2! \3\2")
+        buf.write("\2\2\"%\3\2\2\2#!\3\2\2\2#$\3\2\2\2$&\3\2\2\2%#\3\2\2")
+        buf.write("\2&\'\7\2\2\3\'\3\3\2\2\2(\65\5\6\4\2)\65\5\b\5\2*\65")
+        buf.write("\5\16\b\2+\65\5\22\n\2,\60\7\5\2\2-/\5\4\3\2.-\3\2\2\2")
+        buf.write("/\62\3\2\2\2\60.\3\2\2\2\60\61\3\2\2\2\61\63\3\2\2\2\62")
+        buf.write("\60\3\2\2\2\63\65\7\6\2\2\64(\3\2\2\2\64)\3\2\2\2\64*")
+        buf.write("\3\2\2\2\64+\3\2\2\2\64,\3\2\2\2\65\5\3\2\2\2\66\67\7")
+        buf.write("\13\2\2\67\7\3\2\2\28<\5\n\6\29;\5\4\3\2:9\3\2\2\2;>\3")
+        buf.write("\2\2\2<:\3\2\2\2<=\3\2\2\2=?\3\2\2\2><\3\2\2\2?@\5\f\7")
+        buf.write("\2@\t\3\2\2\2AC\7\16\2\2BD\5\20\t\2CB\3\2\2\2DE\3\2\2")
+        buf.write("\2EC\3\2\2\2EF\3\2\2\2F\13\3\2\2\2GH\7\17\2\2HI\7\5\2")
+        buf.write("\2IJ\7\r\2\2JK\7\6\2\2K\r\3\2\2\2LN\7\20\2\2MO\5\20\t")
+        buf.write("\2NM\3\2\2\2NO\3\2\2\2O\17\3\2\2\2PS\5\24\13\2QS\5\26")
+        buf.write("\f\2RP\3\2\2\2RQ\3\2\2\2ST\3\2\2\2TR\3\2\2\2TU\3\2\2\2")
+        buf.write("U\21\3\2\2\2VW\t\2\2\2W\23\3\2\2\2X\\\7\5\2\2Y[\5\4\3")
+        buf.write("\2ZY\3\2\2\2[^\3\2\2\2\\Z\3\2\2\2\\]\3\2\2\2]_\3\2\2\2")
+        buf.write("^\\\3\2\2\2_`\7\6\2\2`\25\3\2\2\2ab\7\7\2\2bc\5\30\r\2")
+        buf.write("cd\7\b\2\2d\27\3\2\2\2ej\5\32\16\2fg\7\n\2\2gi\5\32\16")
+        buf.write("\2hf\3\2\2\2il\3\2\2\2jh\3\2\2\2jk\3\2\2\2k\31\3\2\2\2")
+        buf.write("lj\3\2\2\2mo\5\34\17\2np\5\36\20\2on\3\2\2\2op\3\2\2\2")
+        buf.write("ps\3\2\2\2qs\5\36\20\2rm\3\2\2\2rq\3\2\2\2s\33\3\2\2\2")
+        buf.write("tu\5\22\n\2uv\7\t\2\2v\35\3\2\2\2wx\5\4\3\2x\37\3\2\2")
+        buf.write("\2\16#\60\64<ENRT\\jor")
         return buf.getvalue()
 
 
@@ -983,10 +982,6 @@ class LatexParser ( Parser ):
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def text(self):
-            return self.getTypedRuleContext(LatexParser.TextContext,0)
-
-
         def body(self):
             return self.getTypedRuleContext(LatexParser.BodyContext,0)
 
@@ -1010,22 +1005,9 @@ class LatexParser ( Parser ):
         localctx = LatexParser.ArgumentValueContext(self, self._ctx, self.state)
         self.enterRule(localctx, 28, self.RULE_argumentValue)
         try:
-            self.state = 119
-            self._errHandler.sync(self)
-            la_ = self._interp.adaptivePredict(self._input,12,self._ctx)
-            if la_ == 1:
-                self.enterOuterAlt(localctx, 1)
-                self.state = 117
-                self.text()
-                pass
-
-            elif la_ == 2:
-                self.enterOuterAlt(localctx, 2)
-                self.state = 118
-                self.body()
-                pass
-
-
+            self.enterOuterAlt(localctx, 1)
+            self.state = 117
+            self.body()
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)

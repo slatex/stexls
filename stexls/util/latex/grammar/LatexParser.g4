@@ -40,7 +40,4 @@ argumentName
     : name=text '='
     ;
 
-argumentValue
-    : '{' text* '}'
-    | text+
-    ;
+argumentValue: body;

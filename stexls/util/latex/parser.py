@@ -36,7 +36,17 @@ class Node:
         self.begin: int = begin
         self.end: int = end
         self.children: List[Node] = []
-        self.parent: Node = None
+        self._parent: Node = None
+    
+    @property
+    def parent(self) -> Optional[Node]:
+        return self._parent
+
+    @parent.setter
+    def parent(self, value: Node):
+        if self._parent is not None:
+            raise RuntimeError(f'Unable to assign parent {value} to {self}: Parent alredy assigned to {self.parent}')
+        self._parent = value
 
     @property
     def location(self) -> Location:
@@ -73,10 +83,8 @@ class Node:
 
     def add(self, node: Node):
         ' Adds a child. '
-        if node.parent is not None:
-            raise ValueError('Child parent already set.')
-        self.children.append(node)
         node.parent = self
+        self.children.append(node)
 
     @property
     def tokens(self) -> Iterator[Token]:
@@ -106,6 +114,9 @@ class Node:
     def from_ctx(cls, ctx: 'ParserRuleContext', parser, **kwargs):
         range = _LatexParserListener._get_ctx_range(ctx)
         return cls(parser, *range, **kwargs)
+
+    def __repr__(self):
+        return f'[Node "{self.text.strip()}"]'
 
 
 class Token(Node):
@@ -144,15 +155,20 @@ class OArgument(Node):
 
     def add_value(self, value: Token):
         if self.value is not None:
-            raise ValueError('CommaSeparatedArgument already has a value assigned.')
-        self.add(value)
+            raise ValueError('OArgument already has a value assigned.')
+        value.parent = self
         self.value = value
 
     def add_name(self, name: Token):
         if self.name is not None:
-            raise ValueError('CommaSeparatedArgument already has a name assigned.')
-        self.add(name)
+            raise ValueError('OArgument already has a name assigned.')
+        name.parent = self
         self.name = name
+
+    def __repr__(self):
+        if self.name:
+            return f'[OArg name={self.name} value={self.value}]'
+        return f'[OArg value={self.value}]'
 
 
 class MathToken(Token):
@@ -189,18 +205,19 @@ class Environment(Node):
 
     def add_oarg(self, oarg: OArgument):
         ' Registers an OArg. '
+        oarg.parent = self
         self.oargs.append(oarg)
-        self.add(oarg)
 
     def add_rarg(self, rarg: Node):
         ' Registers an RArg. '
+        rarg.parent = self
         self.rargs.append(rarg)
-        self.add(rarg)
 
     def add_name(self, name: Node):
         ' Adds a token as a name provider. '
         if self.name is not None:
             raise ValueError('Environment already has a name provider token.')
+        name.parent = self
         self.name = name
 
     @property
@@ -223,7 +240,7 @@ class Environment(Node):
             yield from child.tokens
 
     def finditer(self, env_pattern: Pattern) -> Iterator[Node]:
-        if re.fullmatch(env_pattern, self.name.lexeme):
+        if re.fullmatch(env_pattern, self.name.text):
             yield self
         else:
             yield from super().finditer(env_pattern)
@@ -417,6 +434,16 @@ class _LatexParserListener(_LatexParserListener):
         node = MathToken.from_ctx(ctx, self.parser, lexeme=lexeme)
         self.stack[-1].add(node)
 
+    def enterBody(self, ctx:_LatexParser.BodyContext):
+        if ctx.body():
+            node = Node.from_ctx(ctx, self.parser)
+            self.stack.append(node)
+
+    def exitBody(self, ctx:_LatexParser.BodyContext):
+        if ctx.body():
+            body = self.stack.pop()
+            self.stack[-1].add(body)
+
     def enterEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
         node = Environment.from_ctx(ctx, self.parser)
         self.stack.append(node)
@@ -436,7 +463,10 @@ class _LatexParserListener(_LatexParserListener):
     def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         env = InlineEnvironment.from_ctx(ctx, self.parser)
         env_name_ctx = ctx.INLINE_ENV_NAME()
-        env_name_range = (env_name_ctx.getSymbol().start, env_name_ctx.getSymbol().stop + 1)
+        env_name_range = (
+            env_name_ctx.getSymbol().start,
+            env_name_ctx.getSymbol().stop + 1
+        )
         token = Token(self.parser, *env_name_range, lexeme=str(env_name_ctx))
         env.add_name(token)
         self.stack.append(env)
@@ -446,8 +476,7 @@ class _LatexParserListener(_LatexParserListener):
         self.stack[-1].add(env)
 
     def exitText(self, ctx: _LatexParser.TextContext):
-        lexeme = ctx.getText()
-        token = Token(self.parser, ctx.start.start, ctx.stop.stop+1, lexeme)
+        token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
         self.stack[-1].add(token)
 
     def enterRarg(self, ctx: _LatexParser.RargContext):
@@ -474,16 +503,24 @@ class _LatexParserListener(_LatexParserListener):
             raise RuntimeError(f'Expected stack top to be of typ Environment: {self.stack}')
         self.stack[-1].add_oarg(node)
 
+    def enterArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
+        node = Node.from_ctx(ctx, self.parser)
+        self.stack.append(node)
+
     def exitArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
+        name = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
             raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
-        token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
-        oarg.add_name(token)
+        oarg.add_name(name)
+
+    def enterArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
+        node = Node.from_ctx(ctx, self.parser)
+        self.stack.append(node)
 
     def exitArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
+        value = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
             raise RuntimeError(f'Expected stack to be of type OArgument: {self.stack}')
-        token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
-        oarg.add_value(token)
+        oarg.add_value(value)

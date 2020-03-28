@@ -1,8 +1,7 @@
 from __future__ import annotations
-from typing import List
+from typing import Set
 from enum import Enum
 from stexls.util.location import *
-
 
 __all__ = [
     'SymbolType',
@@ -12,7 +11,6 @@ __all__ = [
     'ModuleSymbol',
     'BindingSymbol',
     'DefSymbol',
-    'PlaceholderSymbol',
 ]
 
 
@@ -21,7 +19,6 @@ class SymbolType(Enum):
     MODULE='module'
     BINDING='binding'
     DIRECTORY='directory'
-    PLACEHOLDER='placeholder'
 
 
 class AccessModifier(Enum):
@@ -91,10 +88,13 @@ class BindingSymbol(Symbol):
     
 
 class DefSymbol(Symbol):
-    def __init__(self, location: Location, name: str, module: SymbolIdentifier):
+    def __init__(
+        self: DefSymbol,
+        location: Location,
+        name: str,
+        module: SymbolIdentifier,
+        noverb: bool = False,
+        noverbs: Set[str] = None):
         super().__init__(location, SymbolIdentifier(name, SymbolType.SYMBOL), module)
-    
-
-class PlaceholderSymbol(Symbol):
-    def __init__(self, location: Location, name: str, parent: SymbolIdentifier):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.PLACEHOLDER), parent)
+        self.noverb = noverb
+        self.noverbs = noverbs or set()

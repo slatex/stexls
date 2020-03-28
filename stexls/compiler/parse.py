@@ -8,24 +8,25 @@ from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
 from .exceptions import CompilerException, CompilerWarning
+from .symbols import AccessModifier
 from stexls.util.latex.exceptions import LatexException
 
 __all__ = (
     'ParsedFile',
     'ParsedEnvironment',
     'parse',
-    'parse_recursive',
     'TokenWithLocation',
     'Location',
     'Modsig',
-    'Mhmodnl',
+    'Modnl',
+    'Module',
+    'ImportModule',
     'Trefi',
     'Defi',
     'Symi',
     'Symdef',
     'GImport',
     'GStructure',
-    'GUse',
 )
 
 class ParsedFile:
@@ -33,41 +34,16 @@ class ParsedFile:
     def __init__(self, path: Path):
         self.path = path
         self.modsigs: List[Modsig] = []
-        self.mhmodnls: List[Mhmodnl] = []
+        self.modnls: List[Modnl] = []
+        self.modules: List[Module] = []
         self.trefis: List[Trefi] = []
         self.defis: List[Defi] = []
         self.syms: List[Symi] = []
         self.symdefs: List[Symdef] = []
+        self.importmodules: List[ImportModule] = []
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
-
-def parse_recursive(path: Path) -> Tuple[List[ParsedFile], Dict[Location, List[Exception]]]:
-    paths = [path]
-    visited = set()
-    result: List[ParsedFile] = []
-    exceptions: Dict[Location, List[Exception]] = {}
-    with multiprocessing.Pool() as pool:
-        while paths:
-            parsed_files = pool.map(parse, paths)
-            for path in paths:
-                visited.add(path)
-            result.extend(parsed_files)
-            paths = []
-            for file in parsed_files:
-                module_paths = []
-                for mhmodnl in file.mhmodnls:
-                    module_paths.append((mhmodnl.location, mhmodnl.path_to_module_file, mhmodnl.name))
-                for gimport in file.gimports:
-                    module_paths.append((gimport.location, gimport.module_path, gimport.target))
-                for location, module_path, module_name in module_paths:
-                    if module_path in visited or module_path in paths:
-                        continue
-                    if not module_path.is_file():
-                        exceptions.setdefault(location, []).append(Exception(f'Unable to import module "{module_name}": "{module_path}" is not a file.'))
-                    else:
-                        paths.append(module_path)
-    return list(reversed(result)), exceptions
 
 def parse(path: Path) -> ParsedFile:
     parsed_file = ParsedFile(path)
@@ -99,9 +75,13 @@ def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[L
         if module:
             parsed_file.modsigs.append(module)
             return
-        binding = Mhmodnl.from_environment(env)
+        binding = Modnl.from_environment(env)
         if binding:
-            parsed_file.mhmodnls.append(binding)
+            parsed_file.modnls.append(binding)
+            return
+        module = Module.from_environment(env)
+        if module:
+            parsed_file.modules.append(module)
             return
         trefi = Trefi.from_environment(env)
         if trefi:
@@ -118,6 +98,10 @@ def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[L
         symdef = Symdef.from_environment(env)
         if symdef:
             parsed_file.symdefs.append(symdef)
+            return
+        importmodule = ImportModule.from_environment(env)
+        if importmodule:
+            parsed_file.importmodules.append(importmodule)
             return
         gimport = GImport.from_environment(env)
         if gimport:
@@ -216,15 +200,21 @@ class Modsig(ParsedEnvironment):
         return f'[Modsig name={self.name.text}]'
 
 
-class Mhmodnl(ParsedEnvironment):
-    PATTERN = re.compile(r'mhmodnl')
-    def __init__(self, location: Location, name: TokenWithLocation, lang: TokenWithLocation):
+class Modnl(ParsedEnvironment):
+    PATTERN = re.compile(r'(mh)?modnl')
+    def __init__(
+        self,
+        location: Location,
+        name: TokenWithLocation,
+        lang: TokenWithLocation,
+        mh_mode: bool):
         super().__init__(location)
         self.name = name
         self.lang = lang
+        self.mh_mode = mh_mode
 
     @property
-    def path_to_module_file(self) -> Path:
+    def path(self) -> Path:
         ''' Guesses the path to the file of the attached module.
 
         Takes the path of the file this language binding is located and
@@ -238,27 +228,55 @@ class Mhmodnl(ParsedEnvironment):
             >>> binding_location = Location(binding_path, None)
             >>> module_name = TokenWithLocation('module', None)
             >>> binding_lang = TokenWithLocation('lang', None)
-            >>> binding = Mhmodnl(binding_location, module_name, binding_lang)
-            >>> binding.path_to_module_file.as_posix()
+            >>> binding = Modnl(binding_location, module_name, binding_lang, False)
+            >>> binding.path.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
         return (self.location.uri.parents[0] / (self.name.text + '.tex')).absolute()
     
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Mhmodnl]:
-        match = Mhmodnl.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[Modnl]:
+        match = Modnl.PATTERN.fullmatch(e.env_name)
         if not match:
             return
         if len(e.rargs) != 2:
             raise CompilerException(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
-        return Mhmodnl(
+        return Modnl(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
-            TokenWithLocation.from_node(e.rargs[1])
+            TokenWithLocation.from_node(e.rargs[1]),
+            mh_mode=match.group(1) == 'mh',
         )
 
     def __repr__(self):
-        return f'[Binding name={self.name.text} lang={self.lang.text}]'
+        mh = 'mh' if self.mh_mode else ''
+        return f'[{mh}Modnl {self.name.text} lang={self.lang.text}]'
+
+
+class Module(ParsedEnvironment):
+    PATTERN = re.compile(r'module(\*)?')
+    def __init__(
+        self,
+        location: Location,
+        id: TokenWithLocation):
+        super().__init__(location)
+        self.id = id
+
+    def __repr__(self):
+        return f'[Module id="{self.id.text}"]'
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[Module]:
+        match = cls.PATTERN.match(e.env_name)
+        if match is None:
+            return None
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        if 'id' not in named:
+            raise CompilerException('Missing named argument: "id"')
+        return Module(
+            location=e.location,
+            id=named.get('id'),
+        )
 
 
 class Defi(ParsedEnvironment):
@@ -267,7 +285,7 @@ class Defi(ParsedEnvironment):
         self,
         location: Location,
         tokens: List[TokenWithLocation],
-        name_arg: Optional[TokenWithLocation],
+        name_annotation: Optional[TokenWithLocation],
         m: bool,
         a: bool,
         capital: bool,
@@ -276,7 +294,7 @@ class Defi(ParsedEnvironment):
         asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
-        self.name_arg = name_arg
+        self.name_annotation = name_annotation
         self.m = m
         self.capital = capital
         self.a = a
@@ -288,8 +306,8 @@ class Defi(ParsedEnvironment):
 
     @property
     def name(self) -> str:
-        if self.name_arg:
-            return self.name_arg.text
+        if self.name_annotation:
+            return self.name_annotation.text
         if self.a:
             return '-'.join(t.text for t in self.tokens[1:])
         return '-'.join(t.text for t in self.tokens)
@@ -305,7 +323,7 @@ class Defi(ParsedEnvironment):
         return Defi(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
-            name_arg=named.get('name'),
+            name_annotation=named.get('name'),
             m='m' in match.group(1),
             a='a' in match.group(1),
             capital=match.group(2) == 'D',
@@ -314,7 +332,7 @@ class Defi(ParsedEnvironment):
             asterisk=match.group(5) is not None)
 
     def __repr__(self):
-        return f'[Defi tokens={self.tokens}]'
+        return f'[Defi {self.name}]'
 
 
 class Trefi(ParsedEnvironment):
@@ -349,7 +367,7 @@ class Trefi(ParsedEnvironment):
             raise CompilerException('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     
     @property
-    def target_symbol(self) -> str:
+    def name(self) -> str:
         ''' Parses the targeted symbol's name.
 
         The target's name is either given in the annotations
@@ -363,7 +381,7 @@ class Trefi(ParsedEnvironment):
         return generated.strip()
 
     @property
-    def target_module(self) -> Optional[TokenWithLocation]:
+    def module(self) -> Optional[TokenWithLocation]:
         ''' Parses the targeted module's name if specified in oargs.
         
         Returns None if no module is explicitly named.
@@ -406,7 +424,7 @@ class Trefi(ParsedEnvironment):
         )
 
     def __repr__(self):
-        return f'[Trefi module="{self.target_module}" symbol="{self.target_symbol}"]'
+        return f'[Trefi module="{self.module or ""}" name="{self.name}"]'
 
 
 class _NoverbHandler:
@@ -479,19 +497,14 @@ class Symdef(ParsedEnvironment):
     def __init__(
         self,
         location: Location,
-        tokens: List[TokenWithLocation],
-        target_annotation: Optional[TokenWithLocation],
+        name: TokenWithLocation,
+        unnamed_oargs: List[TokenWithLocation],
+        named_oargs: Dict[str, TokenWithLocation],
         asterisk: bool):
         super().__init__(location)
-        self.tokens = tokens
-        self.target_annotation = target_annotation
-        self.asterisk = asterisk
-    
-    @property
-    def name(self) -> str:
-        if self.target_annotation is None:
-            return self.tokens[0].text
-        return self.target_annotation.text
+        self.name: TokenWithLocation = name
+        self.noverb = _NoverbHandler(unnamed_oargs, named_oargs)
+        self.asterisk: bool = asterisk
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Symdef]:
@@ -500,72 +513,118 @@ class Symdef(ParsedEnvironment):
             return None
         if not e.rargs:
             raise CompilerException('Argument count mismatch: At least one argument required.')
-        tokens = list(map(TokenWithLocation.from_node, e.rargs))
-        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        name = TokenWithLocation.from_node(e.rargs[0])
+        unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return Symdef(
             location=e.location,
-            tokens=tokens,
-            target_annotation=named.get('name'),
+            name=named.get('name', name),
+            unnamed_oargs=unnamed,
+            named_oargs=named,
             asterisk=match.group(1) is not None,
         )
 
     def __repr__(self):
-        return f'[Symdef{"*"*self.asterisk} target="{self.target_annotation or ""}" tokens={self.tokens}]'
+        return f'[Symdef{"*"*self.asterisk} name={self.name.text}]'
 
 
-class GImport(ParsedEnvironment):
-    PATTERN = re.compile(r'gimport(\*)?')
+class ImportModule(ParsedEnvironment):
+    PATTERN = re.compile(r'(import|use)(mh)?module(\*)?')
     def __init__(
         self,
         location: Location,
-        target: TokenWithLocation,
-        options: Optional[TokenWithLocation],
+        module: TokenWithLocation,
+        mhrepos: Optional[TokenWithLocation],
+        dir: Optional[TokenWithLocation],
+        load: Optional[TokenWithLocation],
+        export: bool,
+        mh_mode: bool,
         asterisk: bool):
         super().__init__(location)
-        self.target = target
-        self.options = options
+        self.module = module
+        self.mhrepos = mhrepos
+        self.dir = dir
+        self.load = load
+        self.export = export
+        self.mh_mode = mh_mode
         self.asterisk = asterisk
+        if mh_mode:
+            if not dir:
+                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" must be specified.')
+            elif load:
+                raise CompilerException('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
+        elif mhrepos or dir:
+            raise CompilerException('Invalid argument configuration in importmodule: "mhrepos" or "dir" must not be specified.')
+        elif not load:
+            raise CompilerException('Invalid argument configuration in importmodule: Missing "load" argument.')
+        if not self.path.is_file():
+            raise CompilerException(f'Imported path "{self.path.relative_to(Path.cwd())}" is not a file or does not exist.')
+
+    @property
+    def path(self) -> Path:
+        module_filename = self.module.text.strip() + '.tex'
+        if self.load:
+            return Path(self.load.text.strip()).absolute() / module_filename
+        if self.mhrepos:
+            source = Path(self.mhrepos.text.strip()).absolute() / 'source'
+            if not source.is_dir():
+                raise CompilerException(f'Source dir "{source}" is not a directory.')
+        else:
+            rel = self.location.uri.relative_to(Path.cwd())
+            source = list(rel.parents)[-4].absolute()
+            if source.name != 'source':
+                raise CompilerException(f'Invalid implicit path of source dir: "{source}"')
+        return source / self.dir.text.strip() / module_filename
+
+    def __repr__(self):
+        access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
+        return f'[{access.value} ImportModule {self.module.text} from "{self.path}"]'
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[ImportModule]:
+        match = ImportModule.PATTERN.fullmatch(e.env_name)
+        if match is None:
+            return None
+        if len(e.rargs) != 1:
+            raise CompilerException(f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
+        module = TokenWithLocation.from_node(e.rargs[0])
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        return ImportModule(
+            location=e.location,
+            module=module,
+            mhrepos=named.get('mhrepos'),
+            dir=named.get('dir'),
+            load=named.get('load'),
+            export=match.group(1) == 'import',
+            mh_mode=match.group(2) == 'mh',
+            asterisk=match.group(3) == '*'
+        )
+
+
+class GImport(ParsedEnvironment):
+    PATTERN = re.compile(r'g(import|use)(\*)?')
+    def __init__(
+        self,
+        location: Location,
+        module: TokenWithLocation,
+        repository: Optional[TokenWithLocation],
+        export: bool,
+        asterisk: bool):
+        super().__init__(location)
+        self.module = module
+        self.repository = repository
+        self.export = export
+        self.asterisk = asterisk
+        if not self.path.is_file():
+            raise CompilerException(f'Imported path "{self.path.relative_to(Path.cwd())}" is not a file or does not exist.')
     
     @property
-    def repository_path_annotation(self) -> Optional[Path]:
-        ''' Returns the path to the repository's source dir the oargs annotation points to.
-
-        Examples:
-            >>> options = TokenWithLocation('smglom/example-repo', None)
-            >>> gimport = GImport(None, None, options, False)
-            >>> actual = gimport.repository_path_annotation.as_posix()
-            >>> expected = Path('smglom/example-repo/source').absolute()
-            >>> expected == actual
-            True
-        '''
-        if self.options is None:
-            return None
-        return Path(self.options.text).absolute() / 'source'
-
-    @property
-    def module_path(self) -> Path:
-        ''' Returns the path to the module file this gimport points to.
-
-        Examples:
-            >>> path = Path('path/to/smglom/repo/source/module.tex')
-            >>> location = Location(path, None)
-            >>> target = TokenWithLocation('target-module')
-            >>> gimport = GImport(location, target, None, False)
-            >>> gimport.module_path.as_posix() # target module in same repo
-            'path/to/smglom/repo/source/target-module.tex
-            >>> options = TokenWithLocation('smglom/other-repo', None)
-            >>> gimport = GImport(location, target, options, False)
-            >>> gimport.module_path.as_posix() # target module in other repo
-            'smglom/other-repo/source/target-module.tex'
-        '''
-        annotation = self.repository_path_annotation
-        if annotation:
-            return annotation / (self.target_module_name + '.tex')
-        return self.location.uri.parents[0] / (self.target_module_name + '.tex')
-
-    @property
-    def target_module_name(self) -> str:
-        return self.target.text
+    def path(self) -> Path:
+        ''' Returns the path to the module file this gimport points to. '''
+        filename = self.module.text.strip() + '.tex'
+        if self.repository is None:
+            return self.location.uri.parents[0].absolute() / filename
+        source = Path(self.repository.text.strip()) / 'source'
+        return source.absolute() / filename
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GImport]:
@@ -574,17 +633,21 @@ class GImport(ParsedEnvironment):
             return None
         if len(e.rargs) != 1:
             raise CompilerException(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
-        if len(e.oargs) > 1:
+        module = TokenWithLocation.from_node(e.rargs[0])
+        unnamed, _ = TokenWithLocation.parse_oargs(e.oargs)
+        if len(unnamed) > 1:
             raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
-            e.location,
-            TokenWithLocation.from_node_union(e.rargs),
-            TokenWithLocation.from_node_union(e.oargs) if e.oargs else None,
-            match.group(1) is not None,
+            location=e.location,
+            module=module,
+            repository=next(iter(unnamed), None),
+            export=match.group(1) == 'import',
+            asterisk=match.group(2) is not None,
         )
 
     def __repr__(self):
-        return f'[Gimport{"*"*self.asterisk} options="{self.options or ""}" target={self.target}]'
+        access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
+        return f'[{access.value} gimport{"*"*self.asterisk} {self.module.text} from "{self.path}"]'
 
 
 class GStructure(ParsedEnvironment):
@@ -599,13 +662,3 @@ class GStructure(ParsedEnvironment):
         if match is None:
             return None
         raise NotImplementedError
-
-
-class GUse(ParsedEnvironment):
-    def __init__(self, location):
-        super().__init__(location)
-    
-    @staticmethod
-    def from_environment(e: Environment) -> Optional[GUse]:
-        raise NotImplementedError
-

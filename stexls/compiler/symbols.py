@@ -55,6 +55,13 @@ class SymbolIdentifier:
 
 class Symbol:
     def __init__(self, location: Location, identifier: SymbolIdentifier, parent: SymbolIdentifier):
+        """ Initializes a symbol.
+
+        Parameters:
+            location: Location of where this symbol is defined.
+            identifier: Identifier of this symbol relative to it's parent.
+            parent: The identifier of the parent symbol this symbol is scoped to.
+        """
         self.identifier: SymbolIdentifier = identifier
         self.parent: SymbolIdentifier = parent
         self.location: Location = location
@@ -62,6 +69,16 @@ class Symbol:
 
     @property
     def qualified_identifier(self) -> SymbolIdentifier:
+        """ The fully qualified identifier for this symbol.
+        
+        >>> symbol = Symbol(None, SymbolIdentifier('child', SymbolType.SYMBOL), SymbolIdentifier('parent', SymbolType.MODULE))
+        >>> symbol.parent
+        'parent/MODULE'
+        >>> symbol.identifier'
+        'child/SYMBOL'
+        >>> symbol.qualified_identifier
+        'parent.child/SYMBOL'
+        """
         if self.parent is None:
             return self.identifier
         return self.parent.append(self.identifier)

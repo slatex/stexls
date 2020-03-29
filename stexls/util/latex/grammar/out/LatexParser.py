@@ -11,7 +11,7 @@ else:
 
 def serializedATN():
     with StringIO() as buf:
-        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\20")
+        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\26")
         buf.write("z\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b")
         buf.write("\t\b\4\t\t\t\4\n\t\n\4\13\t\13\4\f\t\f\4\r\t\r\4\16\t")
         buf.write("\16\4\17\t\17\4\20\t\20\3\2\7\2\"\n\2\f\2\16\2%\13\2\3")
@@ -23,7 +23,7 @@ def serializedATN():
         buf.write("\f\3\f\3\f\3\f\3\r\3\r\3\r\7\ri\n\r\f\r\16\rl\13\r\3\16")
         buf.write("\3\16\5\16p\n\16\3\16\5\16s\n\16\3\17\3\17\3\17\3\20\3")
         buf.write("\20\3\20\2\2\21\2\4\6\b\n\f\16\20\22\24\26\30\32\34\36")
-        buf.write("\2\3\4\2\7\n\r\r\2y\2#\3\2\2\2\4\64\3\2\2\2\6\66\3\2\2")
+        buf.write("\2\3\4\2\7\n\f\f\2y\2#\3\2\2\2\4\64\3\2\2\2\6\66\3\2\2")
         buf.write("\2\b8\3\2\2\2\nA\3\2\2\2\fG\3\2\2\2\16L\3\2\2\2\20R\3")
         buf.write("\2\2\2\22V\3\2\2\2\24X\3\2\2\2\26a\3\2\2\2\30e\3\2\2\2")
         buf.write("\32r\3\2\2\2\34t\3\2\2\2\36w\3\2\2\2 \"\5\4\3\2! \3\2")
@@ -35,14 +35,14 @@ def serializedATN():
         buf.write("\3\2\2\2\64+\3\2\2\2\64,\3\2\2\2\65\5\3\2\2\2\66\67\7")
         buf.write("\13\2\2\67\7\3\2\2\28<\5\n\6\29;\5\4\3\2:9\3\2\2\2;>\3")
         buf.write("\2\2\2<:\3\2\2\2<=\3\2\2\2=?\3\2\2\2><\3\2\2\2?@\5\f\7")
-        buf.write("\2@\t\3\2\2\2AC\7\16\2\2BD\5\20\t\2CB\3\2\2\2DE\3\2\2")
-        buf.write("\2EC\3\2\2\2EF\3\2\2\2F\13\3\2\2\2GH\7\17\2\2HI\7\5\2")
-        buf.write("\2IJ\7\r\2\2JK\7\6\2\2K\r\3\2\2\2LN\7\20\2\2MO\5\20\t")
-        buf.write("\2NM\3\2\2\2NO\3\2\2\2O\17\3\2\2\2PS\5\24\13\2QS\5\26")
-        buf.write("\f\2RP\3\2\2\2RQ\3\2\2\2ST\3\2\2\2TR\3\2\2\2TU\3\2\2\2")
-        buf.write("U\21\3\2\2\2VW\t\2\2\2W\23\3\2\2\2X\\\7\5\2\2Y[\5\4\3")
-        buf.write("\2ZY\3\2\2\2[^\3\2\2\2\\Z\3\2\2\2\\]\3\2\2\2]_\3\2\2\2")
-        buf.write("^\\\3\2\2\2_`\7\6\2\2`\25\3\2\2\2ab\7\7\2\2bc\5\30\r\2")
+        buf.write("\2@\t\3\2\2\2AC\7\r\2\2BD\5\20\t\2CB\3\2\2\2DE\3\2\2\2")
+        buf.write("EC\3\2\2\2EF\3\2\2\2F\13\3\2\2\2GH\7\16\2\2HI\7\5\2\2")
+        buf.write("IJ\7\f\2\2JK\7\6\2\2K\r\3\2\2\2LN\7\17\2\2MO\5\20\t\2")
+        buf.write("NM\3\2\2\2NO\3\2\2\2O\17\3\2\2\2PS\5\24\13\2QS\5\26\f")
+        buf.write("\2RP\3\2\2\2RQ\3\2\2\2ST\3\2\2\2TR\3\2\2\2TU\3\2\2\2U")
+        buf.write("\21\3\2\2\2VW\t\2\2\2W\23\3\2\2\2X\\\7\5\2\2Y[\5\4\3\2")
+        buf.write("ZY\3\2\2\2[^\3\2\2\2\\Z\3\2\2\2\\]\3\2\2\2]_\3\2\2\2^")
+        buf.write("\\\3\2\2\2_`\7\6\2\2`\25\3\2\2\2ab\7\7\2\2bc\5\30\r\2")
         buf.write("cd\7\b\2\2d\27\3\2\2\2ej\5\32\16\2fg\7\n\2\2gi\5\32\16")
         buf.write("\2hf\3\2\2\2il\3\2\2\2jh\3\2\2\2jk\3\2\2\2k\31\3\2\2\2")
         buf.write("lj\3\2\2\2mo\5\34\17\2np\5\36\20\2on\3\2\2\2op\3\2\2\2")
@@ -63,12 +63,15 @@ class LatexParser ( Parser ):
     sharedContextCache = PredictionContextCache()
 
     literalNames = [ "<INVALID>", "<INVALID>", "<INVALID>", "'{'", "'}'", 
-                     "'['", "']'", "'='", "','", "<INVALID>", "'\\'", "<INVALID>", 
-                     "'begin'", "'end'" ]
+                     "'['", "']'", "'='", "','", "<INVALID>", "<INVALID>", 
+                     "'begin'", "'end'", "<INVALID>", "<INVALID>", "<INVALID>", 
+                     "'\\('", "'\\['", "'\\'", "'\\)'", "'\\]'" ]
 
     symbolicNames = [ "<INVALID>", "WS", "COMMENT", "OPEN_BRACE", "CLOSED_BRACE", 
                       "OPEN_BRACKET", "CLOSED_BRACKET", "EQUALS", "COMMA", 
-                      "MATH_ENV", "ESCAPE", "TEXT", "BEGIN", "END", "INLINE_ENV_NAME" ]
+                      "MATH_ENV", "TEXT", "BEGIN", "END", "INLINE_ENV_NAME", 
+                      "MATH_OPEN_1", "MATH_OPEN_2", "MATH_OPEN_3", "MATH_OPEN_4", 
+                      "ESCAPE", "MATH_ESCAPE_3", "MATH_ESCAPE_4" ]
 
     RULE_main = 0
     RULE_body = 1
@@ -100,11 +103,17 @@ class LatexParser ( Parser ):
     EQUALS=7
     COMMA=8
     MATH_ENV=9
-    ESCAPE=10
-    TEXT=11
-    BEGIN=12
-    END=13
-    INLINE_ENV_NAME=14
+    TEXT=10
+    BEGIN=11
+    END=12
+    INLINE_ENV_NAME=13
+    MATH_OPEN_1=14
+    MATH_OPEN_2=15
+    MATH_OPEN_3=16
+    MATH_OPEN_4=17
+    ESCAPE=18
+    MATH_ESCAPE_3=19
+    MATH_ESCAPE_4=20
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)

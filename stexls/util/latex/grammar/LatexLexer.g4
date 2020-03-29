@@ -9,12 +9,13 @@ CLOSED_BRACKET: ']';
 EQUALS: '=';
 COMMA: ',';
 
+MATH_OPEN_1: '$' -> more, pushMode(MATH1);
+MATH_OPEN_2: '$$' -> more, pushMode(MATH2);
+MATH_OPEN_3: '\\(' -> more, pushMode(MATH3);
+MATH_OPEN_4: '\\[' -> more, pushMode(MATH4);
+
 MATH_ENV
-    : '$$'.+?'$$'
-    | '$'.+?'$'
-    | '\\['.*?'\\]'
-    | '\\(' .*? '\\)'
-    | '\\begin' WS? '{' WS? 'math' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '}'
+    : '\\begin' WS? '{' WS? 'math' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '}'
     | '\\begin' WS? '{' WS? 'math' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '*' WS? '}'
     | '\\begin' WS? '{' WS? 'displaymath' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS? '}'
     | '\\begin' WS? '{' WS? 'displaymath' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS? '*' WS? '}'
@@ -30,9 +31,25 @@ MATH_ENV
     | '\\begin' WS? '{' WS? 'verbatim' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '*' WS? '}'
     ;
 
-ESCAPE: '\\' -> skip, pushMode(ESCAPE_MODE);
+ESCAPE: '\\' -> more, pushMode(ESCAPE_MODE);
 
 TEXT: ~('$'|'['|'{'|'%'|'}'|']'|'\\'|','|'=')+;
+
+mode MATH1;
+MATH_CLOSE_1: '$' -> popMode, type(MATH_ENV);
+MATH_TOKEN_1: '\\'? . -> more;
+
+mode MATH2;
+MATH_CLOSE_2: '$$' -> popMode, type(MATH_ENV);
+MATH_TOKEN_2: '\\'? . -> more;
+
+mode MATH3;
+MATH_ESCAPE_3: '\\)' -> popMode, type(MATH_ENV);
+MATH_TOKEN_3: '\\'? . -> more;
+
+mode MATH4;
+MATH_ESCAPE_4: '\\]' -> popMode, type(MATH_ENV);
+MATH_TOKEN_4: '\\'? . -> more;
 
 mode ESCAPE_MODE;
 BEGIN: 'begin' -> popMode;

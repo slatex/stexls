@@ -301,8 +301,8 @@ class Defi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
-        if i != len(tokens) - int(a):
-            raise CompilerException(f'Defi argument count mismatch: Expected {i} vs actual {len(tokens) - int(a)}.')
+        if i + int(a) != len(tokens):
+            raise CompilerException(f'Defi argument count mismatch: Expected {i + int(a)} vs actual {len(tokens)}.')
 
     @property
     def name(self) -> str:
@@ -357,9 +357,8 @@ class Trefi(ParsedEnvironment):
         self.i = i
         self.s = s
         self.asterisk = asterisk
-        actual = len(tokens) - int(a)
-        if i != actual:
-            raise CompilerException(f'Trefi argument count mismatch: Expected {i} vs. actual {actual}.')
+        if i + int(a) != len(tokens):
+            raise CompilerException(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
         has_q = self.target_annotation and '?' in self.target_annotation.text
         if not self.m and has_q:
             raise CompilerException('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
@@ -536,6 +535,7 @@ class ImportModule(ParsedEnvironment):
         mhrepos: Optional[TokenWithLocation],
         dir: Optional[TokenWithLocation],
         load: Optional[TokenWithLocation],
+        path: Optional[TokenWithLocation],
         export: bool,
         mh_mode: bool,
         asterisk: bool):
@@ -547,6 +547,8 @@ class ImportModule(ParsedEnvironment):
         self.export = export
         self.mh_mode = mh_mode
         self.asterisk = asterisk
+        if path:
+            raise CompilerException('ImportModule "path" argument not supported.')
         if mh_mode:
             if not dir:
                 raise CompilerException('Invalid argument configuration in importmhmodule: "dir" must be specified.')
@@ -556,8 +558,6 @@ class ImportModule(ParsedEnvironment):
             raise CompilerException('Invalid argument configuration in importmodule: "mhrepos" or "dir" must not be specified.')
         elif not load:
             raise CompilerException('Invalid argument configuration in importmodule: Missing "load" argument.')
-        if not self.path.is_file():
-            raise CompilerException(f'Imported path "{self.path.relative_to(Path.cwd())}" is not a file or does not exist.')
 
     @property
     def path(self) -> Path:
@@ -593,6 +593,7 @@ class ImportModule(ParsedEnvironment):
             module=module,
             mhrepos=named.get('mhrepos'),
             dir=named.get('dir'),
+            path=named.get('path'),
             load=named.get('load'),
             export=match.group(1) == 'import',
             mh_mode=match.group(2) == 'mh',
@@ -614,9 +615,7 @@ class GImport(ParsedEnvironment):
         self.repository = repository
         self.export = export
         self.asterisk = asterisk
-        if not self.path.is_file():
-            raise CompilerException(f'Imported path "{self.path.relative_to(Path.cwd())}" is not a file or does not exist.')
-    
+
     @property
     def path(self) -> Path:
         ''' Returns the path to the module file this gimport points to. '''

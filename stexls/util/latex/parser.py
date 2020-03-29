@@ -436,6 +436,8 @@ class _LatexParserListener(_LatexParserListener):
 
     @staticmethod
     def _get_ctx_range(ctx):
+        if not ctx.start or not ctx.stop:
+            raise LatexException('Invalid context encountered during parsing of latex file.')
         return ctx.start.start, ctx.stop.stop + 1
 
     def enterMain(self, ctx: _LatexParser.MainContext):

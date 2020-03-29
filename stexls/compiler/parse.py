@@ -192,9 +192,11 @@ class Modsig(ParsedEnvironment):
         match = Modsig.PATTERN.fullmatch(e.env_name)
         if not match:
             return
+        if not e.rargs:
+            raise CompilerException('Modsig environment missing required argument: {<module name>}')
         return Modsig(
             e.location,
-            TokenWithLocation.from_node(e.name))
+            TokenWithLocation.from_node(e.rargs[0]))
 
     def __repr__(self):
         return f'[Modsig name={self.name.text}]'

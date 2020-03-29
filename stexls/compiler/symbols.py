@@ -25,6 +25,7 @@ class AccessModifier(Enum):
     PUBLIC='public'
     PRIVATE='private'
 
+
 class SymbolIdentifier:
     def __init__(self, identifier: str, symbol_type: SymbolType):
         self.identifier = identifier

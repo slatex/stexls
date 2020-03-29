@@ -403,7 +403,7 @@ class Trefi(ParsedEnvironment):
         if not e.rargs:
             raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
         if len(e.unnamed_args) > 1:
-            raise CompilerException(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(options)}')
+            raise CompilerException(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(e.unnamed_args)}')
         annotations = (
             TokenWithLocation.from_node(e.unnamed_args[0])
             if e.unnamed_args

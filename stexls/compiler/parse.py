@@ -194,7 +194,7 @@ class ParsedEnvironment:
 
 
 class Modsig(ParsedEnvironment):
-    PATTERN = re.compile(r'modsig')
+    PATTERN = re.compile(r'\\?modsig')
     def __init__(self, location: Location, name: TokenWithLocation):
         super().__init__(location)
         self.name = name
@@ -215,7 +215,7 @@ class Modsig(ParsedEnvironment):
 
 
 class Modnl(ParsedEnvironment):
-    PATTERN = re.compile(r'(mh)?modnl')
+    PATTERN = re.compile(r'\\?(mh)?modnl')
     def __init__(
         self,
         location: Location,
@@ -268,7 +268,7 @@ class Modnl(ParsedEnvironment):
 
 
 class Module(ParsedEnvironment):
-    PATTERN = re.compile(r'module(\*)?')
+    PATTERN = re.compile(r'\\?module(\*)?')
     def __init__(
         self,
         location: Location,
@@ -294,7 +294,7 @@ class Module(ParsedEnvironment):
 
 
 class Defi(ParsedEnvironment):
-    PATTERN = re.compile(r'([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'\\?([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
     def __init__(
         self,
         location: Location,
@@ -346,11 +346,11 @@ class Defi(ParsedEnvironment):
             asterisk=match.group(5) is not None)
 
     def __repr__(self):
-        return f'[Defi {self.name}]'
+        return f'[Defi "{self.name}"]'
 
 
 class Trefi(ParsedEnvironment):
-    PATTERN = re.compile(r'([ma]*)(t|T)ref([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'\\?([ma]*)(t|T)ref([ivx]+)(s)?(\*)?')
     def __init__(
         self,
         location: Location,
@@ -437,7 +437,8 @@ class Trefi(ParsedEnvironment):
         )
 
     def __repr__(self):
-        return f'[Trefi module="{self.module or ""}" name="{self.name}"]'
+        module = f' "{self.module}" ' if self.module else " "
+        return f'[Trefi{module}"{self.name}"]'
 
 
 class _NoverbHandler:
@@ -463,7 +464,7 @@ class _NoverbHandler:
 
 
 class Symi(ParsedEnvironment):
-    PATTERN = re.compile(r'sym([ivx]+)(\*)?')
+    PATTERN = re.compile(r'\\?sym([ivx]+)(\*)?')
     def __init__(
         self,
         location: Location,
@@ -502,11 +503,11 @@ class Symi(ParsedEnvironment):
         )
 
     def __repr__(self):
-        return f'[Sym{"*"*self.asterisk} i={self.i} tokens={self.tokens}]'
+        return f'[Sym{"*"*self.asterisk} "{self.name}"]'
 
 
 class Symdef(ParsedEnvironment):
-    PATTERN = re.compile(r'symdef(\*)?')
+    PATTERN = re.compile(r'\\?symdef(\*)?')
     def __init__(
         self,
         location: Location,
@@ -537,11 +538,11 @@ class Symdef(ParsedEnvironment):
         )
 
     def __repr__(self):
-        return f'[Symdef{"*"*self.asterisk} name={self.name.text}]'
+        return f'[Symdef{"*"*self.asterisk} "{self.name.text}"]'
 
 
 class ImportModule(ParsedEnvironment):
-    PATTERN = re.compile(r'(import|use)(mh)?module(\*)?')
+    PATTERN = re.compile(r'\\?(import|use)(mh)?module(\*)?')
     def __init__(
         self,
         location: Location,
@@ -583,7 +584,7 @@ class ImportModule(ParsedEnvironment):
             if not source.is_dir():
                 raise CompilerException(f'Source dir "{source}" is not a directory.')
         else:
-            rel = self.location.uri.relative_to(Path.cwd())
+            rel = self.location.uri.absolute().relative_to(Path.cwd())
             source = list(rel.parents)[-4].absolute()
             if source.name != 'source':
                 raise CompilerException(f'Invalid implicit path of source dir: "{source}"')
@@ -591,7 +592,7 @@ class ImportModule(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} ImportModule {self.module.text} from "{self.path}"]'
+        return f'[{access.value} ImportModule "{self.module.text}" from "{self.path}"]'
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ImportModule]:
@@ -616,7 +617,7 @@ class ImportModule(ParsedEnvironment):
 
 
 class GImport(ParsedEnvironment):
-    PATTERN = re.compile(r'g(import|use)(\*)?')
+    PATTERN = re.compile(r'\\?g(import|use)(\*)?')
     def __init__(
         self,
         location: Location,
@@ -660,11 +661,11 @@ class GImport(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} gimport{"*"*self.asterisk} {self.module.text} from "{self.path}"]'
+        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path}"]'
 
 
 class GStructure(ParsedEnvironment):
-    PATTERN = re.compile(r'gstructure(\*)?')
+    PATTERN = re.compile(r'\\?gstructure(\*)?')
     def __init__(self, location: Location, asterisk: bool):
         super().__init__(location)
         self.asterisk = asterisk

@@ -211,5 +211,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
         parsed_file.symdefs,
         parsed_file.syms):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in module.'))
+    _map_compile(functools.partial(_compile_importmodules, module_id), parsed_file.importmodules, obj)
     _map_compile(functools.partial(_compile_defi, module_id, create=True), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
+    _map_compile(functools.partial(_compile_symdef, module_id), parsed_file.symdefs, obj)

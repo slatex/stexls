@@ -44,6 +44,18 @@ class ParsedFile:
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
+    @property
+    def whole_file(self) -> Location:
+        try:
+            with open(self.path) as fd:
+                content = fd.read()
+            lines = content.split('\n')
+            num_lines = len(lines)
+            len_last_line = len(lines[-1])
+            return Location(self.path, Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
+        except:
+            return Location(self.path, Position(0, 0))
+
 
 def parse(path: Path) -> ParsedFile:
     parsed_file = ParsedFile(path)

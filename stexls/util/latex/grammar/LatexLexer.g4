@@ -29,6 +29,8 @@ MATH_ENV
     | '\\begin' WS? '{' WS? 'equation' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'equation' WS? '*' WS? '}'
     | '\\begin' WS? '{' WS? 'verbatim' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '}'
     | '\\begin' WS? '{' WS? 'verbatim' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '*' WS? '}'
+    | '\\begin' WS? '{' WS? 'lstlisting' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '}'
+    | '\\begin' WS? '{' WS? 'lstlisting' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '*' WS? '}'
     ;
 
 ESCAPE: '\\' -> more, pushMode(ESCAPE_MODE);

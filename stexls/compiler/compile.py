@@ -97,16 +97,21 @@ class StexObject:
         obj.errors = parsed.errors.copy()
         obj.compiled_files.add(parsed.path)
         number_of_roots = len(parsed.modnls) + len(parsed.modsigs) + len(parsed.modules)
-        if number_of_roots == 0 and not parsed.errors:
-            return
-        if number_of_roots > 1:
-            raise CompilerException(f'Too many stex roots found: Found {number_of_roots}, expected up to 1')
-        for modsig in parsed.modsigs:
-            _compile_modsig(modsig, obj, parsed)
-        for modnl in parsed.modnls:
-            _compile_modnl(modnl, obj, parsed)
-        for module in parsed.modules:
-            _compile_module(module, obj, parsed)
+        try:
+            if number_of_roots == 0 and not parsed.errors:
+                return
+            if number_of_roots > 1:
+                raise CompilerException(f'Too many stex roots found: Found {number_of_roots}, expected up to 1')
+            for modsig in parsed.modsigs:
+                _compile_modsig(modsig, obj, parsed)
+            for modnl in parsed.modnls:
+                _compile_modnl(modnl, obj, parsed)
+            for module in parsed.modules:
+                _compile_module(module, obj, parsed)
+        except CompilerException as e:
+            obj.errors[parsed.whole_file].append(e)
+        if not obj.errors and not obj.references and not obj.symbol_table:
+            return None
         return obj
 
 

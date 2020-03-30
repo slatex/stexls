@@ -203,14 +203,13 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     for invalid_environment in itertools.chain(
         parsed_file.modsigs,
         parsed_file.modnls,
-        parsed_file.gimports,
-        parsed_file.symdefs,
         parsed_file.syms):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in module.'))
     name_location = module.location.replace(positionOrRange=module.id.range)
     module = ModuleSymbol(name_location, module.id.text)
     obj.add_symbol(module, export=True)
     _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
+    _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module.qualified_identifier, create=True), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module.qualified_identifier), parsed_file.trefis, obj)
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)

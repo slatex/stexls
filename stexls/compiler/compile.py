@@ -167,10 +167,6 @@ def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
 def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     if parsed_file.path.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
         obj.errors[modnl.location].append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
-    module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
-    name_location = modnl.location.replace(positionOrRange=modnl.name.range)
-    obj.add_reference(name_location, module_id.identifier)
-    obj.add_dependency(name_location, modnl.path)
     for invalid_environment in itertools.chain(
         parsed_file.modsigs,
         parsed_file.modules,
@@ -179,6 +175,10 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
         parsed_file.symdefs,
         parsed_file.syms):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in modnl.'))
+    module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
+    name_location = modnl.location.replace(positionOrRange=modnl.name.range)
+    obj.add_reference(name_location, module_id.identifier)
+    obj.add_dependency(name_location, modnl.path)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
 
@@ -200,18 +200,17 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
     obj.add_reference(trefi.location, target_symbol_id.identifier)
 
 def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
-    module_id = SymbolIdentifier(module.id.text, SymbolType.MODULE)
-    name_location = module.location.replace(positionOrRange=module.id.range)
-    obj.add_reference(name_location, module_id.identifier)
     for invalid_environment in itertools.chain(
         parsed_file.modsigs,
         parsed_file.modnls,
         parsed_file.gimports,
-        parsed_file.importmodules,
         parsed_file.symdefs,
         parsed_file.syms):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in module.'))
-    _map_compile(functools.partial(_compile_importmodules, module_id), parsed_file.importmodules, obj)
-    _map_compile(functools.partial(_compile_defi, module_id, create=True), parsed_file.defis, obj)
-    _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
-    _map_compile(functools.partial(_compile_symdef, module_id), parsed_file.symdefs, obj)
+    name_location = module.location.replace(positionOrRange=module.id.range)
+    module = ModuleSymbol(name_location, module.id.text)
+    obj.add_symbol(module, export=True)
+    _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
+    _map_compile(functools.partial(_compile_defi, module.qualified_identifier, create=True), parsed_file.defis, obj)
+    _map_compile(functools.partial(_compile_trefi, module.qualified_identifier), parsed_file.trefis, obj)
+    _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)

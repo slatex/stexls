@@ -581,8 +581,6 @@ class ImportModule(ParsedEnvironment):
             return Path(self.load.text.strip()).absolute() / module_filename
         if self.mhrepos:
             source = Path(self.mhrepos.text.strip()).absolute() / 'source'
-            if not source.is_dir():
-                raise CompilerException(f'Source dir "{source}" is not a directory.')
         else:
             rel = self.location.uri.absolute().relative_to(Path.cwd())
             source = list(rel.parents)[-4].absolute()

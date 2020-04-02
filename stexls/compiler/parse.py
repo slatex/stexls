@@ -67,7 +67,7 @@ class ParsedFile:
 
 
     @property
-    def whole_file(self) -> Location:
+    def whole_file_location(self) -> Location:
         """ Returns a location with a range that contains the whole file
             or just the range from 0 to 0 if the file can't be openened.
         """

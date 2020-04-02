@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict, Set, Iterator
+from typing import Optional, Tuple, List, Dict, Set, Generator
 import re
 import multiprocessing
 from collections import defaultdict
@@ -45,7 +45,7 @@ class ParsedFile:
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
     @property
-    def split_modules(self) -> Iterator[ParsedFile]:
+    def split_modules(self) -> Generator[ParsedFile]:
         """ Splits the file into multiple ParsedFiles, one for each <module> contained. """
         if self.modules:
             for module in self.modules:

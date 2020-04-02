@@ -21,13 +21,12 @@ __all__ = (
     'Modsig',
     'Modnl',
     'Module',
-    'ImportModule',
     'Trefi',
     'Defi',
     'Symi',
     'Symdef',
+    'ImportModule',
     'GImport',
-    'GStructure',
 )
 
 class ParsedFile:
@@ -597,23 +596,24 @@ class ImportModule(ParsedEnvironment):
         self.mhrepos = mhrepos
         self.dir = dir
         self.load = load
+        self.path = path
         self.export = export
         self.mh_mode = mh_mode
         self.asterisk = asterisk
-        if path:
-            raise CompilerException('ImportModule "path" argument not supported.')
         if mh_mode:
-            if not dir:
-                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" must be specified.')
+            if not dir and not path:
+                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" or "path" must be specified.')
+            elif dir and path:
+                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
             elif load:
                 raise CompilerException('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
-        elif mhrepos or dir:
-            raise CompilerException('Invalid argument configuration in importmodule: "mhrepos" or "dir" must not be specified.')
         elif not load:
             raise CompilerException('Invalid argument configuration in importmodule: Missing "load" argument.')
+        elif mhrepos or dir or path:
+            raise CompilerException('Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
 
     @property
-    def path(self) -> Path:
+    def path_to_imported_file(self) -> Path:
         module_filename = self.module.text.strip() + '.tex'
         if self.load:
             return Path(self.load.text.strip()).absolute() / module_filename
@@ -624,6 +624,8 @@ class ImportModule(ParsedEnvironment):
             source = list(rel.parents)[-4].absolute()
             if source.name != 'source':
                 raise CompilerException(f'Invalid implicit path of source dir: "{source}"')
+        if self.path:
+            return source / (self.path.text.strip() + '.tex')
         return source / self.dir.text.strip() / module_filename
 
     def __repr__(self):
@@ -668,7 +670,7 @@ class GImport(ParsedEnvironment):
         self.asterisk = asterisk
 
     @property
-    def path(self) -> Path:
+    def path_to_imported_file(self) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
         filename = self.module.text.strip() + '.tex'
         if self.repository is None:
@@ -699,16 +701,3 @@ class GImport(ParsedEnvironment):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
         return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path}"]'
 
-
-class GStructure(ParsedEnvironment):
-    PATTERN = re.compile(r'\\?gstructure(\*)?')
-    def __init__(self, location: Location, asterisk: bool):
-        super().__init__(location)
-        self.asterisk = asterisk
-
-    @classmethod
-    def from_environment(cls, e: Environment) -> Optional[GStructure]:
-        match = GStructure.PATTERN.fullmatch(e.env_name)
-        if match is None:
-            return None
-        raise NotImplementedError

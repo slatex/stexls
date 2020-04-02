@@ -12,18 +12,22 @@ __all__ = ['StexObject']
 
 class StexObject:
     def __init__(self):
-        self.compiled_files: Set[Path] = set()
-        self.dependend_files: Dict[Path, Set[Location]] = defaultdict(set)
-        self.export: Dict[Path, Dict[Range, Set[Location]]] = defaultdict(dict)
+        # Set of files used to compile this object
+        self.files: Set[Path] = set()
+        # Dependent module <str> from path hint <Path> referenced at set of locations <Location>
+        self.dependencies: Dict[Path, Dict[str, Set[Location]]] = defaultdict(dict)
+        # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[str, List[Symbol]] = defaultdict(list)
+        # Referenced symbol <str> in file <Path> at written in range <Range>
         self.references: Dict[Path, Dict[Range, str]] = defaultdict(dict)
+        # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
     @property
     def path(self) -> Path:
-        if len(self.compiled_files) > 1:
+        if len(self.files) > 1:
             raise ValueError('Path of origin of this StexObject not unique.')
-        return next(iter(self.compiled_files), None)
+        return next(iter(self.files), None)
 
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
         symbols = self.symbol_table.get(id, [])
@@ -35,48 +39,63 @@ class StexObject:
 
     def format(self):
         formatted = 'Contains files:'
-        for f in self.compiled_files:
+        for f in self.files:
             formatted += '\n\t' + str(f)
 
         formatted += '\n\nDepends on:'
-        if not self.dependend_files:
-            formatted += ' <no dependend files>'
+        if not self.dependencies:
+            formatted += ' <no dependencies>'
         else:
-            for f in self.dependend_files:
-                formatted += '\n\t' + str(f)
+            for filename, modules in self.dependencies.items():
+                for module, locations in modules.items():
+                    for location in locations:
+                        formatted += f'\n\t{location.format_link()}:{module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
             formatted += ' <no symbols>'
         else:
-            for id, ss in self.symbol_table.items():
-                for s in ss:
-                    formatted += '\n\t' + s.location.format_link() + ':' + str(s)
+            for id, symbols in self.symbol_table.items():
+                for symbol in symbols:
+                    formatted += f'\n\t{symbol.location.format_link()}:{symbol}'
 
         formatted += '\n\nReferences:'
         if not self.references:
             formatted += ' <no references>'
         else:
-            for path, d in self.references.items():
-                for r, id in d.items():
-                    formatted += '\n\t' + Location(path, r).format_link() + ':' + str(id)
+            for path, ranges in self.references.items():
+                for range, id in ranges.items():
+                    location = Location(path, range)
+                    formatted += f'\n\t{location.format_link()}:{id}'
         
         formatted += '\n\nErrors:'
         if not self.errors:
             formatted += ' <no errors>'
         else:
-            for loc, ee in self.errors.items():
-                for e in ee:
-                    formatted += '\n\t' + loc.format_link() + ':' + str(e)
+            for location, errors in self.errors.items():
+                for error in errors:
+                    formatted += f'\n\t{location.format_link()}:{error}'
         
         return formatted
     
-    def add_dependency(self, location: Location, file: Path, export: bool = False):
-        self.dependend_files[file].add(location)
-        if export:
-            self.export[location.uri].setdefault(location.range, set()).add(file)
-    
+    def add_dependency(self, location: Location, file: Path, module_name: str, export: bool = False):
+        """ Adds a dependency to a imported module in another file.
+
+        Parameters:
+            location: Location of where this dependency is created.
+            file: Path to file that is referenced in the dependency.
+            module_name: Module to import from that file.
+            export: Export the imported symbols again.
+        """
+        self.dependencies[file].setdefault(module_name, set()).add(location)
+
     def add_reference(self, location: Location, referenced_id: str):
+        """ Adds a reference.
+
+        Parameters:
+            location: Location of the string that creates this reference
+            referenced_id: The id of the referenced symbol.
+        """
         self.references[location.uri][location.range] = referenced_id
 
     def add_symbol(self, symbol: Symbol, export: bool = False, duplicate_allowed: bool = False):
@@ -95,7 +114,7 @@ class StexObject:
     def compile(parsed: ParsedFile) -> Optional[StexObject]:
         def _create(errors):
             obj = StexObject()
-            obj.compiled_files.add(parsed.path)
+            obj.files.add(parsed.path)
             if errors:
                 obj.errors = errors.copy()
             return obj
@@ -164,11 +183,11 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
 def _compile_gimport(module: ModuleSymbol, gimport: GImport, obj: StexObject):
-    obj.add_dependency(gimport.location, gimport.path, export=gimport.export)
+    obj.add_dependency(gimport.location, gimport.path_to_imported_file, gimport.module.text.strip(), export=gimport.export)
     obj.add_reference(gimport.location, gimport.module.text)
 
 def _compile_importmodules(module: ModuleSymbol, importmodule: ImportModule, obj: StexObject):
-    obj.add_dependency(importmodule.location, importmodule.path, export=importmodule.export)
+    obj.add_dependency(importmodule.location, importmodule.path_to_imported_file, importmodule.module.text.strip(), export=importmodule.export)
     obj.add_reference(importmodule.location, importmodule.module.text)
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
@@ -203,7 +222,7 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
     obj.add_reference(name_location, module_id.identifier)
-    obj.add_dependency(name_location, modnl.path)
+    obj.add_dependency(name_location, modnl.path, modnl.name.text)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
 

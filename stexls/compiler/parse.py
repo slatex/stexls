@@ -44,7 +44,6 @@ class ParsedFile:
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
-    @property
     def split_modules(self) -> Generator[ParsedFile]:
         """ Splits the file into multiple ParsedFiles, one for each <module> contained. """
         if self.modules:

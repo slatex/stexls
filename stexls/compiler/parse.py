@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict, Set
+from typing import Optional, Tuple, List, Dict, Set, Generator
 import re
 import multiprocessing
 from collections import defaultdict
@@ -45,7 +45,32 @@ class ParsedFile:
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
     @property
+    def split_modules(self) -> Generator[ParsedFile]:
+        """ Splits the file into multiple ParsedFiles, one for each <module> contained. """
+        if self.modules:
+            for module in self.modules:
+                range = module.location.range
+                module_file = ParsedFile(self.path)
+                module_file.modules.append(module)
+                module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
+                module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
+                module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
+                module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
+                module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
+                module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
+                for loc, item in self.errors.items():
+                    if range.contains(loc.range):
+                        module_file.errors[loc].extend(item)
+                yield module_file
+        else:
+            yield self
+
+
+    @property
     def whole_file(self) -> Location:
+        """ Returns a location with a range that contains the whole file
+            or just the range from 0 to 0 if the file can't be openened.
+        """
         try:
             with open(self.path) as fd:
                 content = fd.read()
@@ -272,12 +297,13 @@ class Module(ParsedEnvironment):
     def __init__(
         self,
         location: Location,
-        id: TokenWithLocation):
+        id: Optional[TokenWithLocation]):
         super().__init__(location)
         self.id = id
 
     def __repr__(self):
-        return f'[Module id="{self.id.text}"]'
+        module = f'id="{self.id.text}"' if self.id else '<anonymous>'
+        return f'[Module {module}]'
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Module]:
@@ -285,8 +311,6 @@ class Module(ParsedEnvironment):
         if match is None:
             return None
         _, named = TokenWithLocation.parse_oargs(e.oargs)
-        if 'id' not in named:
-            raise CompilerException('Missing named argument: "id"')
         return Module(
             location=e.location,
             id=named.get('id'),

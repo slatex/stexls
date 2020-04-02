@@ -1,7 +1,7 @@
 ''' The location module contains simple structures that
 represent positions or ranges in files. '''
 from __future__ import annotations
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Tuple
 from pathlib import Path
 
 __all__ = ['Position', 'Range', 'Location']
@@ -142,11 +142,47 @@ class Range:
         ' Returns true if the start and end positions are on the same line. '
         return self.start.line == self.end.line
 
+    def contains(self, range: Union[Range, Position]) -> bool:
+        '''
+        >>> range = Range(Position(10, 5), Position(11, 10))
+        >>> range.contains(Position(9, 213))
+        False
+        >>> range.contains(Position(12, 0))
+        False
+        >>> range.contains(Position(10, 4))
+        False
+        >>> range.contains(Position(10, 5))
+        True
+        >>> range.contains(Position(11, 10))
+        True
+        >>> range.contains(Position(11, 11))
+        False
+        >>> range.contains(Range(Position(11, 0), Position(11, 9)))
+        True
+        >>> range.contains(Range(Position(11, 10), Position(11, 12)))
+        True
+        >>> range.contains(Range(Position(11, 11), Position(11, 12)))
+        False
+        >>> range.contains(Range(Position(5, 11), Position(10, 12)))
+        False
+        >>> range.contains(Range(Position(10, 11), Position(10, 12)))
+        True
+        >>> range.contains(range)
+        True
+        '''
+        if isinstance(range, Position):
+            range: Position
+            return self.start.is_before_or_equal(range) and self.end.is_after_or_equal(range)
+        range: Range
+        return self.start.is_before_or_equal(range.start) and self.end.is_after_or_equal(range.end)
+
     def union(self, other: Union[Range, Position]) -> Range:
         ''' Creates a new Range with the union of self and other.
+
         Parameters:
             other: Range to create union with.
                 If other is a position, it will be converted to an empty range.
+
         Returns:
             New range representing the union of self and other.
             The union is given by the smaller start and larger end position of both.
@@ -279,6 +315,11 @@ class Location:
             Range(
                 self.range.start.translate(1, 1),
                 self.range.end.translate(1, 1)))
+
+    def contains(self, loc: Union[Location, Range, Position]) -> bool:
+        if isinstance(loc, (Range, Position)):
+            return self.range.contains(loc)
+        return self.uri == loc.uri and self.range.contains(loc.range)
 
     def format_link(self) -> str:
         range = self.one.range

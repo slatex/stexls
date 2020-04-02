@@ -699,5 +699,5 @@ class GImport(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path}"]'
+        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file}"]'
 

@@ -14,8 +14,8 @@ class StexObject:
     def __init__(self):
         # Set of files used to compile this object
         self.files: Set[Path] = set()
-        # Dependent module <str> from path hint <Path> referenced at set of locations <Location>
-        self.dependencies: Dict[Path, Dict[str, Set[Location]]] = defaultdict(dict)
+        # Dependent module <str> from path hint <Path> referenced at set of locations <Location> and an export flag <bool>
+        self.dependencies: Dict[Path, Dict[str, Set[Tuple[Location, bool]]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[str, List[Symbol]] = defaultdict(list)
         # Referenced symbol <str> in file <Path> at written in range <Range>
@@ -48,8 +48,9 @@ class StexObject:
         else:
             for filename, modules in self.dependencies.items():
                 for module, locations in modules.items():
-                    for location in locations:
-                        formatted += f'\n\t{location.format_link()}:{module} from "{filename}"'
+                    for location, export in locations:
+                        public = 'public' if export else 'private'
+                        formatted += f'\n\t{location.format_link()}:{public} {module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
@@ -87,7 +88,7 @@ class StexObject:
             module_name: Module to import from that file.
             export: Export the imported symbols again.
         """
-        self.dependencies[file].setdefault(module_name, set()).add(location)
+        self.dependencies[file].setdefault(module_name, set()).add((location, export))
 
     def add_reference(self, location: Location, referenced_id: str):
         """ Adds a reference.

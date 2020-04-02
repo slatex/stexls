@@ -468,6 +468,8 @@ class _LatexParserListener(_LatexParserListener):
 
     def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         env: Environment = self.stack.pop()
+        _end_env = Environment.from_ctx(ctx, self.parser)
+        env.end = _end_env.end
         if not isinstance(env, Environment):
             raise LatexException(f'Broken parser stack. Environment expected: {self.stack}')
         expected_env_name = env.env_name

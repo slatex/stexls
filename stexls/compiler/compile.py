@@ -93,26 +93,41 @@ class StexObject:
 
     @staticmethod
     def compile(parsed: ParsedFile) -> Optional[StexObject]:
-        obj = StexObject()
-        obj.errors = parsed.errors.copy()
-        obj.compiled_files.add(parsed.path)
-        number_of_roots = len(parsed.modnls) + len(parsed.modsigs) + len(parsed.modules)
-        try:
-            if number_of_roots == 0 and not parsed.errors:
-                return
-            if number_of_roots > 1:
-                raise CompilerException(f'Too many stex roots found: Found {number_of_roots}, expected up to 1')
-            for modsig in parsed.modsigs:
-                _compile_modsig(modsig, obj, parsed)
-            for modnl in parsed.modnls:
-                _compile_modnl(modnl, obj, parsed)
-            for module in parsed.modules:
-                _compile_module(module, obj, parsed)
-        except CompilerException as e:
-            obj.errors[parsed.whole_file].append(e)
-        if not obj.errors and not obj.references and not obj.symbol_table:
-            return None
-        return obj
+        def _create(errors):
+            obj = StexObject()
+            obj.compiled_files.add(parsed.path)
+            if errors:
+                obj.errors = errors.copy()
+            return obj
+        number_of_roots = len(parsed.modnls) + len(parsed.modsigs) + int(len(parsed.modules) > 0)
+        if number_of_roots > 1:
+            obj = _create(parsed.errors)
+            for env in itertools.chain(parsed.modnls, parsed.modsigs, parsed.modules):
+                obj.errors[env.location].append(
+                    CompilerException(f'Too many types of roots found: Found {number_of_roots}, expected up to 1'))
+            if obj.errors or obj.references or obj.symbol_table:
+                yield obj
+        else: 
+            toplevels = list(parsed)
+            if toplevels:
+                for toplevel in toplevels:
+                    for modsig in toplevel.modsigs:
+                        obj = _create(toplevel.errors)
+                        _compile_modsig(modsig, obj, toplevel)
+                        yield obj
+                    for modnl in toplevel.modnls:
+                        obj = _create(toplevel.errors)
+                        _compile_modnl(modnl, obj, toplevel)
+                        yield obj
+                    for module in toplevel.modules:
+                        obj = _create(toplevel.errors)
+                        _compile_module(module, obj, toplevel)
+                        yield obj
+            else:
+                obj = _create(parsed.errors)
+                _compile_free(obj, parsed)
+                if obj.errors or obj.references or obj.symbol_table:
+                    yield obj
 
 
 def _map_compile(compile_fun, arr: List, obj: StexObject):
@@ -121,6 +136,16 @@ def _map_compile(compile_fun, arr: List, obj: StexObject):
             compile_fun(item, obj)
         except CompilerException as e:
             obj.errors[item.location].append(e)
+
+def _compile_free(obj: StexObject, parsed_file: ParsedFile):
+    _report_invalid_environments('file', parsed_file.modnls, obj)
+    _report_invalid_environments('file', parsed_file.modules, obj)
+    _report_invalid_environments('file', parsed_file.defis, obj)
+    _report_invalid_environments('file', parsed_file.symdefs, obj)
+    _report_invalid_environments('file', parsed_file.syms, obj)
+    _report_invalid_environments('file', parsed_file.gimports, obj)
+    _map_compile(functools.partial(_compile_importmodules, None), parsed_file.importmodules, obj)
+    _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
 def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     for invalid_environment in itertools.chain(
@@ -193,23 +218,33 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
 
 def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
     if trefi.module:
-        module_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
-        module_location = trefi.location.replace(positionOrRange=trefi.module.range)
-        obj.add_reference(module_location, module_id.identifier)
-    target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
-    obj.add_reference(trefi.location, target_symbol_id.identifier)
+        referenced_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
+        reference_location = trefi.location.replace(positionOrRange=trefi.module.range)
+        obj.add_reference(reference_location, referenced_id.identifier)
+    elif module_id is None:
+        raise CompilerException('Invalid trefi configuration: Missing parent module name')
+    else:
+        target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
+        obj.add_reference(trefi.location, target_symbol_id.identifier)
 
 def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
-    for invalid_environment in itertools.chain(
-        parsed_file.modsigs,
-        parsed_file.modnls,
-        parsed_file.syms):
-        obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in module.'))
-    name_location = module.location.replace(positionOrRange=module.id.range)
-    module = ModuleSymbol(name_location, module.id.text)
-    obj.add_symbol(module, export=True)
-    _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
-    _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
-    _map_compile(functools.partial(_compile_defi, module.qualified_identifier, create=True), parsed_file.defis, obj)
-    _map_compile(functools.partial(_compile_trefi, module.qualified_identifier), parsed_file.trefis, obj)
-    _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
+    _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)
+    if module.id:
+        name_location = module.location.replace(positionOrRange=module.id.range)
+        module = ModuleSymbol(name_location, module.id.text)
+        obj.add_symbol(module, export=True)
+        _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
+        _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
+        _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
+        _map_compile(functools.partial(_compile_defi, module.qualified_identifier, create=True), parsed_file.defis, obj)
+        _map_compile(functools.partial(_compile_trefi, module.qualified_identifier), parsed_file.trefis, obj)
+    else:
+        _report_invalid_environments('module', itertools.chain(parsed_file.symdefs, parsed_file.defis), obj)
+        _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
+        _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
+        _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
+
+def _report_invalid_environments(env_name: str, lst: List[ParsedEnvironment], obj: StexObject):
+    for invalid_environment in lst:
+        obj.errors[invalid_environment.location].append(
+            CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in {env_name}.'))

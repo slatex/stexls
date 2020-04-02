@@ -101,14 +101,11 @@ class StexObject:
 
     def add_symbol(self, symbol: Symbol, export: bool = False, duplicate_allowed: bool = False):
         symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
-        if symbol.qualified_identifier.identifier in self.symbol_table:
-            for duplicate in self.symbol_table.get(symbol.qualified_identifier.identifier, None):
-                if duplicate.access_modifier != symbol.access_modifier:
-                    raise CompilerException(
-                        f'Duplicate symbol definition of {symbol.qualified_identifier}'
-                        f' at "{symbol.location}" and "{duplicate.location}"'
-                        f' where access modifiers are different:'
-                        f' {symbol.access_modifier.name} vs. {duplicate.access_modifier.name}')
+        if not duplicate_allowed:
+            for duplicate in self.symbol_table.get(symbol.qualified_identifier.identifier, ()):
+                raise CompilerException(
+                    f'Duplicate symbol definition of {symbol.qualified_identifier}'
+                    f' previously defined at "{duplicate.location.format_link()}"')
         self.symbol_table[symbol.qualified_identifier.identifier].append(symbol)
 
     @staticmethod

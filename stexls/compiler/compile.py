@@ -238,14 +238,13 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
 
 def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
     if trefi.module:
-        referenced_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
+        module_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
         reference_location = trefi.location.replace(positionOrRange=trefi.module.range)
-        obj.add_reference(reference_location, referenced_id.identifier)
+        obj.add_reference(reference_location, module_id.identifier)
     elif module_id is None:
         raise CompilerException('Invalid trefi configuration: Missing parent module name')
-    else:
-        target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
-        obj.add_reference(trefi.location, target_symbol_id.identifier)
+    target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
+    obj.add_reference(trefi.location, target_symbol_id.identifier)
 
 def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)

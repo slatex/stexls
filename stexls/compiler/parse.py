@@ -1,6 +1,7 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict, Set, Generator
+from typing import Optional, Tuple, List, Dict, Set, Generator, Union
 import re
+import itertools
 import multiprocessing
 from collections import defaultdict
 from pathlib import Path
@@ -44,25 +45,37 @@ class ParsedFile:
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
-    def split_modules(self) -> Generator[ParsedFile]:
-        """ Splits the file into multiple ParsedFiles, one for each <module> contained. """
-        if self.modules:
-            for module in self.modules:
-                range = module.location.range
-                module_file = ParsedFile(self.path)
-                module_file.modules.append(module)
-                module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
-                module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
-                module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
-                module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
-                module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
-                module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
-                for loc, item in self.errors.items():
-                    if range.contains(loc.range):
-                        module_file.errors[loc].extend(item)
-                yield module_file
-        else:
-            yield self
+    def __iter__(self) -> Generator[ParsedFile]:
+        """ Splits this file into it's toplevel modules and bindings.
+            If no toplevel environment can be found, this file
+            is returned instead.
+        
+        Returns:
+            Generator of parsed files which at most contain a single toplevel (module, modsig, modnl)
+            and the environments contained in that toplevel environment.
+        """
+        toplevels = list(itertools.chain(self.modnls, self.modsigs, self.modules))
+        for toplevel in toplevels:
+            range = toplevel.location.range
+            module_file = ParsedFile(self.path)
+            if isinstance(toplevel, Modsig):
+                module_file.modsigs.append(toplevel)
+            elif isinstance(toplevel, Module):
+                module_file.modules.append(toplevel)
+            elif isinstance(toplevel, Modnl):
+                module_file.modnls.append(toplevel)
+            module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
+            module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
+            module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
+            module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
+            module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
+            module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
+            for loc, item in self.errors.items():
+                if range.contains(loc.range):
+                    module_file.errors[loc].extend(item)
+            yield module_file
+        if not toplevels:
+            return self
 
 
     @property
@@ -82,6 +95,8 @@ class ParsedFile:
 
 
 def parse(path: Path) -> ParsedFile:
+    if not isinstance(path, Path):
+        path = Path(path)
     parsed_file = ParsedFile(path)
     exceptions: List[Tuple[Location, Exception]] = []
     try:

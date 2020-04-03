@@ -323,7 +323,8 @@ class Location:
 
     def format_link(self) -> str:
         range = self.one.range
-        return f'{self.uri.as_posix()}:{range.start.line}:{range.start.character}'
+        path = self.uri.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
+        return f'{path}:{range.start.line}:{range.start.character}'
 
     def replace(self, uri: Path = None, positionOrRange: Union[Position, Range] = None):
         ''' Creates a copy of this location and replaces uri and/or range if given.

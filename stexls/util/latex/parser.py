@@ -312,8 +312,10 @@ class LatexParser:
         ]
         input_stream = antlr4.InputStream(self.source)
         lexer = _LatexLexer(input_stream)
+        lexer.removeErrorListeners()
         stream = antlr4.CommonTokenStream(lexer)
         parser = _LatexParser(stream)
+        parser.removeErrorListeners()
         error_listener = _SyntaxErrorErrorListener(self.file)
         parser.addErrorListener(error_listener)
         listener = _LatexParserListener(self)

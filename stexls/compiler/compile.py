@@ -14,8 +14,8 @@ class StexObject:
     def __init__(self):
         # Set of files used to compile this object
         self.files: Set[Path] = set()
-        # Dependent module <str> from path hint <Path> referenced at set of locations <Location> and an export flag <bool>
-        self.dependencies: Dict[Path, Dict[str, Set[Tuple[Location, bool]]]] = defaultdict(dict)
+        # Dependent module <str> from path hint <Path> referenced at a <Location> and an export flag <bool>
+        self.dependencies: Dict[str, Dict[Path, Dict[Location, bool]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[str, List[Symbol]] = defaultdict(list)
         # Referenced symbol <str> in file <Path> at written in range <Range>
@@ -25,9 +25,23 @@ class StexObject:
 
     @property
     def path(self) -> Path:
+        ' Returns the path of the file from which this object was contained. Raises if the file is not unique. '
         if len(self.files) > 1:
             raise ValueError('Path of origin of this StexObject not unique.')
         return next(iter(self.files), None)
+
+    @property
+    def module(self) -> Optional[str]:
+        ' Returns an identifier for the module this object contains, if it is the only one. '
+        modules = [
+            id
+            for id, symbols in self.symbol_table.items()
+            for symbol in symbols
+            if symbol.identifier.symbol_type == SymbolType.MODULE
+        ]
+        if len(modules) > 1:
+            raise ValueError(f'Object module not unique: This object contains {len(modules)} modules')
+        return next(iter(modules), None)
 
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
         symbols = self.symbol_table.get(id, [])
@@ -46,11 +60,12 @@ class StexObject:
         if not self.dependencies:
             formatted += ' <no dependencies>'
         else:
-            for filename, modules in self.dependencies.items():
-                for module, locations in modules.items():
-                    for location, export in locations:
-                        public = 'public' if export else 'private'
-                        formatted += f'\n\t{location.format_link()}:{public} {module} from "{filename}"'
+            for module, files in self.dependencies.items():
+                for filename, locations in files.items():
+                    for location, public in locations.items():
+                        for location in locations:
+                            access = 'public' if public else 'private'
+                            formatted += f'\n\t{location.format_link()}:{access} {module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
@@ -58,7 +73,7 @@ class StexObject:
         else:
             for id, symbols in self.symbol_table.items():
                 for symbol in symbols:
-                    formatted += f'\n\t{symbol.location.format_link()}:{symbol}'
+                    formatted += f'\n\t{symbol.location.format_link()}:{symbol.access_modifier.value} {symbol.qualified_identifier}'
 
         formatted += '\n\nReferences:'
         if not self.references:
@@ -88,7 +103,7 @@ class StexObject:
             module_name: Module to import from that file.
             export: Export the imported symbols again.
         """
-        self.dependencies[file].setdefault(module_name, set()).add((location, export))
+        self.dependencies[module_name].setdefault(file, dict())[location] = export
 
     def add_reference(self, location: Location, referenced_id: str):
         """ Adds a reference.

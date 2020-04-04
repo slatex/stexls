@@ -24,6 +24,7 @@ class StexObject:
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
     def link(self, other: StexObject, finalize: bool = False):
+        self.files.update(other.files)
         if finalize:
             for location, errors in other.errors.items():
                 self.errors[location].extend(errors)
@@ -32,18 +33,18 @@ class StexObject:
                     if not path.is_file():
                         for location in locations:
                             self.errors[location].append(
-                                LinkException(f'Unable to locate file: "{path}"'))
+                                LinkError(f'Unable to locate file: "{path}"'))
                     elif module not in self.symbol_table:
                         for location in locations:
                             self.errors[location].append(
-                                LinkException(f'Missing module: "{path}" does not export module "{module}"'))
+                                LinkError(f'Missing module: "{path}" does not export module "{module}"'))
         for id, symbols in other.symbol_table.items():
             if id in self.symbol_table:
                 if finalize:
                     for symbol in symbols:
                         for previous in self.symbol_table[id]:
                             self.errors[symbol.location].append(
-                                LinkException(
+                                LinkError(
                                     f'Duplicate symbol definition: '
                                     f'"{id}" previously defined at {previous.location.format_link()}'))
             else:
@@ -54,7 +55,7 @@ class StexObject:
                     location = Location(path, range)
                     if id not in self.symbol_table:
                         self.errors[location].append(
-                            LinkException(f'Unable to resolve symbol: {id}'))
+                            LinkError(f'Unable to resolve symbol: {id}'))
                 self.references[path].update(ranges)
 
     def copy(self) -> StexObject:
@@ -225,7 +226,7 @@ def _compile_free(obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('file', parsed_file.symdefs, obj)
     _report_invalid_environments('file', parsed_file.syms, obj)
     _report_invalid_environments('file', parsed_file.gimports, obj)
-    _map_compile(functools.partial(_compile_importmodules, None), parsed_file.importmodules, obj)
+    _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
     _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
 def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
@@ -239,16 +240,16 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     if parsed_file.path.name != f'{modsig.name.text}.tex':
         obj.errors[modsig.location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     obj.add_symbol(module, export=True)
-    _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
-    _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
+    _map_compile(_compile_gimport, parsed_file.gimports, obj)
+    _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
     _map_compile(functools.partial(_compile_sym, module), parsed_file.syms, obj)
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
-def _compile_gimport(module: ModuleSymbol, gimport: GImport, obj: StexObject):
+def _compile_gimport(gimport: GImport, obj: StexObject):
     obj.add_dependency(gimport.location, gimport.path_to_imported_file, gimport.module.text.strip(), export=gimport.export)
     obj.add_reference(gimport.location, gimport.module.text)
 
-def _compile_importmodules(module: ModuleSymbol, importmodule: ImportModule, obj: StexObject):
+def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
     obj.add_dependency(importmodule.location, importmodule.path_to_imported_file, importmodule.module.text.strip(), export=importmodule.export)
     obj.add_reference(importmodule.location, importmodule.module.text)
 
@@ -276,7 +277,6 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     for invalid_environment in itertools.chain(
         parsed_file.modsigs,
         parsed_file.modules,
-        parsed_file.gimports,
         parsed_file.importmodules,
         parsed_file.symdefs,
         parsed_file.syms):
@@ -285,6 +285,7 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
     obj.add_reference(name_location, module_id.identifier)
     obj.add_dependency(name_location, modnl.path, modnl.name.text)
+    _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
 
@@ -313,15 +314,15 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
         name_location = module.location.replace(positionOrRange=module.id.range)
         module = ModuleSymbol(name_location, module.id.text)
         obj.add_symbol(module, export=True)
-        _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
-        _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
+        _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
+        _map_compile(_compile_gimport, parsed_file.gimports, obj)
         _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
         _map_compile(functools.partial(_compile_defi, module.qualified_identifier, create=True), parsed_file.defis, obj)
         _map_compile(functools.partial(_compile_trefi, module.qualified_identifier), parsed_file.trefis, obj)
     else:
         _report_invalid_environments('module', itertools.chain(parsed_file.symdefs, parsed_file.defis), obj)
-        _map_compile(functools.partial(_compile_importmodules, module), parsed_file.importmodules, obj)
-        _map_compile(functools.partial(_compile_gimport, module), parsed_file.gimports, obj)
+        _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
+        _map_compile(_compile_gimport, parsed_file.gimports, obj)
         _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
 def _report_invalid_environments(env_name: str, lst: List[ParsedEnvironment], obj: StexObject):

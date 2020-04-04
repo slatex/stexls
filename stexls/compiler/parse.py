@@ -284,7 +284,7 @@ class Modnl(ParsedEnvironment):
             >>> binding.path.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
-        return (self.location.uri.parents[0] / (self.name.text + '.tex')).absolute()
+        return (self.location.uri.parents[0] / (self.name.text + '.tex'))
     
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Modnl]:
@@ -616,12 +616,11 @@ class ImportModule(ParsedEnvironment):
     def path_to_imported_file(self) -> Path:
         module_filename = self.module.text.strip() + '.tex'
         if self.load:
-            return Path(self.load.text.strip()).absolute() / module_filename
+            return Path(self.load.text.strip()) / module_filename
         if self.mhrepos:
-            source = Path(self.mhrepos.text.strip()).absolute() / 'source'
+            source = Path(self.mhrepos.text.strip()) / 'source'
         else:
-            rel = self.location.uri.absolute().relative_to(Path.cwd())
-            source = list(rel.parents)[-4].absolute()
+            source = list(self.location.uri.parents)[-4]
             if source.name != 'source':
                 raise CompilerException(f'Invalid implicit path of source dir: "{source}"')
         if self.path:
@@ -674,9 +673,9 @@ class GImport(ParsedEnvironment):
         ''' Returns the path to the module file this gimport points to. '''
         filename = self.module.text.strip() + '.tex'
         if self.repository is None:
-            return self.location.uri.parents[0].absolute() / filename
+            return self.location.uri.parents[0] / filename
         source = Path(self.repository.text.strip()) / 'source'
-        return source.absolute() / filename
+        return source / filename
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GImport]:

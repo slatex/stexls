@@ -177,7 +177,7 @@ class Linker:
                 order = Linker._make_build_order(object, self.module_index, cache=self.build_orders)
                 link = Linker._link(order)
                 self.links[object] = link
-            except (CompilerException, LinkError) as e:
+            except (CompilerError, LinkError) as e:
                 errors[object] = e
         self.objects.update(compiled)
         return errors

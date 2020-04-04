@@ -8,7 +8,7 @@ from pathlib import Path
 from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
-from .exceptions import CompilerException, CompilerWarning
+from .exceptions import CompilerError, CompilerWarning
 from .symbols import AccessModifier
 from stexls.util.latex.exceptions import LatexException
 
@@ -103,7 +103,7 @@ def parse(path: Path) -> ParsedFile:
         parser.parse()
         exceptions = parser.syntax_errors or []
         parser.walk(lambda env: _visitor(env, parsed_file, exceptions))
-    except (CompilerException, LatexException) as ex:
+    except (CompilerError, LatexException) as ex:
         try:
             with open(path, mode='r') as f:
                 lines = f.readlines()
@@ -157,7 +157,7 @@ def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[L
         if gimport:
             parsed_file.gimports.append(gimport)
             return
-    except CompilerException as e:
+    except CompilerError as e:
         exceptions.append((env.location, e))
         return
 
@@ -243,7 +243,7 @@ class Modsig(ParsedEnvironment):
         if not match:
             return
         if not e.rargs:
-            raise CompilerException('Modsig environment missing required argument: {<module name>}')
+            raise CompilerError('Modsig environment missing required argument: {<module name>}')
         return Modsig(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]))
@@ -292,7 +292,7 @@ class Modnl(ParsedEnvironment):
         if not match:
             return
         if len(e.rargs) != 2:
-            raise CompilerException(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+            raise CompilerError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         return Modnl(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
@@ -353,7 +353,7 @@ class Defi(ParsedEnvironment):
         self.s = s
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
-            raise CompilerException(f'Defi argument count mismatch: Expected {i + int(a)} vs actual {len(tokens)}.')
+            raise CompilerError(f'Defi argument count mismatch: Expected {i + int(a)} vs actual {len(tokens)}.')
 
     @property
     def name(self) -> str:
@@ -369,7 +369,7 @@ class Defi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return Defi(
             location=e.location,
@@ -409,12 +409,12 @@ class Trefi(ParsedEnvironment):
         self.s = s
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
-            raise CompilerException(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
+            raise CompilerError(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
         has_q = self.target_annotation and '?' in self.target_annotation.text
         if not self.m and has_q:
-            raise CompilerException('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
+            raise CompilerError('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
         if self.m and not has_q:
-            raise CompilerException('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
+            raise CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     
     @property
     def name(self) -> str:
@@ -452,9 +452,9 @@ class Trefi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
         if len(e.unnamed_args) > 1:
-            raise CompilerException(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(e.unnamed_args)}')
+            raise CompilerError(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(e.unnamed_args)}')
         annotations = (
             TokenWithLocation.from_node(e.unnamed_args[0])
             if e.unnamed_args
@@ -516,7 +516,7 @@ class Symi(ParsedEnvironment):
         self.i = i
         self.asterisk = asterisk
         if i != len(tokens):
-            raise CompilerException(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
+            raise CompilerError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
     
     @property
     def name(self) -> str:
@@ -528,7 +528,7 @@ class Symi(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerException('Argument count mismatch (expected at least 1, found 0).')
+            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return Symi(
             location=e.location,
@@ -563,7 +563,7 @@ class Symdef(ParsedEnvironment):
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerException('Argument count mismatch: At least one argument required.')
+            raise CompilerError('Argument count mismatch: At least one argument required.')
         name = TokenWithLocation.from_node(e.rargs[0])
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return Symdef(
@@ -602,15 +602,15 @@ class ImportModule(ParsedEnvironment):
         self.asterisk = asterisk
         if mh_mode:
             if not dir and not path:
-                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" or "path" must be specified.')
+                raise CompilerError('Invalid argument configuration in importmhmodule: "dir" or "path" must be specified.')
             elif dir and path:
-                raise CompilerException('Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
+                raise CompilerError('Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
             elif load:
-                raise CompilerException('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
+                raise CompilerError('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
         elif not load:
-            raise CompilerException('Invalid argument configuration in importmodule: Missing "load" argument.')
+            raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
         elif mhrepos or dir or path:
-            raise CompilerException('Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
+            raise CompilerError('Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
 
     @property
     def path_to_imported_file(self) -> Path:
@@ -622,7 +622,7 @@ class ImportModule(ParsedEnvironment):
         else:
             source = list(self.location.uri.parents)[-4]
             if source.name != 'source':
-                raise CompilerException(f'Invalid implicit path of source dir: "{source}"')
+                raise CompilerError(f'Invalid implicit path of source dir: "{source}"')
         if self.path:
             return source / (self.path.text.strip() + '.tex')
         return source / self.dir.text.strip() / module_filename
@@ -637,7 +637,7 @@ class ImportModule(ParsedEnvironment):
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise CompilerException(f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
+            raise CompilerError(f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
         module = TokenWithLocation.from_node(e.rargs[0])
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return ImportModule(
@@ -683,11 +683,11 @@ class GImport(ParsedEnvironment):
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise CompilerException(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
+            raise CompilerError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         module = TokenWithLocation.from_node(e.rargs[0])
         unnamed, _ = TokenWithLocation.parse_oargs(e.oargs)
         if len(unnamed) > 1:
-            raise CompilerException(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise CompilerError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
             location=e.location,
             module=module,

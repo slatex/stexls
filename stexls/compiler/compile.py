@@ -96,9 +96,9 @@ class StexObject:
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
         symbols = self.symbol_table.get(id, [])
         if unique and len(symbols) > 1:
-            raise CompilerException(f'Multiple symbols with id "{id}" found: {symbols}')
+            raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
         if must_resolve and not symbols:
-            raise CompilerException(f'Unable to resolve id "{id}".')
+            raise CompilerError(f'Unable to resolve id "{id}".')
         return symbols
 
     def format(self):
@@ -168,7 +168,7 @@ class StexObject:
         symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
         if not duplicate_allowed:
             for duplicate in self.symbol_table.get(symbol.qualified_identifier.identifier, ()):
-                raise CompilerException(
+                raise CompilerError(
                     f'Duplicate symbol definition of {symbol.qualified_identifier}'
                     f' previously defined at "{duplicate.location.format_link()}"')
         self.symbol_table[symbol.qualified_identifier.identifier].append(symbol)
@@ -186,7 +186,7 @@ class StexObject:
             obj = _create(parsed.errors)
             for env in itertools.chain(parsed.modnls, parsed.modsigs, parsed.modules):
                 obj.errors[env.location].append(
-                    CompilerException(f'Too many types of roots found: Found {number_of_roots}, expected up to 1'))
+                    CompilerError(f'Too many types of roots found: Found {number_of_roots}, expected up to 1'))
             if obj.errors or obj.references or obj.symbol_table:
                 yield obj
         else: 
@@ -216,7 +216,7 @@ def _map_compile(compile_fun, arr: List, obj: StexObject):
     for item in arr:
         try:
             compile_fun(item, obj)
-        except CompilerException as e:
+        except CompilerError as e:
             obj.errors[item.location].append(e)
 
 def _compile_free(obj: StexObject, parsed_file: ParsedFile):
@@ -304,7 +304,7 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
         reference_location = trefi.location.replace(positionOrRange=trefi.module.range)
         obj.add_reference(reference_location, module_id.identifier)
     elif module_id is None:
-        raise CompilerException('Invalid trefi configuration: Missing parent module name')
+        raise CompilerError('Invalid trefi configuration: Missing parent module name')
     target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
     obj.add_reference(trefi.location, target_symbol_id.identifier)
 

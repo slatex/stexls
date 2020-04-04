@@ -1,10 +1,10 @@
-__all__ = ['CompilerException', 'CompilerWarning', 'LinkError', 'LinkWarning']
+__all__ = ['CompilerError', 'CompilerWarning', 'LinkError', 'LinkWarning']
 
-class CompilerException(Exception):
+class CompilerError(Exception):
     pass
 
 
-class CompilerWarning(CompilerException, Warning):
+class CompilerWarning(CompilerError, Warning):
     pass
 
 

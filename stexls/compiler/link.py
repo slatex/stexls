@@ -23,6 +23,14 @@ class Linker:
         self.build_orders: Dict[StexObject, Tuple[List[StexObject], List[Location]]] = {}
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
+    
+    def info(self, path: Path):
+        path = path if isinstance(path, Path) else Path(path)
+        for object in self.objects.get(path, ()):
+            link: StexObject = self.links.get(object)
+            if not link:
+                return
+            return link.format()
 
     @staticmethod
     def _compile(*args, **kwargs):
@@ -103,13 +111,13 @@ class Linker:
         self,
         changed_objects: Set[StexObject],
         removed_objects: Set[StexObject]) -> Set[StexObject]:
+        changed_or_removed = changed_objects | removed_objects
         return set(
             object
-            for parent
-            in chain(changed_objects, removed_objects)
             for object, (order, _) in self.build_orders.items()
-            if object not in removed_objects
-            and parent in order)
+            if object not in changed_or_removed
+            for parent in changed_or_removed
+            if parent in order)
 
     def _cleanup(
         self,
@@ -125,10 +133,9 @@ class Linker:
                 del self.module_index[path]
             if path in self.links:
                 del self.links[path]
-        for object in (removed_objects | changed_objects):
+        for object in (removed_objects | changed_objects | changed_build_orders):
             if object in self.build_orders:
                 del self.build_orders[object]
-        for object in (removed_objects | changed_build_orders):
             if object in self.links:
                 del self.links[object]
     
@@ -174,9 +181,9 @@ class Linker:
                 if object.module:
                     self.module_index.setdefault(path, dict())[object.module] = object
         
-        changed_links = set(object for objects in compiled.values() for object in objects) | changed_build_orders
+        self.changed_links = set(object for objects in compiled.values() for object in objects) | changed_build_orders
         errors = {}
-        for object in progress(changed_links):
+        for object in progress(self.changed_links):
             try:
                 order = Linker._make_build_order(object, self.module_index, cache=self.build_orders)
                 link = Linker._link(order)

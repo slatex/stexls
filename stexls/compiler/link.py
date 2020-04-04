@@ -21,8 +21,12 @@ class Linker:
         self.objects: Dict[Path, List[StexObject]] = {}
         self.module_index: Dict[Path, Dict[str, StexObject]] = {}
         self.build_orders: Dict[StexObject, Tuple[List[StexObject], List[Location]]] = {}
-        self.links: Dict[Path, StexObject] = {}
+        self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
+
+    @staticmethod
+    def _compile(*args, **kwargs):
+        return list(StexObject.compile(*args, **kwargs))
 
     @staticmethod
     def _link(objects: List[StexObject]) -> StexObject:
@@ -181,7 +185,3 @@ class Linker:
                 errors[object] = e
         self.objects.update(compiled)
         return errors
-
-    @staticmethod
-    def _compile(*args, **kwargs):
-        return list(StexObject.compile(*args, **kwargs))

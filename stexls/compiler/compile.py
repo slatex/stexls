@@ -6,7 +6,7 @@ from collections import defaultdict
 from stexls.util.location import *
 from stexls.compiler.parse import *
 from stexls.compiler.symbols import *
-from stexls.compiler.exceptions import CompilerException, CompilerWarning
+from stexls.compiler.exceptions import *
 
 __all__ = ['StexObject']
 
@@ -22,6 +22,55 @@ class StexObject:
         self.references: Dict[Path, Dict[Range, str]] = defaultdict(dict)
         # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
+
+    def link(self, other: StexObject, finalize: bool = False):
+        if finalize:
+            for location, errors in other.errors.items():
+                self.errors[location].extend(errors)
+            for module, infos in other.dependencies.items():
+                for path, locations in infos.items():
+                    if not path.is_file():
+                        for location in locations:
+                            self.errors[location].append(
+                                LinkException(f'Unable to locate file: "{path}"'))
+                    elif module not in self.symbol_table:
+                        for location in locations:
+                            self.errors[location].append(
+                                LinkException(f'Missing module: "{path}" does not export module "{module}"'))
+        for id, symbols in other.symbol_table.items():
+            if id in self.symbol_table:
+                if finalize:
+                    for symbol in symbols:
+                        for previous in self.symbol_table[id]:
+                            self.errors[symbol.location].append(
+                                LinkException(
+                                    f'Duplicate symbol definition: '
+                                    f'"{id}" previously defined at {previous.location.format_link()}'))
+            else:
+                self.symbol_table[id].extend(symbols)
+        if finalize:
+            for path, ranges in other.references.items():
+                for range, id in ranges.items():
+                    location = Location(path, range)
+                    if id not in self.symbol_table:
+                        self.errors[location].append(
+                            LinkException(f'Unable to resolve symbol: {id}'))
+                self.references[path].update(ranges)
+
+    def copy(self) -> StexObject:
+        ' Creates a copy of all the storage containers. '
+        o = StexObject()
+        o.files = self.files.copy()
+        for k1, d1 in self.dependencies.items():
+            for k2, d2 in d1.items():
+                o.dependencies[k1][k2] = d2.copy()
+        for k1, l1 in self.symbol_table.items():
+            o.symbol_table[k1] = l1.copy()
+        for k1, d1 in self.references.items():
+            o.references[k1] = d1.copy()
+        for k1, l1 in self.errors.items():
+            o.errors[k1] = l1.copy()
+        return o
 
     @property
     def path(self) -> Path:

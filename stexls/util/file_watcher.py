@@ -4,7 +4,6 @@ import os
 import itertools
 import collections
 import asyncio
-import fnmatch
 from pathlib import Path
 
 __all__ = ['WorkspaceWatcher', 'AsyncFileWatcher']
@@ -17,15 +16,13 @@ class WorkspaceWatcher:
     checked at once.
     """
     Changes = collections.namedtuple('Changes', ['created', 'modified', 'deleted'])
-    def __init__(self, folder: Path, filter: 'glob' = None):
-        """Initializes the watcher with a root folder and an optional ignore pattern.
+    def __init__(self, pattern: 'glob'):
+        """Initializes the watcher with a pattern of files to watch.
 
         Args:
-            folder (Path): Root folder of the workspace.
-            filter (glob, optional): Filters files that do not match the glob pattern.
+            pattern (glob): Pattern of files to add.
         """
-        self.folder = folder if isinstance(folder, Path) else Path(folder)
-        self.filter = filter
+        self.pattern = pattern
         self.files: Dict[Path, float] = {}
 
     def __getstate__(self):
@@ -43,22 +40,14 @@ class WorkspaceWatcher:
 
         Returns:
             WorkspaceWatcher.Changes: Tuple of created, modified and deleted files.
-
-        Raises:
-            ValueError: If the watched folder is not a valid target.
         """
-        if not os.path.isdir(self.folder):
-            raise ValueError(f'Invalid watch target "{self.folder}".')
         # split file index into delete and still existing files
         old_files = set(filter(lambda x: os.path.isfile(x), self.files.keys()))
         deleted = set(filter(lambda x: not os.path.isfile(x), self.files.keys()))
         # get list of files & folders in the workspace
-        files = glob(os.path.join(self.folder, '**/*'), recursive=True)
+        files = glob(self.pattern, recursive=True)
         # filter out files
         files = filter(os.path.isfile, files)
-        # filter out files using the filter
-        if self.filter:
-            files = fnmatch.filter(files, self.filter)
         # create new index of files and modified times
         files = dict(map(lambda x: (Path(x), os.path.getmtime(x)), files))
         # newly created files are the difference of files before and after update

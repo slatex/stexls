@@ -1,9 +1,9 @@
-from typing import List, Dict, Tuple, Set, Iterator
+from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
 from itertools import chain
 import os
 import multiprocessing
-from stexls.util.location import Location
+from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
 from .parse import parse
 from .compile import StexObject
@@ -21,6 +21,18 @@ class Linker:
         self.build_orders: Dict[StexObject, List[StexObject]] = {}
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
+
+    def get_relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
+        file = Path(file)
+        if file not in self.objects:
+            raise ValueError(f'File not found: "{file}"')
+        for object in self.objects[file]:
+            if object.module:
+                for module in object.symbol_table.get(object.module, ()):
+                    if module.full_range.contains(Position(line, column)):
+                        yield object
+            else:
+                yield object
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:

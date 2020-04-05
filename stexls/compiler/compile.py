@@ -84,17 +84,17 @@ class StexObject:
         return o
 
     @property
-    def path(self) -> Path:
+    def path(self) -> Optional[Path]:
         """ Returns the path of the file from which this object was contained.
-            Raises if path not unique.
+            Returns None if the path is not unique, because multiple files are contained.
         """
         if len(self.files) != 1:
-            raise ValueError(f'Object file of origin is not unique: {len(self.files)} contained, but must be 1.')
+            return None
         return next(iter(self.files))
 
     @property
     def module(self) -> Optional[str]:
-        ' Returns an identifier for the module this object contains, if it is the only one. '
+        ' Returns an identifier for the module this object contains, if it is the only one. Else returns None. '
         modules = [
             id
             for id, symbols in self.symbol_table.items()
@@ -102,7 +102,7 @@ class StexObject:
             if symbol.identifier.symbol_type == SymbolType.MODULE
         ]
         if len(modules) > 1:
-            raise ValueError(f'Object module not unique: This object contains {len(modules)} modules')
+            return None
         return next(iter(modules), None)
 
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:

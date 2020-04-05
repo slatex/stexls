@@ -600,6 +600,8 @@ class ImportModule(ParsedEnvironment):
         self.export = export
         self.mh_mode = mh_mode
         self.asterisk = asterisk
+        if len(list(self.location.uri.parents)) < 4:
+            raise CompilerWarning(f'Unable to compile module with a path depth of less than 4: {self.location.uri}')
         if mh_mode:
             if not dir and not path:
                 raise CompilerError('Invalid argument configuration in importmhmodule: "dir" or "path" must be specified.')

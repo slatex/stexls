@@ -262,9 +262,10 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
         parsed_file.defis,
         parsed_file.trefis):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in mhmodnl.'))
-    module = ModuleSymbol(modsig.location, modsig.name.text)
+    name_location = modsig.location.replace(positionOrRange=modsig.name.range)
+    module = ModuleSymbol(name_location, modsig.name.text, full_range=modsig.location)
     if parsed_file.path.name != f'{modsig.name.text}.tex':
-        obj.errors[modsig.location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
+        obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     obj.add_symbol(module, export=True)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
@@ -338,7 +339,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)
     if module.id:
         name_location = module.location.replace(positionOrRange=module.id.range)
-        module = ModuleSymbol(name_location, module.id.text)
+        module = ModuleSymbol(name_location, module.id.text, full_range=module.location)
         obj.add_symbol(module, export=True)
         _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
         _map_compile(_compile_gimport, parsed_file.gimports, obj)

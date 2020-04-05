@@ -96,8 +96,9 @@ class Symbol:
 
 
 class ModuleSymbol(Symbol):
-    def __init__(self, location: Location, name: str):
+    def __init__(self, location: Location, name: str, full_range: Location):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
+        self.full_range = full_range
 
 
 class BindingSymbol(Symbol):

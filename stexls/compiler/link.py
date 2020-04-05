@@ -1,6 +1,4 @@
-""" Linker for stex objects.
-"""
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Generator
 from pathlib import Path
 from itertools import chain
 import os
@@ -24,13 +22,12 @@ class Linker:
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
     
-    def info(self, path: Path):
+    def info(self, path: Path) -> Generator[str]:
         path = path if isinstance(path, Path) else Path(path)
         for object in self.objects.get(path, ()):
             link: StexObject = self.links.get(object)
-            if not link:
-                return
-            return link.format()
+            if link:
+                yield link.format()
 
     @staticmethod
     def _compile(*args, **kwargs):

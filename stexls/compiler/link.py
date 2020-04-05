@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, Set, Generator
+from typing import List, Dict, Tuple, Set, Iterator
 from pathlib import Path
 from itertools import chain
 import os
@@ -22,7 +22,7 @@ class Linker:
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
     
-    def info(self, path: Path) -> Generator[str]:
+    def info(self, path: Path) -> Iterator[str]:
         path = path if isinstance(path, Path) else Path(path)
         for object in self.objects.get(path, ()):
             link: StexObject = self.links.get(object)
@@ -177,9 +177,11 @@ class Linker:
             for object in objects:
                 if object.module:
                     self.module_index.setdefault(path, dict())[object.module] = object
-        
+
         self.changed_links = set(object for objects in compiled.values() for object in objects) | changed_build_orders
+        
         errors = {}
+        
         for object in progress(self.changed_links):
             try:
                 order = Linker._make_build_order(object, self.module_index, cache=self.build_orders)
@@ -187,5 +189,7 @@ class Linker:
                 self.links[object] = link
             except (CompilerError, LinkError) as e:
                 errors[object] = e
+        
         self.objects.update(compiled)
+
         return errors

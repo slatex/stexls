@@ -46,7 +46,8 @@ class StexObject:
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
                 for location, public in locations.items():
-                    if public:
+                    # add dependencies only if public, except for the finalize case, then always add
+                    if public or finalize:
                         self.dependencies[module].setdefault(path, {})[location] = public
         for id, symbols in other.symbol_table.items():
             if id in self.symbol_table:

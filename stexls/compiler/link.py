@@ -33,18 +33,23 @@ class Linker:
             raise ImportError('graphviz required: "pip install graphviz" to use this functionality.')
         G = Digraph()
         edges = set()
+        object = None
         for object in self.objects.get(file if isinstance(file, Path) else Path(file), ()):
             if module_name and (not object.module or object.module != module_name):
                 continue
+            G.node(object.module or o.path)
             for o in self.build_orders[object]:
                 origin = o.module or o.path
                 for module, paths in o.dependencies.items():
                     for path, locations in paths.items():
                         for location, public in locations.items():
                             edges.add((str(origin), str(module)))
+        if object is None:
+            raise ValueError('No object found.')
         for edge in edges:
             G.edge(*edge)
-        G.view(directory='/tmp/stexls/importgraphs')
+        if edges or object:
+            G.view(directory='/tmp/stexls/importgraphs')
     
     def info(self, path: Path) -> Iterator[str]:
         path = path if isinstance(path, Path) else Path(path)

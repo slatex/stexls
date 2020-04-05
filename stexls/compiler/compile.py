@@ -38,6 +38,16 @@ class StexObject:
                         for location in locations:
                             self.errors[location].append(
                                 LinkError(f'Missing module: "{path}" does not export module "{module}"'))
+                    elif module in self.dependencies:
+                        for previous_location, bool in self.dependencies[module].get(path, {}).items():
+                            for location in locations:
+                                self.errors[location].append(
+                                    LinkWarning(f'Module "{module}" previously imported at "{previous_location.format_link()}"'))
+        for module, paths in other.dependencies.items():
+            for path, locations in paths.items():
+                for location, public in locations.items():
+                    if public:
+                        self.dependencies[module].setdefault(path, {})[location] = public
         for id, symbols in other.symbol_table.items():
             if id in self.symbol_table:
                 if finalize:
@@ -46,7 +56,7 @@ class StexObject:
                             self.errors[symbol.location].append(
                                 LinkError(
                                     f'Duplicate symbol definition: '
-                                    f'"{id}" previously defined at {previous.location.format_link()}'))
+                                    f'"{id}" previously defined at "{previous.location.format_link()}"'))
             else:
                 self.symbol_table[id].extend(symbols)
         if finalize:
@@ -55,7 +65,7 @@ class StexObject:
                     location = Location(path, range)
                     if id not in self.symbol_table:
                         self.errors[location].append(
-                            LinkError(f'Unable to resolve symbol: {id}'))
+                            LinkError(f'Undefined Unreos: "{id}"'))
                 self.references[path].update(ranges)
 
     def copy(self) -> StexObject:
@@ -75,10 +85,12 @@ class StexObject:
 
     @property
     def path(self) -> Path:
-        ' Returns the path of the file from which this object was contained. Raises if the file is not unique. '
-        if len(self.files) > 1:
-            raise ValueError('Path of origin of this StexObject not unique.')
-        return next(iter(self.files), None)
+        """ Returns the path of the file from which this object was contained.
+            Raises if path not unique.
+        """
+        if len(self.files) != 1:
+            raise ValueError(f'Object file of origin is not unique: {len(self.files)} contained, but must be 1.')
+        return next(iter(self.files))
 
     @property
     def module(self) -> Optional[str]:
@@ -94,6 +106,19 @@ class StexObject:
         return next(iter(modules), None)
 
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
+        """ Resolves an id.
+
+        Parameters:
+            id: Id to resolve.
+            unique: IfOTrue, raisesoan exception if the resolved symbol has multiple definitions. bjects that have  ptional  Defaults to True.
+            must_resolve: If true, raises an exception if no definition for the symbol was found.
+        
+        Returns:
+            List of symbol definitions with the given id.
+            LengthLof en 0 orif unique is True. 1  len 1 if unique=True,
+            Length of >= 1 if must_resolve is True.
+            Always length 1 if unique and must_resolve are both True.
+        """
         symbols = self.symbol_table.get(id, [])
         if unique and len(symbols) > 1:
             raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
@@ -101,7 +126,8 @@ class StexObject:
             raise CompilerError(f'Unable to resolve id "{id}".')
         return symbols
 
-    def format(self):
+    def format(self) -> str:
+        ' Formats the contents of this object for a pretty print. '
         formatted = 'Contains files:'
         for f in self.files:
             formatted += '\n\t' + str(f)

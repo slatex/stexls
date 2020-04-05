@@ -22,7 +22,7 @@ class Linker:
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
 
-    def view_import_graph(self, file: Path, module_name: str = None):
+    def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:
             import matplotlib
         except ImportError:
@@ -32,24 +32,31 @@ class Linker:
         except ImportError:
             raise ImportError('graphviz required: "pip install graphviz" to use this functionality.')
         G = Digraph()
-        edges = set()
+        edges = dict()
         found = False
         for object in self.objects.get(file if isinstance(file, Path) else Path(file), ()):
             if module_name and (not object.module or object.module != module_name):
                 continue
             found = True
-            G.node(object.module or o.path)
+            G.node(str(object.module or object.path))
             for o in self.build_orders[object]:
-                origin = o.module or o.path
+                origin = str(o.module or o.path)
+                if origin in edges:
+                    continue
+                if display_symbols:
+                    for id in o.symbol_table:
+                        edges.setdefault(origin, set()).add(id + '/symbol')
                 for module, paths in o.dependencies.items():
+                    module = str(module)
                     for path, locations in paths.items():
                         for location, public in locations.items():
-                            edges.add((str(origin), str(module)))
+                            edges.setdefault(origin, set()).add(module)
         if not found:
             raise ValueError('No object found.')
-        for edge in edges:
-            G.edge(*edge)
-        if edges or object:
+        for origin, targets in edges.items():
+            for target in targets:
+                G.edge(origin, target)
+        if edges or found:
             G.view(directory='/tmp/stexls/importgraphs')
     
     def info(self, path: Path) -> Iterator[str]:

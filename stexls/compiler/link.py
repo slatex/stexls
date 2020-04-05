@@ -46,15 +46,15 @@ class Linker:
         G = Digraph()
         edges = dict()
         found = False
-        for object in self.objects.get(file if isinstance(file, Path) else Path(file), ()):
+        for object in self.objects.get(Path(file), ()):
             if module_name and (not object.module or object.module != module_name):
                 continue
             found = True
-            G.node(str(object.module or object.path))
             for o in self.build_orders[object]:
                 origin = str(o.module or o.path)
                 if origin in edges:
                     continue
+                G.node(origin)
                 if display_symbols:
                     for id in o.symbol_table:
                         edges.setdefault(origin, set()).add(id + '/symbol')
@@ -68,8 +68,7 @@ class Linker:
         for origin, targets in edges.items():
             for target in targets:
                 G.edge(origin, target)
-        if edges or found:
-            G.view(directory='/tmp/stexls/importgraphs')
+        G.view(directory='/tmp/stexls/importgraphs')
     
     def info(self, path: Path) -> Iterator[str]:
         path = path if isinstance(path, Path) else Path(path)
@@ -226,9 +225,9 @@ class Linker:
                         for subobject in subobjects:
                             if subobject in objects:
                                 objects.remove(subobject)
-                                break
                         objects = subobjects + objects
-            assert root not in build_order_cache
+            if root in build_order_cache:
+                raise LinkError(f'Invalid build order: "{root.path}" was added multiple times.')
             build_order_cache[root] = objects + [root]
         return build_order_cache[root]
 

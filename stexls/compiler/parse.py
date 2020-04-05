@@ -603,31 +603,43 @@ class ImportModule(ParsedEnvironment):
         if len(list(self.location.uri.parents)) < 4:
             raise CompilerWarning(f'Unable to compile module with a path depth of less than 4: {self.location.uri}')
         if mh_mode:
-            if not dir and not path:
-                raise CompilerError('Invalid argument configuration in importmhmodule: "dir" or "path" must be specified.')
-            elif dir and path:
+            # mhimport{}
+            # mhimport[dir=..]{}
+            # mhimport[path=..]{}
+            # mhimport[mhrepos=..,dir=..]{}
+            # mhimport[mhrepos=..,path=..]{}
+            if dir and path:
                 raise CompilerError('Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
+            if mhrepos and not (dir or path):
+                raise CompilerError('Invalid argument configuration in importmhmodule: "mhrepos" requires a "dir" or "path" argument.')
             elif load:
                 raise CompilerError('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
-        elif not load:
-            raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
         elif mhrepos or dir or path:
             raise CompilerError('Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
+        elif not load:
+            # import[load=..]{}
+            raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
 
     @property
     def path_to_imported_file(self) -> Path:
         module_filename = self.module.text.strip() + '.tex'
-        if self.load:
+        if self.mh_mode:
+            if self.mhrepos:
+                source = Path(self.mhrepos.text.strip()) / 'source'
+            elif not (self.dir or self.path):
+                return self.location.uri
+            else:
+                source = list(self.location.uri.parents)[-4]
+            if self.dir:
+                return source / self.dir.text.strip() / module_filename
+            elif self.path:
+                return source / (self.path.text.strip() + '.tex')
+            else:
+                raise ValueError('Invalid path_to_imported_file() of mhmodule')
+        elif self.load:
             return Path(self.load.text.strip()) / module_filename
-        if self.mhrepos:
-            source = Path(self.mhrepos.text.strip()) / 'source'
         else:
-            source = list(self.location.uri.parents)[-4]
-            if source.name != 'source':
-                raise CompilerError(f'Invalid implicit path of source dir: "{source}"')
-        if self.path:
-            return source / (self.path.text.strip() + '.tex')
-        return source / self.dir.text.strip() / module_filename
+            raise ValueError('Invalid path_to_imported_file() of module')
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE

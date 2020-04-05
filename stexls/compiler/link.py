@@ -33,10 +33,11 @@ class Linker:
             raise ImportError('graphviz required: "pip install graphviz" to use this functionality.')
         G = Digraph()
         edges = set()
-        object = None
+        found = False
         for object in self.objects.get(file if isinstance(file, Path) else Path(file), ()):
             if module_name and (not object.module or object.module != module_name):
                 continue
+            found = True
             G.node(object.module or o.path)
             for o in self.build_orders[object]:
                 origin = o.module or o.path
@@ -44,7 +45,7 @@ class Linker:
                     for path, locations in paths.items():
                         for location, public in locations.items():
                             edges.add((str(origin), str(module)))
-        if object is None:
+        if not found:
             raise ValueError('No object found.')
         for edge in edges:
             G.edge(*edge)

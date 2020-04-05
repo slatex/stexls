@@ -6,7 +6,9 @@ import collections
 import asyncio
 from pathlib import Path
 
-__all__ = ['WorkspaceWatcher', 'AsyncFileWatcher']
+__all__ = ['WorkspaceWatcher', 'AsyncFileWatcher', 'Changes']
+
+Changes = collections.namedtuple('Changes', ['created', 'modified', 'deleted'])
 
 class WorkspaceWatcher:
     """ Watches all files located inside a root workspace folder.
@@ -15,7 +17,6 @@ class WorkspaceWatcher:
     Instead, everytime the index is updated, all files inside a folder will be
     checked at once.
     """
-    Changes = collections.namedtuple('Changes', ['created', 'modified', 'deleted'])
     def __init__(self, pattern: 'glob'):
         """Initializes the watcher with a pattern of files to watch.
 
@@ -31,7 +32,7 @@ class WorkspaceWatcher:
     def __setstate__(self, state):
         self.pattern, self.files = state
 
-    def update(self) -> 'WorkspaceWatcher.Changes':
+    def update(self) -> 'Changes':
         """Updates the internal file index.
 
         Indexes all files inside the workspace directory.
@@ -39,7 +40,7 @@ class WorkspaceWatcher:
         files where the modified time changed from last update() call.
 
         Returns:
-            WorkspaceWatcher.Changes: Tuple of created, modified and deleted files.
+            Changes: Tuple of created, modified and deleted files.
         """
         # split file index into delete and still existing files
         old_files = set(filter(lambda x: os.path.isfile(x), self.files.keys()))
@@ -58,7 +59,7 @@ class WorkspaceWatcher:
         # update the file index
         self.files = files
         # return changes
-        return WorkspaceWatcher.Changes(created=created, modified=modified, deleted=deleted)
+        return Changes(created=created, modified=modified, deleted=deleted)
 
 
 class AsyncFileWatcher:

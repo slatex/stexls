@@ -44,15 +44,70 @@ class StexObject:
             raise CompilerError(f'Unable to resolve id "{id}".')
         return symbols
 
-    def find_mhrepo(self, context: str) -> List[str]:
+    def find_mhmodule_module(
+        self,
+        mhrepo: Optional[str],
+        dir: Optional[str],
+        path: Optional[str],
+        context: str) -> List[str]:
+        """ Search for modules that can be importet by the importmhmodule environment.
+
+        Finds all fitting module names given a pattern like these:
+        \\importmhmodule[mhrepo=<mhrepo>,dir=<dir>]{<context>
+        \\importmhmodule[path=<path>]{<context>
+        \\importmhmodule{<context>
+
+        Parameters:
+            mhrepo: Optional repository path hint: \\importmhmodule[mhrepo=<mhrepo>...
+            dir: Optional mhrepo directory: \\importmhmodule[dir=<dir>...
+            path: Optional path to the file: \\importmhmodule[]
+            context: Substring of the module to find: \\importmhmodule{<context>
+        
+        Returns:
+            List of names of modules that fit the given constraints and
+            that are imported by this object.
+        """
+        pass
+    
+    def find_mhmodule_mhrepo(self, context: str) -> List[str]:
+        """ Find paths to repositories that can be used as mhrepo= argument in importmhmodule environments.
+
+        Parameters:
+            context: Substring of the mhrepo to find: importmhrepo[mhrepo=<context>
+        
+        Returns:
+            List of strings which can be used as a mhrepo argument and that fit the
+            given context.
+        """
         pass
 
-    def find_mhrepo_dir(self, mhrepo: Optional[str], context: str) -> List[str]:
+    def find_mhmodule_dir(self, mhrepo: Optional[str], context: str) -> List[str]:
+        """ Find directories with mhmodules in them, given an optional mhrepo prefix.
+
+        Finds strings that can be used in dir= arguments of importmhmodule environments,
+        given an optional mhrepo argument as context.
+
+        Parameters:
+            mhrepo: Optional mhrepo context: importmhrepo[mhrepo=<mhrepo>]
+            context: Current dir argument prefix: importmhrepo[mhrepo=<mhrepo>,dir=<context>...
+        
+        Returns:
+            List of strings which are valid dir= arguments given the mhrepo as context.
+        """
         pass
 
-    def find_mhrepo_path(self, mhrepo: Optional[str], context: str) -> List[str]:
-        pass
+    def find_mhmodule_path(self, mhrepo: Optional[str], context: str) -> List[str]:
+        """ Find paths with mhmodules in them, given an optional mhrepo prefix
 
+        Parameters:
+            mhrepo: Optional mhrepo context: importmhmodule[mhrepo=<mhrepo>]
+            context: Current path argument prefix: importmhmodule[mhrepo=<mhrepo>,path=<context>...]
+        
+        Returns:
+            List of valid strings that can be used as path= arguments given the mhrepo as context.
+        """
+        pass
+    
     def find_module(self, context: str) -> List[str]:
         pass
 

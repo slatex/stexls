@@ -53,7 +53,8 @@ class StexObject:
     def find_mhrepo_path(self, mhrepo: Optional[str], context: str) -> List[str]:
         pass
 
-    def find_
+    def find_module(self, context: str) -> List[str]:
+        pass
 
     def link(self, other: StexObject, finalize: bool = False):
         self.files.update(other.files)

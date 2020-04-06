@@ -96,8 +96,8 @@ class Symbol:
 
 class RepoType(Enum):
     UNDEFINED='undefined'
-    MH='mh'
-    G='g'
+    MODULE='module'
+    MODSIG='modsig'
 
 
 class ModuleSymbol(Symbol):

@@ -97,6 +97,7 @@ class Symbol:
 class ModuleType(Enum):
     UNDEFINED='undefined'
     MODULE='module'
+    MHMODULE='mhmodule'
     MODSIG='modsig'
 
 

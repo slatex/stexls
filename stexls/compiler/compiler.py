@@ -1,12 +1,16 @@
 from __future__ import annotations
 from typing import Dict, Optional, Set, Union
-import itertools, functools
 from pathlib import Path
 from collections import defaultdict
+
+import itertools
+import functools
+
 from stexls.util.location import *
-from stexls.compiler.parse import *
-from stexls.compiler.symbols import *
-from stexls.compiler.exceptions import *
+
+from .parser import *
+from .symbols import *
+from .exceptions import *
 
 __all__ = ['StexObject']
 

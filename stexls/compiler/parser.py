@@ -1,16 +1,18 @@
 from __future__ import annotations
 from typing import Optional, Tuple, List, Dict, Set, Generator, Union
+from collections import defaultdict
+from pathlib import Path
 import re
 import itertools
 import multiprocessing
-from collections import defaultdict
-from pathlib import Path
+
 from stexls.util import roman_numerals
 from stexls.util.location import Location, Range, Position
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
-from .exceptions import CompilerError, CompilerWarning
-from .symbols import AccessModifier
 from stexls.util.latex.exceptions import LatexException
+
+from .exceptions import *
+from .symbols import *
 
 __all__ = (
     'ParsedFile',

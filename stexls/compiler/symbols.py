@@ -8,6 +8,7 @@ __all__ = [
     'AccessModifier',
     'SymbolIdentifier',
     'Symbol',
+    'ModuleType',
     'ModuleSymbol',
     'DefSymbol',
 ]

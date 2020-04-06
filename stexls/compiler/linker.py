@@ -5,8 +5,8 @@ import os
 import multiprocessing
 from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
-from .parse import parse
-from .compile import StexObject
+from .parser import parse
+from .compiler import StexObject
 from .exceptions import *
 
 __all__ = ['Linker']

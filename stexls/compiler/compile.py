@@ -108,7 +108,85 @@ class StexObject:
         """
         pass
     
-    def find_module(self, context: str) -> List[str]:
+    def find_gimport_repo(self, context: str) -> List[str]:
+        """ Finds paths to repositories which can be targets for a gimport.
+
+        Parameters:
+            context: Current argument context: gimport[<context>...
+        
+        Returns:
+            List of strings that are valid gimport repository argument targets.
+        """
+        pass
+
+    def find_gimport_module(self, repository: Optional[str], context: str) -> List[str]:
+        """ Finds module names that can be targets for gimport environments.
+
+        Parameters:
+            repository: Optional target repository path: gimport[<repository>]{..}
+            context: Current prefix of the module name: gimport{<context>...
+        
+        Returns:
+            List of valid strings that can be used as the argument of a gimport.
+        """
+        pass
+
+    def find_module_name(self, context: str) -> List[str]:
+        """ Find module names with the current context as prefix.
+
+        This can be used to find completions for modules where needed:
+        trefi[<context>...
+        
+        This can NOT be used for gimports and importmhmodule as they
+        have their own functions for searching modules given their respective
+        other arguments, like repository paths in gimports and directories in importmhmodules.
+
+        Parameters:
+            context: Prefix of the module to search for.
+        
+        Returns:
+            List of modules with the context as prefix.
+        """
+        pass
+
+    def find_symbol_name(self, module: Optional[str], context: str) -> List[str]:
+        """ Find symbol names with the context as prefix and optionally in the specified module.
+
+        This function can be used to find completions for trefis and defis.
+        For example:
+        mtrefi[<module>?<context>...
+        mtrefi[?<context>...
+        defi[name=<context>...
+        symdef[name=<context>...
+
+        Parameters:
+            module: Optional specific module name the symbol name must be found.
+            context: Current prefix of the symbol name to find.
+        
+        Returns:
+            List of symbol names with the given context.
+        """
+        pass
+
+    def find_symbol_tokens(self, module: Optional[str], name: Optional[str], context: str) -> List[Tuple[str]]:
+        """ Finds the tuples of text tokens of all symbol definitions given the context.
+
+        This can be used to generate completions for environments which need multiple tokens.
+        For eaxmple:
+        mtrefiii[<module>?<name>]{<context>...
+        mtrefii[?<name>]{<context>...
+        trefiii[<module>]{<context>...
+        defii{<context>...
+        defii[name=<name>]{<context>
+
+        Parameters:
+            module: Optional module to search symbols in.
+            name: Optional name of the symbol to find.
+            context: Context to search for.
+        
+        Returns:
+            The strings which are valid at their respective positions.
+        """
         pass
 
     def link(self, other: StexObject, finalize: bool = False):

@@ -23,6 +23,25 @@ class StexObject:
         # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
+    def is_object_changed(self, other: StexObject) -> bool:
+        """ Checks whether or not the two objects have the same set of dependencies and exported symbols.
+
+        Parameters:
+            other: Other stex object to compare to.
+
+        Returns:
+            True if the two objects have differences in the set of exported symbols or dependencies
+            between them.
+        """
+        for id, paths in itertools.chain(self.dependencies.items(), other.dependencies.items()):
+            for path in paths:
+                if self.dependencies.get(id, {}).get(path) is None or other.dependencies.get(id, {}).get(path) is None:
+                    return True
+        for id in itertools.chain(self.symbol_table, other.symbol_table):
+            if  self.symbol_table.get(id) is None or other.symbol_table.get(id) is None:
+                return True
+        return False
+
     def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
         """ Resolves an id.
 

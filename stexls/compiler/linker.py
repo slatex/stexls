@@ -12,10 +12,11 @@ from .exceptions import *
 __all__ = ['Linker']
 
 class Linker:
-    def __init__(self, root: str, limit: int = None):
+    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex', limit: int = None):
         self.limit = limit
-        self.root = root
-        self.watcher = WorkspaceWatcher(os.path.join(root, '**/*.tex'))
+        self.root = Path(root)
+        assert self.root.is_dir()
+        self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern))
         self.objects: Dict[Path, List[StexObject]] = {}
         self.module_index: Dict[Path, Dict[str, StexObject]] = {}
         self.build_orders: Dict[StexObject, List[StexObject]] = {}

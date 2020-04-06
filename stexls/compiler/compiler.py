@@ -42,7 +42,7 @@ class StexObject:
                 if self.dependencies.get(id, {}).get(path) is None or other.dependencies.get(id, {}).get(path) is None:
                     return True
         for id in itertools.chain(self.symbol_table, other.symbol_table):
-            if  self.symbol_table.get(id) is None or other.symbol_table.get(id) is None:
+            if self.symbol_table.get(id) is None or other.symbol_table.get(id) is None:
                 return True
         return False
 

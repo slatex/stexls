@@ -94,17 +94,17 @@ class Symbol:
         return f'[{self.access_modifier.value} Symbol {self.qualified_identifier}]'
 
 
-class RepoType(Enum):
+class ModuleType(Enum):
     UNDEFINED='undefined'
     MODULE='module'
     MODSIG='modsig'
 
 
 class ModuleSymbol(Symbol):
-    def __init__(self, location: Location, name: str, full_range: Location, repo_type: RepoType = RepoType.UNDEFINED):
+    def __init__(self, location: Location, name: str, full_range: Location, module_type: ModuleType = ModuleType.UNDEFINED):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
         self.full_range = full_range
-        self.repo_type = repo_type
+        self.module_type = module_type
 
 
 class DefSymbol(Symbol):

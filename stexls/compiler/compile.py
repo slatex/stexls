@@ -23,6 +23,38 @@ class StexObject:
         # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
+    def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
+        """ Resolves an id.
+
+        Parameters:
+            id: Id to resolve.
+            unique: IfOTrue, raisesoan exception if the resolved symbol has multiple definitions. bjects that have  ptional  Defaults to True.
+            must_resolve: If true, raises an exception if no definition for the symbol was found.
+        
+        Returns:
+            List of symbol definitions with the given id.
+            LengthLof en 0 orif unique is True. 1  len 1 if unique=True,
+            Length of >= 1 if must_resolve is True.
+            Always length 1 if unique and must_resolve are both True.
+        """
+        symbols = self.symbol_table.get(id, [])
+        if unique and len(symbols) > 1:
+            raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
+        if must_resolve and not symbols:
+            raise CompilerError(f'Unable to resolve id "{id}".')
+        return symbols
+
+    def find_mhrepo(self, context: str) -> List[str]:
+        pass
+
+    def find_mhrepo_dir(self, mhrepo: Optional[str], context: str) -> List[str]:
+        pass
+
+    def find_mhrepo_path(self, mhrepo: Optional[str], context: str) -> List[str]:
+        pass
+
+    def find_
+
     def link(self, other: StexObject, finalize: bool = False):
         self.files.update(other.files)
         if finalize:
@@ -105,27 +137,6 @@ class StexObject:
         if len(modules) > 1:
             return None
         return next(iter(modules), None)
-
-    def resolve(self, id: str, unique: bool = True, must_resolve: bool = True) -> List[Symbol]:
-        """ Resolves an id.
-
-        Parameters:
-            id: Id to resolve.
-            unique: IfOTrue, raisesoan exception if the resolved symbol has multiple definitions. bjects that have  ptional  Defaults to True.
-            must_resolve: If true, raises an exception if no definition for the symbol was found.
-        
-        Returns:
-            List of symbol definitions with the given id.
-            LengthLof en 0 orif unique is True. 1  len 1 if unique=True,
-            Length of >= 1 if must_resolve is True.
-            Always length 1 if unique and must_resolve are both True.
-        """
-        symbols = self.symbol_table.get(id, [])
-        if unique and len(symbols) > 1:
-            raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
-        if must_resolve and not symbols:
-            raise CompilerError(f'Unable to resolve id "{id}".')
-        return symbols
 
     def format(self) -> str:
         ' Formats the contents of this object for a pretty print. '
@@ -264,7 +275,7 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
         parsed_file.trefis):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in mhmodnl.'))
     name_location = modsig.location.replace(positionOrRange=modsig.name.range)
-    module = ModuleSymbol(name_location, modsig.name.text, full_range=modsig.location)
+    module = ModuleSymbol(name_location, modsig.name.text, full_range=modsig.location, module_type=ModuleType.MODSIG)
     if parsed_file.path.name != f'{modsig.name.text}.tex':
         obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     obj.add_symbol(module, export=True)
@@ -340,7 +351,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)
     if module.id:
         name_location = module.location.replace(positionOrRange=module.id.range)
-        module = ModuleSymbol(name_location, module.id.text, full_range=module.location)
+        module = ModuleSymbol(name_location, module.id.text, full_range=module.location, module_type=ModuleType.MODULE)
         obj.add_symbol(module, export=True)
         _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
         _map_compile(_compile_gimport, parsed_file.gimports, obj)

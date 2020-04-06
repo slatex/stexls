@@ -9,7 +9,6 @@ __all__ = [
     'SymbolIdentifier',
     'Symbol',
     'ModuleSymbol',
-    'BindingSymbol',
     'DefSymbol',
 ]
 
@@ -100,11 +99,6 @@ class ModuleSymbol(Symbol):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
         self.full_range = full_range
 
-
-class BindingSymbol(Symbol):
-    def __init__(self, location: Location, lang: str, module: SymbolIdentifier):
-        super().__init__(location, SymbolIdentifier(lang, SymbolType.BINDING), module)
-    
 
 class DefSymbol(Symbol):
     def __init__(

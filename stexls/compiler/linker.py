@@ -91,19 +91,8 @@ class Linker:
         progress = progress or (lambda x: x)
         self.changes = self.watcher.update()
         changed_files = self._gather_changed_files()
-        removed_files = self._gather_removed_files()
-        removed_objects = self._gather_removed_objects(removed_files)
-        changed_objects = self._gather_changed_objects(changed_files)
-        changed_build_orders = self._gather_changed_build_orders(changed_objects, removed_objects)
-        self._cleanup(
-            removed_files,
-            changed_files,
-            removed_objects,
-            changed_objects,
-            changed_build_orders)
         with multiprocessing.Pool() as pool:
             mapfn = pool.map if use_multiprocessing else map
-
             parsed = {
                 file: parsed
                 for file, parsed
@@ -113,7 +102,6 @@ class Linker:
                 )
                 if parsed
             }
-
             compiled = {
                 file: objects
                 for file, objects
@@ -123,28 +111,48 @@ class Linker:
                 )
                 if objects
             }
+            modules = {
+                file: {
+                    object.module: object
+                    for object in objects
+                    if object.module
+                }
+                for file, objects in compiled.items()
+            }
 
-        for path, objects in compiled.items():
-            for object in objects:
-                if object.module:
-                    self.module_index.setdefault(path, dict())[object.module] = object
+        removed_files = self._gather_removed_files()
+        removed_objects = self._gather_removed_objects(removed_files)
+        changed_objects = self._gather_changed_objects(changed_files)
+        changed_build_orders = self._gather_changed_build_orders(modules, changed_objects, removed_objects)
 
-        self.changed_links = set(object for objects in compiled.values() for object in objects) | changed_build_orders
+        self._cleanup(
+            removed_files,
+            changed_files,
+            removed_objects,
+            changed_objects,
+            changed_build_orders)
+
+        self.module_index.update(modules)
+
+        self.changed_links = changed_build_orders | set(
+            object
+            for objects in compiled.values()
+            for object in objects)
+
         errors = {}
-        
         for object in progress(self.changed_links):
             try:
                 build_order = Linker._make_build_order(
                     root=object,
                     module_index=self.module_index,
                     build_order_cache=self.build_orders)
+
                 link = Linker._link(build_order)
+
                 self.links[object] = link
             except (CompilerError, LinkError) as e:
                 errors[object] = e
-        
         self.objects.update(compiled)
-
         return errors
 
     @staticmethod
@@ -253,24 +261,43 @@ class Linker:
     def _gather_changed_objects(
         self,
         changed_files: Set[Path]) -> Set[StexObject]:
-        ' Returns set of objects which are not deleted but the file they originate from was modified. '
+        """ Returns set of objects which changed because the file they originate from was modified.
+
+        Parameters:
+            changed_files: Set of files which were modified compared to the last update.
+        """
         return set(
-            object
+            object1
             for file in changed_files
-            for object in self.objects.get(file, ()))
+            for object1 in self.objects.get(file, ())
+        )
 
     def _gather_changed_build_orders(
         self,
+        modules: Dict[Path, Dict[str, StexObject]],
         changed_objects: Set[StexObject],
         removed_objects: Set[StexObject]) -> Set[StexObject]:
         ' Returns set of objects whose build order is out-of-date because an object in the build order was changed or removed. '
+        old_behaviour = False
+        if old_behaviour:
+            removed_objects = set((r.path, r.module) for r in removed_objects)
+            changed_objects = set((c.path, c.module) for c in changed_objects)
+        else:
+            removed_objects = set((r.path, r.module) for r in removed_objects)
+            changed_objects = set(
+                (changed.path, changed.module)
+                for changed in changed_objects
+                if changed.module
+                and modules.get(changed.path).get(changed.module).is_object_changed(changed)
+            )
         changed_or_removed = changed_objects | removed_objects
-        return set(
+        changed_build_orders =  set(
             object
-            for object, order in self.build_orders.items()
-            if object not in changed_or_removed
-            for parent in changed_or_removed
-            if parent in order)
+            for object, order in self.build_orders.items() # check for each build order currently listed
+            if (object.path, object.module) not in changed_or_removed # if the object itself is not already being removed
+            and not set((o.path, o.module) for o in order).isdisjoint(changed_or_removed) # mark it changed because the build order and set of changed or removed object is NOT disjoint
+        )
+        return changed_build_orders
 
     def _cleanup(
         self,

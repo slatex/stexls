@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict, Set, Generator, Union
+from typing import Optional, Tuple, List, Dict, Set, Iterator, Union
 from collections import defaultdict
 from pathlib import Path
 import re
@@ -17,7 +17,6 @@ from .symbols import *
 __all__ = (
     'ParsedFile',
     'ParsedEnvironment',
-    'parse',
     'TokenWithLocation',
     'Location',
     'Modsig',
@@ -34,7 +33,8 @@ __all__ = (
 class ParsedFile:
     " An object contains information about symbols, locations, imports of an stex source file. "
     def __init__(self, path: Path):
-        self.path = path
+        ' Creates an empty container without actually parsing the file. '
+        self.path = Path(path)
         self.modsigs: List[Modsig] = []
         self.modnls: List[Modnl] = []
         self.modules: List[Module] = []
@@ -45,20 +45,42 @@ class ParsedFile:
         self.importmodules: List[ImportModule] = []
         self.gimports: List[GImport] = []
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
+        self.parsed = False
 
-    def __iter__(self) -> Generator[ParsedFile]:
+    def parse(self) -> ParsedFile:
+        ' Parse the file from the in the constructor given path. '
+        if self.parsed:
+            raise ValueError('File already parsed.')
+        self.parsed = True
+        exceptions: List[Tuple[Location, Exception]] = []
+        try:
+            parser = LatexParser(self.path)
+            parser.parse()
+            exceptions = parser.syntax_errors or []
+            parser.walk(lambda env: _visitor(env, self, exceptions))
+        except (CompilerError, LatexException) as ex:
+            exceptions.append((self.default_location, ex))
+        for loc, e in exceptions:
+            self.errors[loc].append(e)
+        return self
+
+    @property
+    def toplevels(self) -> Iterator[ParsedFile]:
         """ Splits this file into it's toplevel modules and bindings.
-            If no toplevel environment can be found, this file
-            is returned instead.
         
         Returns:
             Generator of parsed files which at most contain a single toplevel (module, modsig, modnl)
             and the environments contained in that toplevel environment.
+            If no toplevel environment can be found, this file
+            is returned instead.
         """
         toplevels = list(itertools.chain(self.modnls, self.modsigs, self.modules))
+        if not toplevels:
+            return self
         for toplevel in toplevels:
             range = toplevel.location.range
             module_file = ParsedFile(self.path)
+            module_file.parsed = True
             if isinstance(toplevel, Modsig):
                 module_file.modsigs.append(toplevel)
             elif isinstance(toplevel, Module):
@@ -75,12 +97,9 @@ class ParsedFile:
                 if range.contains(loc.range):
                     module_file.errors[loc].extend(item)
             yield module_file
-        if not toplevels:
-            return self
-
 
     @property
-    def whole_file_location(self) -> Location:
+    def default_location(self) -> Location:
         """ Returns a location with a range that contains the whole file
             or just the range from 0 to 0 if the file can't be openened.
         """
@@ -93,33 +112,6 @@ class ParsedFile:
             return Location(self.path, Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
         except:
             return Location(self.path, Position(0, 0))
-
-
-def parse(path: Path) -> ParsedFile:
-    if not isinstance(path, Path):
-        path = Path(path)
-    parsed_file = ParsedFile(path)
-    exceptions: List[Tuple[Location, Exception]] = []
-    try:
-        parser = LatexParser(path)
-        parser.parse()
-        exceptions = parser.syntax_errors or []
-        parser.walk(lambda env: _visitor(env, parsed_file, exceptions))
-    except (CompilerError, LatexException) as ex:
-        try:
-            with open(path, mode='r') as f:
-                lines = f.readlines()
-        except:
-            lines = []
-        last_line = len(lines)
-        last_character = len(lines[-1]) if lines else 0
-        end_position = Position(last_line, last_character)
-        whole_file_range = Range(Position(0, 0), end_position)
-        whole_file_location = Location(path, whole_file_range)
-        exceptions.append((whole_file_location, ex))
-    for loc, e in exceptions:
-        parsed_file.errors[loc].append(e)
-    return parsed_file
 
 def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[Location, Exception]]):
     try:

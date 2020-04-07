@@ -5,7 +5,7 @@ import os
 import multiprocessing
 from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
-from .parser import parse
+from .parser import ParsedFile
 from .compiler import StexObject
 from .exceptions import *
 
@@ -99,7 +99,7 @@ class Linker:
                 for file, parsed
                 in zip(
                     changed_files,
-                    mapfn(parse, progress(changed_files))
+                    mapfn(ParsedFile.parse, progress(list(map(ParsedFile, changed_files))))
                 )
                 if parsed
             }
@@ -108,7 +108,7 @@ class Linker:
                 for file, objects
                 in zip(
                     parsed.keys(),
-                    mapfn(Linker._compile, progress(parsed.values()))
+                    mapfn(StexObject.compile, progress(parsed.values()))
                 )
                 if objects
             }
@@ -155,11 +155,6 @@ class Linker:
                 errors[object] = e
         self.objects.update(compiled)
         return errors
-
-    @staticmethod
-    def _compile(*args, **kwargs):
-        ' A wrapper for StexObject.compile, because it returns a generator. '
-        return list(StexObject.compile(*args, **kwargs))
 
     @staticmethod
     def _link(objects: List[StexObject]) -> StexObject:

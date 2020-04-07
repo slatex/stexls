@@ -1,7 +1,7 @@
 from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
 from itertools import chain
-import os
+import os, functools
 import multiprocessing
 from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
@@ -12,8 +12,7 @@ from .exceptions import *
 __all__ = ['Linker']
 
 class Linker:
-    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex', limit: int = None):
-        self.limit = limit
+    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex'):
         self.root = Path(root)
         assert self.root.is_dir()
         self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern))
@@ -108,7 +107,7 @@ class Linker:
                 for file, objects
                 in zip(
                     parsed.keys(),
-                    mapfn(StexObject.compile, progress(parsed.values()))
+                    mapfn(functools.partial(StexObject.compile, self.root), progress(parsed.values()))
                 )
                 if objects
             }
@@ -148,7 +147,7 @@ class Linker:
                     module_index=self.module_index,
                     build_order_cache=self.build_orders)
 
-                link = Linker._link(build_order)
+                link = self.link(build_order)
 
                 self.links[object] = link
             except (CompilerError, LinkError) as e:
@@ -156,8 +155,7 @@ class Linker:
         self.objects.update(compiled)
         return errors
 
-    @staticmethod
-    def _link(objects: List[StexObject]) -> StexObject:
+    def link(self, objects: List[StexObject]) -> StexObject:
         """ Links a list of objects in the order they are provided.
 
         The last object will be treated as the "entry point" and only that
@@ -170,7 +168,7 @@ class Linker:
         Returns:
             A new object with all the relevant information of all objects.
         """
-        linked = StexObject()
+        linked = StexObject(self.root)
         for object in objects:
             linked.link(object, object == objects[-1])
         return linked
@@ -238,11 +236,11 @@ class Linker:
 
     def _gather_removed_files(self) -> Set[Path]:
         ' Returns set of files that were removed from the workspace. '
-        return set(self.changes.deleted)
+        return self.changes.deleted
 
     def _gather_changed_files(self) -> Set[Path]:
         ' Returns set of files which were created or modified. '
-        return set(list(self.changes.created | self.changes.modified)[:self.limit])
+        return self.changes.created | self.changes.modified
 
     def _gather_removed_objects(
         self,

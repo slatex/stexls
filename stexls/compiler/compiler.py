@@ -15,7 +15,9 @@ from .exceptions import *
 __all__ = ['StexObject']
 
 class StexObject:
-    def __init__(self):
+    def __init__(self, root: Path):
+        # Root directory of resolution
+        self.root = root
         # Set of files used to compile this object
         self.files: Set[Path] = set()
         # Dependent module <str> from path hint <Path> referenced at a <Location> and an export flag <bool>
@@ -255,12 +257,12 @@ class StexObject:
                     location = Location(path, range)
                     if id not in self.symbol_table:
                         self.errors[location].append(
-                            LinkError(f'Undefined Unreos: "{id}"'))
+                            LinkError(f'Undefined symbol: "{id}"'))
                 self.references[path].update(ranges)
 
     def copy(self) -> StexObject:
         ' Creates a copy of all the storage containers. '
-        o = StexObject()
+        o = StexObject(self.root)
         o.files = self.files.copy()
         for k1, d1 in self.dependencies.items():
             for k2, d2 in d1.items():
@@ -369,9 +371,9 @@ class StexObject:
         self.symbol_table[symbol.qualified_identifier.identifier].append(symbol)
 
     @staticmethod
-    def compile(parsed: ParsedFile) -> Iterable[StexObject]:
+    def compile(root: Path, parsed: ParsedFile) -> Iterable[StexObject]:
         def _create(errors):
-            obj = StexObject()
+            obj = StexObject(root)
             obj.files.add(parsed.path)
             if errors:
                 obj.errors = errors.copy()
@@ -443,11 +445,11 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
 def _compile_gimport(gimport: GImport, obj: StexObject):
-    obj.add_dependency(gimport.location, gimport.path_to_imported_file, gimport.module.text.strip(), export=gimport.export)
+    obj.add_dependency(gimport.location, gimport.path_to_imported_file(obj.root), gimport.module.text.strip(), export=gimport.export)
     obj.add_reference(gimport.location, gimport.module.text)
 
 def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
-    obj.add_dependency(importmodule.location, importmodule.path_to_imported_file, importmodule.module.text.strip(), export=importmodule.export)
+    obj.add_dependency(importmodule.location, importmodule.path_to_imported_file(obj.root), importmodule.module.text.strip(), export=importmodule.export)
     obj.add_reference(importmodule.location, importmodule.module.text)
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):

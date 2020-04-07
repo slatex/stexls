@@ -615,16 +615,16 @@ class ImportModule(ParsedEnvironment):
             # import[load=..]{}
             raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
 
-    @property
-    def path_to_imported_file(self) -> Path:
+    def path_to_imported_file(self, root: Path = None) -> Path:
+        root = Path.cwd() if root is None else Path(root)
         module_filename = self.module.text.strip() + '.tex'
         if self.mh_mode:
             if self.mhrepos:
-                source = Path(self.mhrepos.text.strip()) / 'source'
+                source = root / self.mhrepos.text.strip() / 'source'
             elif not (self.dir or self.path):
                 return self.location.uri
             else:
-                source = list(self.location.uri.parents)[-4]
+                source = root / list(self.location.uri.relative_to(root).parents)[-4]
             if self.dir:
                 return source / self.dir.text.strip() / module_filename
             elif self.path:
@@ -632,13 +632,13 @@ class ImportModule(ParsedEnvironment):
             else:
                 raise ValueError('Invalid path_to_imported_file() of mhmodule')
         elif self.load:
-            return Path(self.load.text.strip()) / module_filename
+            return root / self.load.text.strip() / module_filename
         else:
             raise ValueError('Invalid path_to_imported_file() of module')
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} ImportModule "{self.module.text}" from "{self.path}"]'
+        return f'[{access.value} ImportModule "{self.module.text}" from "{self.path_to_imported_file()}"]'
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ImportModule]:
@@ -677,13 +677,13 @@ class GImport(ParsedEnvironment):
         self.export = export
         self.asterisk = asterisk
 
-    @property
-    def path_to_imported_file(self) -> Path:
+    def path_to_imported_file(self, root: Path = None) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
+        root = Path.cwd() if root is None else Path(root)
         filename = self.module.text.strip() + '.tex'
         if self.repository is None:
             return self.location.uri.parents[0] / filename
-        source = Path(self.repository.text.strip()) / 'source'
+        source = root / self.repository.text.strip() / 'source'
         return source / filename
 
     @classmethod
@@ -707,5 +707,5 @@ class GImport(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file}"]'
+        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file()}"]'
 

@@ -314,9 +314,9 @@ class Location:
             return self.range.contains(loc)
         return self.uri == loc.uri and self.range.contains(loc.range)
 
-    def format_link(self, relative: bool = True) -> str:
+    def format_link(self, relative: bool = False, relative_to: Path = None) -> str:
         range = self.range.translate(1, 1)
-        path = self.uri.relative_to(Path.cwd()) if relative else self.uri
+        path = self.uri.relative_to(relative_to or Path.cwd()) if relative else self.uri
         path = path.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
         return f'{path}:{range.start.line}:{range.start.character}'
 

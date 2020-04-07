@@ -312,7 +312,7 @@ class StexObject:
                     for location, public in locations.items():
                         for location in locations:
                             access = 'public' if public else 'private'
-                            formatted += f'\n\t{location.format_link()}:{access} {module} from "{filename}"'
+                            formatted += f'\n\t{location.format_link(True, self.root)}:{access} {module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
@@ -320,7 +320,7 @@ class StexObject:
         else:
             for id, symbols in self.symbol_table.items():
                 for symbol in symbols:
-                    formatted += f'\n\t{symbol.location.format_link()}:{symbol.access_modifier.value} {symbol.qualified_identifier}'
+                    formatted += f'\n\t{symbol.location.format_link(True, self.root)}:{symbol.access_modifier.value} {symbol.qualified_identifier}'
 
         formatted += '\n\nReferences:'
         if not self.references:
@@ -329,7 +329,7 @@ class StexObject:
             for path, ranges in self.references.items():
                 for range, id in ranges.items():
                     location = Location(path, range)
-                    formatted += f'\n\t{location.format_link()}:{id}'
+                    formatted += f'\n\t{location.format_link(True, self.root)}:{id}'
         
         formatted += '\n\nErrors:'
         if not self.errors:
@@ -337,7 +337,7 @@ class StexObject:
         else:
             for location, errors in self.errors.items():
                 for error in errors:
-                    formatted += f'\n\t{location.format_link()}:{error}'
+                    formatted += f'\n\t{location.format_link(True, self.root)}:{error}'
         
         return formatted
     

@@ -52,24 +52,23 @@ class Linker:
                 continue
             found = True
             for o in self.build_orders[object]:
-                origin = str(o.module or o.path)
+                origin = str(o.module.identifier or o.path)
                 if origin in edges:
                     continue
                 G.node(origin)
                 if display_symbols:
                     for id in o.symbol_table:
-                        edges.setdefault(origin, set()).add(id + '/symbol')
+                        edges.setdefault(origin, set()).add(id.identifier + '/symbol')
                 for module, paths in o.dependencies.items():
-                    module = str(module)
                     for path, locations in paths.items():
                         for location, _ in locations.items():
-                            edges.setdefault(origin, set()).add(module)
+                            edges.setdefault(origin, set()).add(module.identifier)
         if not found:
             raise ValueError('No object found.')
         for origin, targets in edges.items():
             for target in targets:
                 G.edge(origin, target)
-        G.view(directory='/tmp/stexls/importgraphs')
+        G.view(directory='/tmp/stexls')
     
     def info(self, path: Path) -> Iterator[str]:
         path = path if isinstance(path, Path) else Path(path)

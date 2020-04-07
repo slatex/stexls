@@ -22,6 +22,7 @@ class Linker:
         self.build_orders: Dict[StexObject, List[StexObject]] = {}
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
+        self.lazy_build_order_update = True
 
     def get_relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         file = Path(file)
@@ -278,11 +279,7 @@ class Linker:
         changed_objects: Set[StexObject],
         removed_objects: Set[StexObject]) -> Set[StexObject]:
         ' Returns set of objects whose build order is out-of-date because an object in the build order was changed or removed. '
-        old_behaviour = False
-        if old_behaviour:
-            removed_objects = set((r.path, r.module) for r in removed_objects)
-            changed_objects = set((c.path, c.module) for c in changed_objects)
-        else:
+        if self.lazy_build_order_update:
             removed_objects = set((r.path, r.module) for r in removed_objects)
             changed_objects = set(
                 (changed.path, changed.module)
@@ -290,6 +287,9 @@ class Linker:
                 if changed.module
                 and modules.get(changed.path).get(changed.module).is_object_changed(changed)
             )
+        else:
+            removed_objects = set((r.path, r.module) for r in removed_objects)
+            changed_objects = set((c.path, c.module) for c in changed_objects)
         changed_or_removed = changed_objects | removed_objects
         changed_build_orders =  set(
             object

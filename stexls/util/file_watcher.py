@@ -32,7 +32,7 @@ class WorkspaceWatcher:
     def __setstate__(self, state):
         self.pattern, self.files = state
 
-    def update(self) -> 'Changes':
+    def update(self) -> Changes:
         """Updates the internal file index.
 
         Indexes all files inside the workspace directory.

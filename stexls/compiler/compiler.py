@@ -341,7 +341,12 @@ class StexObject:
         
         return formatted
     
-    def add_dependency(self, location: Location, file: Path, module_name: str, export: bool = False):
+    def add_dependency(
+        self,
+        location: Location,
+        file: Path,
+        module_name: str,
+        export: bool = False):
         """ Adds a dependency to a imported module in another file.
 
         Parameters:
@@ -445,11 +450,19 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
 def _compile_gimport(gimport: GImport, obj: StexObject):
-    obj.add_dependency(gimport.location, gimport.path_to_imported_file(obj.root), gimport.module.text.strip(), export=gimport.export)
+    obj.add_dependency(
+        location=gimport.location,
+        file=gimport.path_to_imported_file(obj.root),
+        module_name=gimport.module.text.strip(),
+        export=gimport.export)
     obj.add_reference(gimport.location, gimport.module.text)
 
 def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
-    obj.add_dependency(importmodule.location, importmodule.path_to_imported_file(obj.root), importmodule.module.text.strip(), export=importmodule.export)
+    obj.add_dependency(
+        location=importmodule.location,
+        file=importmodule.path_to_imported_file(obj.root),
+        module_name=importmodule.module.text.strip(),
+        export=importmodule.export)
     obj.add_reference(importmodule.location, importmodule.module.text)
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):

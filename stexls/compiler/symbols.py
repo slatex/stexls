@@ -17,8 +17,6 @@ __all__ = [
 class SymbolType(Enum):
     SYMBOL='symbol'
     MODULE='module'
-    BINDING='binding'
-    DIRECTORY='directory'
 
 
 class AccessModifier(Enum):
@@ -96,14 +94,17 @@ class Symbol:
 
 
 class ModuleType(Enum):
-    UNDEFINED='undefined'
-    MODULE='module'
-    MHMODULE='mhmodule'
     MODSIG='modsig'
+    MODULE='module'
 
 
 class ModuleSymbol(Symbol):
-    def __init__(self, location: Location, name: str, full_range: Location, module_type: ModuleType = ModuleType.UNDEFINED):
+    def __init__(
+        self,
+        location: Location,
+        name: str,
+        full_range: Location,
+        module_type: ModuleType):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
         self.full_range = full_range
         self.module_type = module_type

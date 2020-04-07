@@ -62,7 +62,7 @@ class Linker:
                 for module, paths in o.dependencies.items():
                     module = str(module)
                     for path, locations in paths.items():
-                        for location, public in locations.items():
+                        for location, _ in locations.items():
                             edges.setdefault(origin, set()).add(module)
         if not found:
             raise ValueError('No object found.')
@@ -211,7 +211,7 @@ class Linker:
                     if not object:
                         print(f'Undefined module: "{module}" not defined in "{path}"')
                         continue
-                    for location, public in locations.items():
+                    for location, (public, _) in locations.items():
                         if not import_private_imports and not public:
                             continue # skip private imports
                         if object in cycle_check:

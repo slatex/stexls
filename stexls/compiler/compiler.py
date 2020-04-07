@@ -21,11 +21,11 @@ class StexObject:
         # Set of files used to compile this object
         self.files: Set[Path] = set()
         # Dependent module <str> from path hint <Path> referenced at a <Location> and an export flag <bool>
-        self.dependencies: Dict[str, Dict[Path, Dict[Location, bool]]] = defaultdict(dict)
+        self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, ModuleType]]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
-        self.symbol_table: Dict[str, List[Symbol]] = defaultdict(list)
+        self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
         # Referenced symbol <str> in file <Path> at written in range <Range>
-        self.references: Dict[Path, Dict[Range, str]] = defaultdict(dict)
+        self.references: Dict[Path, Dict[Range, SymbolIdentifier]] = defaultdict(dict)
         # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
 
@@ -62,7 +62,7 @@ class StexObject:
             Length of >= 1 if must_resolve is True.
             Always length 1 if unique and must_resolve are both True.
         """
-        symbols = self.symbol_table.get(id, [])
+        symbols = set(self.symbol_table.get(SymbolIdentifier(id, SymbolType.SYMBOL), ())) | set(self.symbol_table.get(SymbolIdentifier, SymbolType.MODULE), ())
         if unique and len(symbols) > 1:
             raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
         if must_resolve and not symbols:
@@ -219,27 +219,27 @@ class StexObject:
         if finalize:
             for location, errors in other.errors.items():
                 self.errors[location].extend(errors)
-            for module, infos in other.dependencies.items():
-                for path, locations in infos.items():
+            for module, paths in other.dependencies.items():
+                for path, locations in paths.items():
                     if not path.is_file():
                         for location in locations:
                             self.errors[location].append(
                                 LinkError(f'Unable to locate file: "{path}"'))
-                    elif module not in self.symbol_table:
+                    if module not in self.symbol_table:
                         for location in locations:
                             self.errors[location].append(
                                 LinkError(f'Missing module: "{path}" does not export module "{module}"'))
-                    elif module in self.dependencies:
-                        for previous_location, bool in self.dependencies[module].get(path, {}).items():
+                    if module in self.dependencies:
+                        for previous_location, (_, module_type) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
                                     LinkWarning(f'Module "{module}" previously imported at "{previous_location.format_link()}"'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
-                for location, public in locations.items():
+                for location, (public, module_type) in locations.items():
                     # add dependencies only if public, except for the finalize case, then always add
                     if public or finalize:
-                        self.dependencies[module].setdefault(path, {})[location] = public
+                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type)
         for id, symbols in other.symbol_table.items():
             if id in self.symbol_table:
                 if finalize:
@@ -259,21 +259,34 @@ class StexObject:
                         self.errors[location].append(
                             LinkError(f'Undefined symbol: "{id}"'))
                 self.references[path].update(ranges)
+            for module, paths in self.dependencies.items():
+                for path, locations in paths.items():
+                    for location, (export, module_type) in locations.items():
+                        if module not in self.symbol_table:
+                            self.errors[location] = LinkError(f'Module "{module}" from "{path}" was not imported properly.')
+                        else:
+                            for module_symbol in self.symbol_table[module]:
+                                module_symbol: ModuleSymbol
+                                if module_symbol.module_type != module_type:
+                                    self.errors[location] = LinkWarning(
+                                        f'Import expected a module of type {module_type},'
+                                        f'but "{module_symbol.qualified_identifier}" defined at "{module_symbol.location.format_link()}"'
+                                        f'is of type {module_symbol.module_type}.')
 
     def copy(self) -> StexObject:
         ' Creates a copy of all the storage containers. '
-        o = StexObject(self.root)
-        o.files = self.files.copy()
-        for k1, d1 in self.dependencies.items():
-            for k2, d2 in d1.items():
-                o.dependencies[k1][k2] = d2.copy()
-        for k1, l1 in self.symbol_table.items():
-            o.symbol_table[k1] = l1.copy()
-        for k1, d1 in self.references.items():
-            o.references[k1] = d1.copy()
-        for k1, l1 in self.errors.items():
-            o.errors[k1] = l1.copy()
-        return o
+        object = StexObject(self.root)
+        object.files = self.files.copy()
+        for module, paths in self.dependencies.items():
+            for path, locations in paths.items():
+                object.dependencies[module][path] = locations.copy()
+        for id, symbols in self.symbol_table.items():
+            object.symbol_table[id] = symbols.copy()
+        for path, references in self.references.items():
+            object.references[path] = references.copy()
+        for location, errors in self.errors.items():
+            object.errors[location] = errors.copy()
+        return object
 
     @property
     def path(self) -> Optional[Path]:
@@ -285,7 +298,7 @@ class StexObject:
         return next(iter(self.files))
 
     @property
-    def module(self) -> Optional[str]:
+    def module(self) -> Optional[SymbolIdentifier]:
         ' Returns an identifier for the module this object contains, if it is the only one. Else returns None. '
         modules = [
             id
@@ -309,10 +322,10 @@ class StexObject:
         else:
             for module, files in self.dependencies.items():
                 for filename, locations in files.items():
-                    for location, public in locations.items():
+                    for location, (public, module_type) in locations.items():
                         for location in locations:
                             access = 'public' if public else 'private'
-                            formatted += f'\n\t{location.format_link(True, self.root)}:{access} {module} from "{filename}"'
+                            formatted += f'\n\t{location.format_link(True, self.root)}:{access} {module_type.name} {module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
@@ -346,6 +359,7 @@ class StexObject:
         location: Location,
         file: Path,
         module_name: str,
+        module_type: ModuleType,
         export: bool = False):
         """ Adds a dependency to a imported module in another file.
 
@@ -355,9 +369,9 @@ class StexObject:
             module_name: Module to import from that file.
             export: Export the imported symbols again.
         """
-        self.dependencies[module_name].setdefault(file, dict())[location] = export
+        self.dependencies[SymbolIdentifier(module_name, SymbolType.MODULE)].setdefault(file, dict())[location] = (export, module_type)
 
-    def add_reference(self, location: Location, referenced_id: str):
+    def add_reference(self, location: Location, referenced_id: SymbolIdentifier):
         """ Adds a reference.
 
         Parameters:
@@ -369,11 +383,11 @@ class StexObject:
     def add_symbol(self, symbol: Symbol, export: bool = False, duplicate_allowed: bool = False):
         symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
         if not duplicate_allowed:
-            for duplicate in self.symbol_table.get(symbol.qualified_identifier.identifier, ()):
+            for duplicate in self.symbol_table.get(symbol.qualified_identifier, ()):
                 raise CompilerError(
                     f'Duplicate symbol definition of {symbol.qualified_identifier}'
                     f' previously defined at "{duplicate.location.format_link()}"')
-        self.symbol_table[symbol.qualified_identifier.identifier].append(symbol)
+        self.symbol_table[symbol.qualified_identifier].append(symbol)
 
     @staticmethod
     def compile(root: Path, parsed: ParsedFile) -> Iterable[StexObject]:
@@ -393,25 +407,24 @@ class StexObject:
             if obj.errors or obj.references or obj.symbol_table:
                 objects.append(obj)
         else: 
-            toplevels = list(parsed.toplevels)
-            if toplevels:
-                for toplevel in toplevels:
-                    for modsig in toplevel.modsigs:
-                        obj = _create(toplevel.errors)
-                        _compile_modsig(modsig, obj, toplevel)
+            for toplevel in parsed.toplevels:
+                if not (toplevel.modsigs or toplevel.modnls or toplevel.modules):
+                    obj = _create(toplevel.errors)
+                    _compile_free(obj, toplevel)
+                    if obj.errors or obj.references or obj.symbol_table:
                         objects.append(obj)
-                    for modnl in toplevel.modnls:
-                        obj = _create(toplevel.errors)
-                        _compile_modnl(modnl, obj, toplevel)
-                        objects.append(obj)
-                    for module in toplevel.modules:
-                        obj = _create(toplevel.errors)
-                        _compile_module(module, obj, toplevel)
-                        objects.append(obj)
-            else:
-                obj = _create(parsed.errors)
-                _compile_free(obj, parsed)
-                if obj.errors or obj.references or obj.symbol_table:
+                    continue
+                for modsig in toplevel.modsigs:
+                    obj = _create(toplevel.errors)
+                    _compile_modsig(modsig, obj, toplevel)
+                    objects.append(obj)
+                for modnl in toplevel.modnls:
+                    obj = _create(toplevel.errors)
+                    _compile_modnl(modnl, obj, toplevel)
+                    objects.append(obj)
+                for module in toplevel.modules:
+                    obj = _create(toplevel.errors)
+                    _compile_module(module, obj, toplevel)
                     objects.append(obj)
         return objects
 
@@ -425,11 +438,12 @@ def _map_compile(compile_fun, arr: List, obj: StexObject):
 def _compile_free(obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('file', parsed_file.modnls, obj)
     _report_invalid_environments('file', parsed_file.modules, obj)
+    _report_invalid_environments('file', parsed_file.modsigs, obj)
     _report_invalid_environments('file', parsed_file.defis, obj)
     _report_invalid_environments('file', parsed_file.symdefs, obj)
     _report_invalid_environments('file', parsed_file.syms, obj)
-    _report_invalid_environments('file', parsed_file.gimports, obj)
     _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
+    _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
 def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
@@ -440,7 +454,11 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
         parsed_file.trefis):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in mhmodnl.'))
     name_location = modsig.location.replace(positionOrRange=modsig.name.range)
-    module = ModuleSymbol(name_location, modsig.name.text, full_range=modsig.location, module_type=ModuleType.MODSIG)
+    module = ModuleSymbol(
+        location=name_location,
+        name=modsig.name.text,
+        full_range=modsig.location,
+        module_type=ModuleType.MODSIG)
     if parsed_file.path.name != f'{modsig.name.text}.tex':
         obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     obj.add_symbol(module, export=True)
@@ -450,20 +468,24 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
 def _compile_gimport(gimport: GImport, obj: StexObject):
+    module_name = gimport.module.text.strip()
     obj.add_dependency(
         location=gimport.location,
         file=gimport.path_to_imported_file(obj.root),
-        module_name=gimport.module.text.strip(),
+        module_name=module_name,
+        module_type=ModuleType.MODSIG,
         export=gimport.export)
-    obj.add_reference(gimport.location, gimport.module.text)
+    obj.add_reference(gimport.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
 def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
+    module_name = importmodule.module.text.strip()
     obj.add_dependency(
         location=importmodule.location,
         file=importmodule.path_to_imported_file(obj.root),
-        module_name=importmodule.module.text.strip(),
+        module_name=module_name,
+        module_type=ModuleType.MODULE,
         export=importmodule.export)
-    obj.add_reference(importmodule.location, importmodule.module.text)
+    obj.add_reference(importmodule.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
     symbol = DefSymbol(
@@ -495,8 +517,8 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
         obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in modnl.'))
     module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
-    obj.add_reference(name_location, module_id.identifier)
-    obj.add_dependency(name_location, modnl.path, modnl.name.text)
+    obj.add_reference(name_location, module_id)
+    obj.add_dependency(name_location, modnl.path, modnl.name.text, module_type=ModuleType.MODSIG)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
@@ -508,23 +530,27 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
     else:
         defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)
         symbol_id = module.append(defi_id)
-        obj.add_reference(defi.location, symbol_id.identifier)
+        obj.add_reference(defi.location, symbol_id)
 
 def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
     if trefi.module:
         module_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
         reference_location = trefi.location.replace(positionOrRange=trefi.module.range)
-        obj.add_reference(reference_location, module_id.identifier)
+        obj.add_reference(reference_location, module_id)
     elif module_id is None:
         raise CompilerError('Invalid trefi configuration: Missing parent module name')
     target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
-    obj.add_reference(trefi.location, target_symbol_id.identifier)
+    obj.add_reference(trefi.location, target_symbol_id)
 
 def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)
     if module.id:
         name_location = module.location.replace(positionOrRange=module.id.range)
-        module = ModuleSymbol(name_location, module.id.text, full_range=module.location, module_type=ModuleType.MODULE)
+        module = ModuleSymbol(
+            location=name_location,
+            name=module.id.text,
+            full_range=module.location,
+            module_type=ModuleType.MODULE)
         obj.add_symbol(module, export=True)
         _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
         _map_compile(_compile_gimport, parsed_file.gimports, obj)

@@ -76,27 +76,28 @@ class ParsedFile:
         """
         toplevels = list(itertools.chain(self.modnls, self.modsigs, self.modules))
         if not toplevels:
-            return self
-        for toplevel in toplevels:
-            range = toplevel.location.range
-            module_file = ParsedFile(self.path)
-            module_file.parsed = True
-            if isinstance(toplevel, Modsig):
-                module_file.modsigs.append(toplevel)
-            elif isinstance(toplevel, Module):
-                module_file.modules.append(toplevel)
-            elif isinstance(toplevel, Modnl):
-                module_file.modnls.append(toplevel)
-            module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
-            module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
-            module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
-            module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
-            module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
-            module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
-            for loc, item in self.errors.items():
-                if range.contains(loc.range):
-                    module_file.errors[loc].extend(item)
-            yield module_file
+            yield self
+        else:
+            for toplevel in toplevels:
+                range = toplevel.location.range
+                module_file = ParsedFile(self.path)
+                module_file.parsed = True
+                if isinstance(toplevel, Modsig):
+                    module_file.modsigs.append(toplevel)
+                elif isinstance(toplevel, Module):
+                    module_file.modules.append(toplevel)
+                elif isinstance(toplevel, Modnl):
+                    module_file.modnls.append(toplevel)
+                module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
+                module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
+                module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
+                module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
+                module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
+                module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
+                for loc, item in self.errors.items():
+                    if range.contains(loc.range):
+                        module_file.errors[loc].extend(item)
+                yield module_file
 
     @property
     def default_location(self) -> Location:

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Optional, Set, Union
+from typing import Dict, Optional, Set, Union, Iterable
 from pathlib import Path
 from collections import defaultdict
 
@@ -369,13 +369,14 @@ class StexObject:
         self.symbol_table[symbol.qualified_identifier.identifier].append(symbol)
 
     @staticmethod
-    def compile(parsed: ParsedFile) -> Optional[StexObject]:
+    def compile(parsed: ParsedFile) -> Iterable[StexObject]:
         def _create(errors):
             obj = StexObject()
             obj.files.add(parsed.path)
             if errors:
                 obj.errors = errors.copy()
             return obj
+        objects = []
         number_of_roots = len(parsed.modnls) + len(parsed.modsigs) + int(len(parsed.modules) > 0)
         if number_of_roots > 1:
             obj = _create(parsed.errors)
@@ -383,29 +384,29 @@ class StexObject:
                 obj.errors[env.location].append(
                     CompilerError(f'Too many types of roots found: Found {number_of_roots}, expected up to 1'))
             if obj.errors or obj.references or obj.symbol_table:
-                yield obj
+                objects.append(obj)
         else: 
-            toplevels = list(parsed)
+            toplevels = list(parsed.toplevels)
             if toplevels:
                 for toplevel in toplevels:
                     for modsig in toplevel.modsigs:
                         obj = _create(toplevel.errors)
                         _compile_modsig(modsig, obj, toplevel)
-                        yield obj
+                        objects.append(obj)
                     for modnl in toplevel.modnls:
                         obj = _create(toplevel.errors)
                         _compile_modnl(modnl, obj, toplevel)
-                        yield obj
+                        objects.append(obj)
                     for module in toplevel.modules:
                         obj = _create(toplevel.errors)
                         _compile_module(module, obj, toplevel)
-                        yield obj
+                        objects.append(obj)
             else:
                 obj = _create(parsed.errors)
                 _compile_free(obj, parsed)
                 if obj.errors or obj.references or obj.symbol_table:
-                    yield obj
-
+                    objects.append(obj)
+        return objects
 
 def _map_compile(compile_fun, arr: List, obj: StexObject):
     for item in arr:

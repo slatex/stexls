@@ -18,7 +18,7 @@ class Position:
         self.line = line
         self.character = character
     
-    def translate(self, lines: int = None, characters: int = None):
+    def translate(self, lines: int = 0, characters: int = 0):
         """ Creates a copy of this position with the line and character
             attributes offsetted by the given amount.
         
@@ -41,9 +41,7 @@ class Position:
             >>> pos.line, pos.character
             (1, 22)
         """
-        return Position(
-            self.line + (lines or 0),
-            self.character + (characters or 0))
+        return Position(self.line + lines, self.character + characters)
 
     def compare_to(self, other: Position) -> int:
         ''' Compares two positions.
@@ -265,6 +263,10 @@ class Range:
             return self.copy(), self.replace(start=self.end)
         return self.replace(end=split), self.replace(start=split)
 
+    def translate(self, lines: int = 0, characters: int = 0) -> Range:
+        ' Translates start and end positions by the given line and character offsets. '
+        return Range(self.start.translate(lines, characters), self.end.translate(lines, characters))
+
     @staticmethod
     def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Optional[Range]:
         ''' Creates the big union of all ranges and positions given.
@@ -307,23 +309,15 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
-    @property
-    def one(self) -> Location:
-        ' Transforms zero-indexed location to one-indexed location by adding one to every line and character offset. '
-        return Location(
-            self.uri,
-            Range(
-                self.range.start.translate(1, 1),
-                self.range.end.translate(1, 1)))
-
     def contains(self, loc: Union[Location, Range, Position]) -> bool:
         if isinstance(loc, (Range, Position)):
             return self.range.contains(loc)
         return self.uri == loc.uri and self.range.contains(loc.range)
 
-    def format_link(self) -> str:
-        range = self.one.range
-        path = self.uri.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
+    def format_link(self, relative: bool = True) -> str:
+        range = self.range.translate(1, 1)
+        path = self.uri.relative_to(Path.cwd()) if relative else self.uri
+        path = path.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
         return f'{path}:{range.start.line}:{range.start.character}'
 
     def replace(self, uri: Path = None, positionOrRange: Union[Position, Range] = None):

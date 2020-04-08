@@ -31,9 +31,11 @@ class Linker:
             if object.module:
                 for module in object.symbol_table.get(object.module, ()):
                     if module.full_range.contains(Position(line, column)):
-                        yield object
+                        if object in self.links:
+                            yield self.links[object]
             else:
-                yield object
+                if object in self.links:
+                    yield self.links[object]
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:

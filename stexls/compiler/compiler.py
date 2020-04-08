@@ -253,6 +253,7 @@ class StexObject:
             for path, locations in paths.items():
                 for location, (public, module_type) in locations.items():
                     # add dependencies only if public, except for the finalize case, then always add
+                    # TODO: guse and usemhmodule in modsig -> Do bindings see these imports?
                     if public or finalize:
                         self.dependencies[module].setdefault(path, {})[location] = (public, module_type)
         for id, symbols in other.symbol_table.items():

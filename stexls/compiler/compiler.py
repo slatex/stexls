@@ -259,20 +259,20 @@ class StexObject:
                         self.errors[location].append(
                             LinkError(f'Undefined symbol: "{id}"'))
                 self.references[path].update(ranges)
-            for module, paths in self.dependencies.items():
-                for path, locations in paths.items():
-                    for location, (export, module_type) in locations.items():
-                        if module not in self.symbol_table:
-                            access = 'public' if export else 'private'
-                            self.errors[location].append(LinkError(f'{access} Module "{module.identifier}" from "{path}" was not imported properly.'))
-                        else:
-                            for module_symbol in self.symbol_table[module]:
-                                module_symbol: ModuleSymbol
-                                if module_symbol.module_type != module_type:
-                                    self.errors[location].append(LinkWarning(
-                                        f'Import expected a module of type {module_type},'
-                                        f'but "{module_symbol.qualified_identifier}" defined at "{module_symbol.location.format_link()}"'
-                                        f'is of type {module_symbol.module_type}.'))
+            # for module, paths in self.dependencies.items():
+            #     for path, locations in paths.items():
+            #         for location, (export, module_type) in locations.items():
+            #             if module not in self.symbol_table:
+            #                 access = 'public' if export else 'private'
+            #                 self.errors[location].append(LinkError(f'{access} Module "{module.identifier}" from "{path}" was not imported properly.'))
+            #             else:
+            #                 for module_symbol in self.symbol_table[module]:
+            #                     module_symbol: ModuleSymbol
+            #                     if module_symbol.module_type != module_type:
+            #                         self.errors[location].append(LinkWarning(
+            #                             f'Import expected a module of type {module_type},'
+            #                             f'but "{module_symbol.qualified_identifier}" defined at "{module_symbol.location.format_link()}"'
+            #                             f'is of type {module_symbol.module_type}.'))
 
     def copy(self) -> StexObject:
         ' Creates a copy of all the storage containers. '

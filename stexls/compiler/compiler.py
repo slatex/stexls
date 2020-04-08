@@ -78,15 +78,15 @@ class StexObject:
         """ Search for modules that can be importet by the importmhmodule environment.
 
         Finds all fitting module names given a pattern like these:
-        \\importmhmodule[mhrepo=<mhrepo>,dir=<dir>]{<context>
-        \\importmhmodule[path=<path>]{<context>
-        \\importmhmodule{<context>
+        importmhmodule[mhrepo=<mhrepo>,dir=<dir>]{<context>
+        importmhmodule[path=<path>]{<context>
+        importmhmodule{<context>
 
         Parameters:
-            mhrepo: Optional repository path hint: \\importmhmodule[mhrepo=<mhrepo>...
-            dir: Optional mhrepo directory: \\importmhmodule[dir=<dir>...
-            path: Optional path to the file: \\importmhmodule[]
-            context: Substring of the module to find: \\importmhmodule{<context>
+            mhrepo: Optional repository path hint: importmhmodule[mhrepo=<mhrepo>...
+            dir: Optional mhrepo directory: importmhmodule[dir=<dir>...
+            path: Optional path to the file: importmhmodule[]
+            context: Substring of the module to find: importmhmodule{<context>
         
         Returns:
             List of names of modules that fit the given constraints and

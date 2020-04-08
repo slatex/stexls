@@ -614,27 +614,42 @@ class ImportModule(ParsedEnvironment):
         elif not load:
             # import[load=..]{}
             raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
+    
+    @staticmethod
+    def build_path_to_imported_module(
+        root: Path,
+        current_file: Path,
+        mhrepo: Optional[str],
+        path: Optional[str],
+        dir: Optional[str],
+        load: Optional[str],
+        filename: str):
+        if load:
+            return root / load / filename
+        if not mhrepo and not path and not dir:
+            return current_file
+        if mhrepo:
+            source: Path = root / mhrepo / 'source'
+        else:
+            source: Path = root / list(current_file.relative_to(root).parents)[-4]
+        assert source.name == 'source', "invalid source directory"
+        if dir:
+            return source / dir / filename
+        elif path:
+            return source / (path + '.tex')
+        else:
+            raise ValueError('Invalid arguments: "path" or "dir" must be specified if "mhrepo" is.')
 
     def path_to_imported_file(self, root: Path = None) -> Path:
         root = Path.cwd() if root is None else Path(root)
-        module_filename = self.module.text.strip() + '.tex'
-        if self.mh_mode:
-            if self.mhrepos:
-                source = root / self.mhrepos.text.strip() / 'source'
-            elif not (self.dir or self.path):
-                return self.location.uri
-            else:
-                source = root / list(self.location.uri.relative_to(root).parents)[-4]
-            if self.dir:
-                return source / self.dir.text.strip() / module_filename
-            elif self.path:
-                return source / (self.path.text.strip() + '.tex')
-            else:
-                raise ValueError('Invalid path_to_imported_file() of mhmodule')
-        elif self.load:
-            return root / self.load.text.strip() / module_filename
-        else:
-            raise ValueError('Invalid path_to_imported_file() of module')
+        return ImportModule.build_path_to_imported_module(
+            root or Path.cwd(),
+            self.location.uri,
+            self.mhrepos.text if self.mhrepos else None,
+            self.path.text if self.path else None,
+            self.dir.text if self.dir else None,
+            self.load.text if self.load else None,
+            self.module.text + '.tex')
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE

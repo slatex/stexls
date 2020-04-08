@@ -71,10 +71,11 @@ class StexObject:
 
     def find_mhmodule_module(
         self,
-        mhrepo: Optional[str],
-        dir: Optional[str],
-        path: Optional[str],
-        context: str) -> List[str]:
+        current_file: Path,
+        context: str,
+        mhrepo: Optional[str] = None,
+        path: Optional[str] = None,
+        dir: Optional[str] = None) -> List[str]:
         """ Search for modules that can be importet by the importmhmodule environment.
 
         Finds all fitting module names given a pattern like these:
@@ -84,15 +85,29 @@ class StexObject:
 
         Parameters:
             mhrepo: Optional repository path hint: importmhmodule[mhrepo=<mhrepo>...
+            path: Optional path to the file: importmhmodule[path=<path>...
             dir: Optional mhrepo directory: importmhmodule[dir=<dir>...
-            path: Optional path to the file: importmhmodule[]
             context: Substring of the module to find: importmhmodule{<context>
         
         Returns:
             List of names of modules that fit the given constraints and
             that are imported by this object.
         """
-        pass
+        path = ImportModule.build_path_to_imported_module(
+            self.root,
+            current_file,
+            mhrepo,
+            path,
+            dir,
+            None,
+            context).as_posix()
+        return [
+            symbol.identifier
+            for id, symbols in self.symbol_table.items()
+            for symbol in symbols
+            if symbol.location.uri.as_posix().startswith(path)
+            if str(symbol.identifier).startswith(context)
+        ]
     
     def find_mhmodule_mhrepo(self, context: str) -> List[str]:
         """ Find paths to repositories that can be used as mhrepo= argument in importmhmodule environments.

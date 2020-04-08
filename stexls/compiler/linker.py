@@ -133,13 +133,13 @@ class Linker:
 
         self.module_index.update(modules)
 
-        self.changed_links = changed_build_orders | set(
+        changed_links = changed_build_orders | set(
             object
             for objects in compiled.values()
             for object in objects)
 
         errors = {}
-        for object in progress(self.changed_links):
+        for object in progress(changed_links):
             try:
                 build_order = Linker._make_build_order(
                     root=object,

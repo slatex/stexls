@@ -263,15 +263,16 @@ class StexObject:
                 for path, locations in paths.items():
                     for location, (export, module_type) in locations.items():
                         if module not in self.symbol_table:
-                            self.errors[location] = LinkError(f'Module "{module}" from "{path}" was not imported properly.')
+                            access = 'public' if export else 'private'
+                            self.errors[location].append(LinkError(f'{access} Module "{module.identifier}" from "{path}" was not imported properly.'))
                         else:
                             for module_symbol in self.symbol_table[module]:
                                 module_symbol: ModuleSymbol
                                 if module_symbol.module_type != module_type:
-                                    self.errors[location] = LinkWarning(
+                                    self.errors[location].append(LinkWarning(
                                         f'Import expected a module of type {module_type},'
                                         f'but "{module_symbol.qualified_identifier}" defined at "{module_symbol.location.format_link()}"'
-                                        f'is of type {module_symbol.module_type}.')
+                                        f'is of type {module_symbol.module_type}.'))
 
     def copy(self) -> StexObject:
         ' Creates a copy of all the storage containers. '
@@ -447,20 +448,18 @@ def _compile_free(obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
 def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
-    for invalid_environment in itertools.chain(
-        parsed_file.modnls,
-        parsed_file.modules,
-        parsed_file.defis,
-        parsed_file.trefis):
-        obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in mhmodnl.'))
+    _report_invalid_environments('modsig', parsed_file.modnls, obj)
+    _report_invalid_environments('modsig', parsed_file.modules, obj)
+    _report_invalid_environments('modsig', parsed_file.defis, obj)
+    _report_invalid_environments('modsig', parsed_file.trefis, obj)
     name_location = modsig.location.replace(positionOrRange=modsig.name.range)
+    if parsed_file.path.name != f'{modsig.name.text}.tex':
+        obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     module = ModuleSymbol(
         location=name_location,
         name=modsig.name.text,
         full_range=modsig.location,
         module_type=ModuleType.MODSIG)
-    if parsed_file.path.name != f'{modsig.name.text}.tex':
-        obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
     obj.add_symbol(module, export=True)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
@@ -506,15 +505,13 @@ def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
     obj.add_symbol(symbol, duplicate_allowed=True, export=True)
 
 def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
+    _report_invalid_environments('modnl', parsed_file.modsigs, obj)
+    _report_invalid_environments('modnl', parsed_file.modules, obj)
+    _report_invalid_environments('modnl', parsed_file.importmodules, obj)
+    _report_invalid_environments('modnl', parsed_file.symdefs, obj)
+    _report_invalid_environments('modnl', parsed_file.syms, obj)
     if parsed_file.path.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
         obj.errors[modnl.location].append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
-    for invalid_environment in itertools.chain(
-        parsed_file.modsigs,
-        parsed_file.modules,
-        parsed_file.importmodules,
-        parsed_file.symdefs,
-        parsed_file.syms):
-        obj.errors[invalid_environment.location].append(CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in modnl.'))
     module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
     obj.add_reference(name_location, module_id)

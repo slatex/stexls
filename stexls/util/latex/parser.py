@@ -298,7 +298,7 @@ class LatexParser:
         self._encoding: str = encoding
         self.source: str = None
         self.root: Optional[Node] = None
-        self.syntax_errors: List[Tuple[Location, Exception]] = None
+        self.syntax_errors: List[Tuple[Location, Exception]] = []
         self.parsed = False
     
     def parse(self):
@@ -322,7 +322,7 @@ class LatexParser:
         walker = antlr4.ParseTreeWalker()
         parse_tree = parser.main()
         walker.walk(listener, parse_tree)
-        self.syntax_errors = error_listener.syntax_errors
+        self.syntax_errors.extend(error_listener.syntax_errors)
         self.root = listener.stack[0]
 
     @staticmethod
@@ -477,9 +477,10 @@ class _LatexParserListener(_LatexParserListener):
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
-            raise LatexException(
+            error = LatexException(
                 f'Environment unbalanced:'
                 f' Expected {expected_env_name} entered ({env.location.range.start.translate(1, 1).format()}) found {actual_env_name} ({_end_env.location.range.start.translate(1, 1).format()})')
+            self.parser.syntax_errors.append((env.location, error))
         self.stack[-1].add(env)
 
     def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
@@ -509,7 +510,7 @@ class _LatexParserListener(_LatexParserListener):
         rarg = self.stack.pop()
         env: Environment = self.stack[-1]
         if not isinstance(env, Environment):
-            raise LatexException(f'Expected stack top to be of type Environment found: {self.stack}')
+            self.parser.syntax_errors.append((env.location, LatexException(f'Expected stack top to be of type Environment found: {self.stack}')))
         if not env.name:
             env.add_name(rarg)
         else:
@@ -522,7 +523,8 @@ class _LatexParserListener(_LatexParserListener):
     def exitArgument(self, ctx:_LatexParser.ArgumentContext):
         node = self.stack.pop()
         if not isinstance(self.stack[-1], Environment):
-            raise LatexException(f'Expected stack top to be of typ Environment: {self.stack}')
+            loc = Location(node.location.uri, node.location.range.end)
+            self.parser.syntax_errors.append((loc, LatexException(f'Expected stack top to be of typ Environment: {self.stack}')))
         self.stack[-1].add_oarg(node)
 
     def enterArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
@@ -533,7 +535,7 @@ class _LatexParserListener(_LatexParserListener):
         name = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            raise LatexException(f'Expected stack to be of type OArgument: {self.stack}')
+            self.parser.syntax_errors.append((oarg.location, LatexException(f'Expected stack to be of type OArgument: {self.stack}')))
         oarg.add_name(name)
 
     def enterArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
@@ -544,5 +546,5 @@ class _LatexParserListener(_LatexParserListener):
         value = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            raise LatexException(f'Expected stack to be of type OArgument: {self.stack}')
+            self.parser.syntax_errors.append((value.location, LatexException(f'Expected stack to be of type OArgument: {self.stack}')))
         oarg.add_value(value)

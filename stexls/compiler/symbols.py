@@ -25,7 +25,7 @@ class AccessModifier(Enum):
     PROTECTED='protected'
 
 
-class DefinitionType:
+class DefinitionType(Enum):
     MODSIG='modsig'
     MODULE='module'
     DEFI='defi'

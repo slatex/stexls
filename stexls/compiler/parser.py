@@ -667,7 +667,7 @@ class ImportModule(ParsedEnvironment):
         return ImportModule(
             location=e.location,
             module=module,
-            mhrepos=named.get('mhrepos'),
+            mhrepos=named.get('mhrepos') or named.get('repos'),
             dir=named.get('dir'),
             path=named.get('path'),
             load=named.get('load'),

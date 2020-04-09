@@ -54,7 +54,7 @@ class Linker:
                 continue
             found = True
             for o in self.build_orders[object]:
-                origin = str(o.module.identifier or o.path)
+                origin = str(o.module.identifier if o.module else o.path)
                 if origin in edges:
                     continue
                 G.node(origin)
@@ -112,6 +112,8 @@ class Linker:
                 )
                 if objects
             }
+            # self.non_objects = {file for file, objects in compiled.items() if not objects}
+            # compiled = {file: objects for file, objects in compiled.items() if objects}
             modules = {
                 file: {
                     object.module: object

@@ -226,7 +226,7 @@ class Linker:
                             module_index=module_index,
                             import_location=location,
                             build_order_cache=build_order_cache,
-                            import_private_imports=False,
+                            import_private_imports=False, #TODO: THIS DOESNT WORK BECAUSE THE CACHED OBJECT MUST BE built AGAIN, BUT CANT BECAUSE IT WAS ALREADY WITHOUT PRIVATE IMPORTS
                             cycle_check=child_cycle_check)
                         if root in build_order_cache:
                             root.errors[location].append(LinkError(f'Invalid build order: "{root.path}" was built multiple times.'))

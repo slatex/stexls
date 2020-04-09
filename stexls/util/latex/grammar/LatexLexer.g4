@@ -54,7 +54,25 @@ MATH_ESCAPE_4: '\\]' -> popMode, type(MATH_ENV);
 MATH_TOKEN_4: '\\'? . -> more;
 
 mode ESCAPE_MODE;
+VERBATIM: ('newenvironment' | 'verbatim' | 'newcommand' | 'lstinline' | 'verb' | 'visible') '*'? -> skip, mode(INLINE_VERBATIM_MODE_WITH_SPECIAL);
 BEGIN: 'begin' -> popMode;
 END: 'end' -> popMode;
 INLINE_ENV_NAME: [a-zA-Z_]+ '*'? -> popMode;
 ESCAPED_TEXT: . -> popMode, type(TEXT);
+
+mode INLINE_VERBATIM_MODE_WITH_SPECIAL;
+
+INLINE_SPECIAL1: '!' ~('!')* '!' -> type(TEXT), popMode;
+INLINE_SPECIAL2: '-' ~('-')* '-' -> type(TEXT), popMode;
+INLINE_SPECIAL3: '|' ~('|')* '|' -> type(TEXT), popMode;
+INLINE_SPECIAL4: '<' ~('>')* '>' -> skip, popMode;
+
+NO_SPECIAL_VERBATIM_FOUND: -> skip, mode(INLINE_VERBATIM_MODE);
+
+mode INLINE_VERBATIM_MODE;
+
+INLINE_VERBATIM_ENV: '\\' [a-zA-Z0-9_]+ -> skip;
+INLINE_VERBATIM_RARG: '{' (INLINE_VERBATIM_RARG | INLINE_VERBATIM_OARG | .)*? '}' -> type(TEXT);
+INLINE_VERBATIM_OARG: '[' (INLINE_VERBATIM_OARG | INLINE_VERBATIM_RARG | .)*? ']' -> skip;
+
+INLINE_VERBATIM_END: -> skip, popMode;

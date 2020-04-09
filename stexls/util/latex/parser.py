@@ -478,8 +478,8 @@ class _LatexParserListener(_LatexParserListener):
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
             raise LatexException(
-                f"Environment unbalanced:"
-                f" Expected {expected_env_name} found {actual_env_name}")
+                f'Environment unbalanced:'
+                f' Expected {expected_env_name} entered ({env.location.range.start.format()}) found {actual_env_name} ({_end_env.location.range.start.format()})')
         self.stack[-1].add(env)
 
     def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):

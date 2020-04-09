@@ -257,15 +257,8 @@ class StexObject:
                     if public or finalize:
                         self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint)
         for id, symbols in other.symbol_table.items():
-            if id in self.symbol_table:
-                if finalize:
-                    for symbol in symbols:
-                        for previous in self.symbol_table[id]:
-                            self.errors[symbol.location].append(
-                                LinkError(
-                                    f'Duplicate symbol definition: '
-                                    f'"{id}" previously defined at "{previous.location.format_link()}"'))
-            self.symbol_table[id].extend(symbols)
+            for symbol in symbols:
+                self.add_symbol(symbol, export=None, severity=LinkError if finalize else None)
         if finalize:
             for path, ranges in other.references.items():
                 for range, id in ranges.items():
@@ -383,13 +376,37 @@ class StexObject:
         """
         self.references[location.uri][location.range] = referenced_id
 
-    def add_symbol(self, symbol: Symbol, export: bool = False, duplicate_allowed: bool = False):
-        symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
-        if not duplicate_allowed:
-            for duplicate in self.symbol_table.get(symbol.qualified_identifier, ()):
-                raise CompilerError(
-                    f'Duplicate symbol definition of {symbol.qualified_identifier}'
-                    f' previously defined at "{duplicate.location.format_link()}"')
+    def add_symbol(self, symbol: Symbol, export: Optional[bool] = False, severity: Optional[type] = CompilerError):
+        if export is not None:
+            symbol.access_modifier = AccessModifier.PUBLIC if export else AccessModifier.PRIVATE
+
+
+        if severity is not None:
+            previous_definitions = self.symbol_table.get(symbol.qualified_identifier, ())
+
+            # Report errors from this file only if this file does not already contain a symdef
+            if symbol.definition_type != DefinitionType.SYMDEF:
+                this_file_contains_symdef_for_id = any(
+                    symbol2.definition_type == DefinitionType.SYMDEF
+                    for symbol2 in previous_definitions
+                    if symbol2.location.uri == symbol.location.uri)
+                if not this_file_contains_symdef_for_id:
+                    for duplicate in previous_definitions:
+                        self.errors[symbol.location].append(severity(
+                            f'Duplicate symbol definition "{symbol.qualified_identifier}": '
+                            f' Previously defined at "{duplicate.location.format_link()}"'))
+
+            # Report errors for all definitions accross multiple files.
+            definitions_in_other_files = (
+                symbol2
+                for symbol2 in previous_definitions
+                if symbol2.location.uri != symbol.location.uri)
+            for definition_in_other_file in definitions_in_other_files:
+                self.errors[symbol.location].append(severity(
+                    f'Duplicate symbol definition "{symbol.qualified_identifier}" from different files:'
+                    f' Previously defined at "{definition_in_other_file.location.format_link()}"'))
+        
+        # finally also add the new symbol
         self.symbol_table[symbol.qualified_identifier].append(symbol)
 
     @staticmethod
@@ -506,7 +523,7 @@ def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
         noverb=symdef.noverb.is_all,
         noverbs=symdef.noverb.langs,
         definition_type=DefinitionType.SYMDEF)
-    obj.add_symbol(symbol, duplicate_allowed=True, export=True)
+    obj.add_symbol(symbol, export=True)
 
 def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('modnl', parsed_file.modsigs, obj)
@@ -536,7 +553,7 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
             module=module,
             noverb=None,
             noverbs=None,
-            definition_type=DefinitionType.DEFI)
+            definition_type=DefinitionType.SYMDEF)
         obj.add_symbol(symbol, export=True)
     else:
         defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)

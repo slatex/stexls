@@ -6,11 +6,11 @@ from stexls.util.location import *
 __all__ = [
     'SymbolType',
     'AccessModifier',
+    'DefinitionType',
     'SymbolIdentifier',
     'Symbol',
-    'ModuleType',
     'ModuleSymbol',
-    'DefSymbol',
+    'VerbSymbol',
 ]
 
 
@@ -22,6 +22,15 @@ class SymbolType(Enum):
 class AccessModifier(Enum):
     PUBLIC='public'
     PRIVATE='private'
+    PROTECTED='protected'
+
+
+class DefinitionType:
+    MODSIG='modsig'
+    MODULE='module'
+    DEFI='defi'
+    SYMDEF='symdef'
+    SYM='sym'
 
 
 class SymbolIdentifier:
@@ -52,18 +61,25 @@ class SymbolIdentifier:
 
 
 class Symbol:
-    def __init__(self, location: Location, identifier: SymbolIdentifier, parent: SymbolIdentifier):
+    def __init__(
+        self,
+        location: Location,
+        identifier: SymbolIdentifier,
+        parent: SymbolIdentifier,
+        definition_type: DefinitionType):
         """ Initializes a symbol.
 
         Parameters:
             location: Location of where this symbol is defined.
             identifier: Identifier of this symbol relative to it's parent.
             parent: The identifier of the parent symbol this symbol is scoped to.
+            definition_type: The way this symbol was defined with.
         """
         self.identifier: SymbolIdentifier = identifier
         self.parent: SymbolIdentifier = parent
         self.location: Location = location
         self.access_modifier: AccessModifier = AccessModifier.PRIVATE
+        self.definition_type = definition_type
 
     @property
     def qualified_identifier(self) -> SymbolIdentifier:
@@ -90,34 +106,29 @@ class Symbol:
         return self.qualified_identifier == other.qualified_identifier
     
     def __repr__(self):
-        return f'[{self.access_modifier.value} Symbol {self.qualified_identifier}]'
-
-
-class ModuleType(Enum):
-    MODSIG='modsig'
-    MODULE='module'
+        return f'[{self.access_modifier.value} {self.definition_type.value} Symbol {self.qualified_identifier}]'
 
 
 class ModuleSymbol(Symbol):
     def __init__(
-        self,
+        self: ModuleSymbol,
         location: Location,
         name: str,
         full_range: Location,
-        module_type: ModuleType):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None)
+        definition_type: DefinitionType):
+        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type)
         self.full_range = full_range
-        self.module_type = module_type
 
 
-class DefSymbol(Symbol):
+class VerbSymbol(Symbol):
     def __init__(
-        self: DefSymbol,
+        self: VerbSymbol,
         location: Location,
         name: str,
         module: SymbolIdentifier,
+        definition_type: DefinitionType,
         noverb: bool = False,
         noverbs: Set[str] = None):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.SYMBOL), module)
+        super().__init__(location, SymbolIdentifier(name, SymbolType.SYMBOL), module, definition_type)
         self.noverb = noverb
         self.noverbs = noverbs or set()

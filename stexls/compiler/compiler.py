@@ -21,7 +21,7 @@ class StexObject:
         # Set of files used to compile this object
         self.files: Set[Path] = set()
         # Dependent module <str> from path hint <Path> referenced at a <Location> and an export flag <bool>
-        self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, ModuleType]]]] = defaultdict(dict)
+        self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, DefinitionType]]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
         # Referenced symbol <str> in file <Path> at written in range <Range>
@@ -245,17 +245,17 @@ class StexObject:
                             self.errors[location].append(
                                 LinkError(f'Missing module: "{path}" does not export module "{module}"'))
                     if module in self.dependencies:
-                        for previous_location, (_, module_type) in self.dependencies[module].get(path, {}).items():
+                        for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
                                     LinkWarning(f'Module "{module}" previously imported at "{previous_location.format_link()}"'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
-                for location, (public, module_type) in locations.items():
+                for location, (public, module_type_hint) in locations.items():
                     # add dependencies only if public, except for the finalize case, then always add
                     # TODO: guse and usemhmodule in modsig -> Do bindings see these imports?
                     if public or finalize:
-                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type)
+                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint)
         for id, symbols in other.symbol_table.items():
             if id in self.symbol_table:
                 if finalize:
@@ -265,8 +265,7 @@ class StexObject:
                                 LinkError(
                                     f'Duplicate symbol definition: '
                                     f'"{id}" previously defined at "{previous.location.format_link()}"'))
-            else:
-                self.symbol_table[id].extend(symbols)
+            self.symbol_table[id].extend(symbols)
         if finalize:
             for path, ranges in other.references.items():
                 for range, id in ranges.items():
@@ -275,20 +274,6 @@ class StexObject:
                         self.errors[location].append(
                             LinkError(f'Undefined symbol: "{id}"'))
                 self.references[path].update(ranges)
-            # for module, paths in self.dependencies.items():
-            #     for path, locations in paths.items():
-            #         for location, (export, module_type) in locations.items():
-            #             if module not in self.symbol_table:
-            #                 access = 'public' if export else 'private'
-            #                 self.errors[location].append(LinkError(f'{access} Module "{module.identifier}" from "{path}" was not imported properly.'))
-            #             else:
-            #                 for module_symbol in self.symbol_table[module]:
-            #                     module_symbol: ModuleSymbol
-            #                     if module_symbol.module_type != module_type:
-            #                         self.errors[location].append(LinkWarning(
-            #                             f'Import expected a module of type {module_type},'
-            #                             f'but "{module_symbol.qualified_identifier}" defined at "{module_symbol.location.format_link()}"'
-            #                             f'is of type {module_symbol.module_type}.'))
 
     def copy(self) -> StexObject:
         ' Creates a copy of all the storage containers. '
@@ -376,7 +361,7 @@ class StexObject:
         location: Location,
         file: Path,
         module_name: str,
-        module_type: ModuleType,
+        module_type_hint: DefinitionType,
         export: bool = False):
         """ Adds a dependency to a imported module in another file.
 
@@ -384,9 +369,10 @@ class StexObject:
             location: Location of where this dependency is created.
             file: Path to file that is referenced in the dependency.
             module_name: Module to import from that file.
+            module_type_hint: Hint for the expected type of the dependency.
             export: Export the imported symbols again.
         """
-        self.dependencies[SymbolIdentifier(module_name, SymbolType.MODULE)].setdefault(file, dict())[location] = (export, module_type)
+        self.dependencies[SymbolIdentifier(module_name, SymbolType.MODULE)].setdefault(file, dict())[location] = (export, module_type_hint)
 
     def add_reference(self, location: Location, referenced_id: SymbolIdentifier):
         """ Adds a reference.
@@ -475,7 +461,7 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
         location=name_location,
         name=modsig.name.text,
         full_range=modsig.location,
-        module_type=ModuleType.MODSIG)
+        definition_type=DefinitionType.MODSIG)
     obj.add_symbol(module, export=True)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
@@ -488,7 +474,7 @@ def _compile_gimport(gimport: GImport, obj: StexObject):
         location=gimport.location,
         file=gimport.path_to_imported_file(obj.root),
         module_name=module_name,
-        module_type=ModuleType.MODSIG,
+        module_type_hint=DefinitionType.MODSIG,
         export=gimport.export)
     obj.add_reference(gimport.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
@@ -498,26 +484,28 @@ def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
         location=importmodule.location,
         file=importmodule.path_to_imported_file(obj.root),
         module_name=module_name,
-        module_type=ModuleType.MODULE,
+        module_type_hint=DefinitionType.MODULE,
         export=importmodule.export)
     obj.add_reference(importmodule.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
-    symbol = DefSymbol(
+    symbol = VerbSymbol(
         location=sym.location,
         name=sym.name,
         module=module.qualified_identifier,
         noverb=sym.noverb.is_all,
-        noverbs=sym.noverb.langs)
+        noverbs=sym.noverb.langs,
+        definition_type=DefinitionType.SYM)
     obj.add_symbol(symbol, export=True)
 
 def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
-    symbol = DefSymbol(
+    symbol = VerbSymbol(
         location=symdef.location,
         name=symdef.name.text,
         module=module.qualified_identifier,
         noverb=symdef.noverb.is_all,
-        noverbs=symdef.noverb.langs)
+        noverbs=symdef.noverb.langs,
+        definition_type=DefinitionType.SYMDEF)
     obj.add_symbol(symbol, duplicate_allowed=True, export=True)
 
 def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
@@ -531,14 +519,24 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
     obj.add_reference(name_location, module_id)
-    obj.add_dependency(name_location, modnl.path, modnl.name.text, module_type=ModuleType.MODSIG)
+    obj.add_dependency(
+        location=name_location,
+        file=modnl.path,
+        module_name=modnl.name.text,
+        module_type_hint=DefinitionType.MODSIG)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
 
 def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create: bool = False):
     if create:
-        symbol = DefSymbol(defi.location, defi.name, module)
+        symbol = VerbSymbol(
+            location=defi.location,
+            name=defi.name,
+            module=module,
+            noverb=None,
+            noverbs=None,
+            definition_type=DefinitionType.DEFI)
         obj.add_symbol(symbol, export=True)
     else:
         defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)
@@ -563,7 +561,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
             location=name_location,
             name=module.id.text,
             full_range=module.location,
-            module_type=ModuleType.MODULE)
+            definition_type=DefinitionType.MODULE)
         obj.add_symbol(module, export=True)
         _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
         _map_compile(_compile_gimport, parsed_file.gimports, obj)

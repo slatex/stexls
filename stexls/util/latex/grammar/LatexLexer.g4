@@ -66,6 +66,7 @@ INLINE_SPECIAL1: '!' ~('!')* '!' -> type(TEXT), popMode;
 INLINE_SPECIAL2: '-' ~('-')* '-' -> type(TEXT), popMode;
 INLINE_SPECIAL3: '|' ~('|')* '|' -> type(TEXT), popMode;
 INLINE_SPECIAL4: '<' ~('>')* '>' -> skip, popMode;
+INLINE_SPECIAL5: '+' ~('+')* '+' -> type(TEXT), popMode;
 
 NO_SPECIAL_VERBATIM_FOUND: -> skip, mode(INLINE_VERBATIM_MODE);
 

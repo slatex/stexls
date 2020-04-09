@@ -11,7 +11,7 @@ else:
 
 def serializedATN():
     with StringIO() as buf:
-        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\33")
+        buf.write("\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3\34")
         buf.write("z\4\2\t\2\4\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b")
         buf.write("\t\b\4\t\t\t\4\n\t\n\4\13\t\13\4\f\t\f\4\r\t\r\4\16\t")
         buf.write("\16\4\17\t\17\4\20\t\20\3\2\7\2\"\n\2\f\2\16\2%\13\2\3")
@@ -66,12 +66,13 @@ class LatexParser ( Parser ):
                      "'['", "']'", "'='", "','", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "'begin'", "'end'", "<INVALID>", "<INVALID>", 
                      "<INVALID>", "<INVALID>", "<INVALID>", "<INVALID>", 
-                     "<INVALID>", "'\\('", "'\\['", "'\\'", "'\\)'", "'\\]'" ]
+                     "<INVALID>", "<INVALID>", "'\\('", "'\\['", "'\\'", 
+                     "'\\)'", "'\\]'" ]
 
     symbolicNames = [ "<INVALID>", "WS", "COMMENT", "OPEN_BRACE", "CLOSED_BRACE", 
                       "OPEN_BRACKET", "CLOSED_BRACKET", "EQUALS", "COMMA", 
                       "MATH_ENV", "TEXT", "VERBATIM", "BEGIN", "END", "INLINE_ENV_NAME", 
-                      "NO_SPECIAL_VERBATIM_FOUND", "INLINE_VERBATIM_ENV", 
+                      "INLINE_SPECIAL4", "NO_SPECIAL_VERBATIM_FOUND", "INLINE_VERBATIM_ENV", 
                       "INLINE_VERBATIM_OARG", "INLINE_VERBATIM_END", "MATH_OPEN_1", 
                       "MATH_OPEN_2", "MATH_OPEN_3", "MATH_OPEN_4", "ESCAPE", 
                       "MATH_ESCAPE_3", "MATH_ESCAPE_4" ]
@@ -111,17 +112,18 @@ class LatexParser ( Parser ):
     BEGIN=12
     END=13
     INLINE_ENV_NAME=14
-    NO_SPECIAL_VERBATIM_FOUND=15
-    INLINE_VERBATIM_ENV=16
-    INLINE_VERBATIM_OARG=17
-    INLINE_VERBATIM_END=18
-    MATH_OPEN_1=19
-    MATH_OPEN_2=20
-    MATH_OPEN_3=21
-    MATH_OPEN_4=22
-    ESCAPE=23
-    MATH_ESCAPE_3=24
-    MATH_ESCAPE_4=25
+    INLINE_SPECIAL4=15
+    NO_SPECIAL_VERBATIM_FOUND=16
+    INLINE_VERBATIM_ENV=17
+    INLINE_VERBATIM_OARG=18
+    INLINE_VERBATIM_END=19
+    MATH_OPEN_1=20
+    MATH_OPEN_2=21
+    MATH_OPEN_3=22
+    MATH_OPEN_4=23
+    ESCAPE=24
+    MATH_ESCAPE_3=25
+    MATH_ESCAPE_4=26
 
     def __init__(self, input:TokenStream, output:TextIO = sys.stdout):
         super().__init__(input, output)

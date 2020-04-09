@@ -226,12 +226,12 @@ class Linker:
                             build_order_cache=build_order_cache,
                             import_private_imports=False,
                             cycle_check=child_cycle_check)
+                        if root in build_order_cache:
+                            root.errors[location].append(LinkError(f'Invalid build order: "{root.path}" was added multiple times.'))
                         for subobject in subobjects:
                             if subobject in objects:
                                 objects.remove(subobject)
                         objects = subobjects + objects
-            if root in build_order_cache:
-                raise LinkError(f'Invalid build order: "{root.path}" was added multiple times.')
             build_order_cache[root] = objects + [root]
         return build_order_cache[root]
 

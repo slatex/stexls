@@ -114,6 +114,9 @@ class Position:
         ' Creates a copy of this position. '
         return Position(self.line, self.character)
 
+    def format(self) -> str:
+        return f'at line {self.line}, column {self.character}'
+
     def __repr__(self):
         return f'[Position ({self.line} {self.character})]'
 

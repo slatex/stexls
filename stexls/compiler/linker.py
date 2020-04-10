@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, Set, Iterator, Optional
+from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict
 from pathlib import Path
 from itertools import chain
 import os, functools
@@ -18,7 +18,7 @@ class Linker:
         self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern))
         self.objects: Dict[Path, List[StexObject]] = {}
         self.module_index: Dict[Path, Dict[str, StexObject]] = {}
-        self.build_orders: Dict[StexObject, List[StexObject]] = {}
+        self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = {}
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
         self.lazy_build_order_update = True
@@ -77,7 +77,7 @@ class Linker:
         for object in self.objects.get(path, ()):
             link: StexObject = self.links.get(object)
             if link:
-                yield link.format()
+                print(link.format())
 
     def update(self, progress=None, use_multiprocessing: bool = True):
         """ Updates the linker.
@@ -136,6 +136,7 @@ class Linker:
             changed_build_orders)
 
         self.module_index.update(modules)
+        self.objects.update(compiled)
 
         changed_links = changed_build_orders | set(
             object
@@ -145,17 +146,17 @@ class Linker:
         errors = {}
         for object in progress(changed_links):
             try:
-                build_order = Linker._make_build_order(
+                build_order = list(Linker._make_build_order(
                     root=object,
                     module_index=self.module_index,
-                    build_order_cache=self.build_orders)
+                    build_order_cache=self.build_orders))
 
                 link = self.link(build_order)
 
                 self.links[object] = link
-            except (CompilerError, LinkError) as e:
+            except LinkError as e:
                 errors[object] = e
-        self.objects.update(compiled)
+                raise
         return errors
 
     def link(self, objects: List[StexObject]) -> StexObject:
@@ -180,10 +181,9 @@ class Linker:
     def _make_build_order(
         root: StexObject,
         module_index: Dict[Path, Dict[str, StexObject]],
-        build_order_cache: Dict[StexObject, List[StexObject]] = None,
+        build_order_cache: Dict[StexObject, OrderedDict[StexObject, bool]] = None,
         import_location: Location = None,
-        import_private_imports: bool = True,
-        cycle_check: Dict[StexObject, Location] = None) -> List[StexObject]:
+        cycle_check: Dict[StexObject, Location] = None) -> OrderedDict[StexObject, bool]:
         """ Recursively creates the build order for a root object.
 
         Parameters:
@@ -191,50 +191,60 @@ class Linker:
             module_index: Index of file->module_name->module_object. Required for the dependencies each module has.
             build_order_cache: Dynamic programming cache which stores the build orders of already visited objects.
             import_location: Optional location the root object was imported from.
-            import_private_imports: If False, imports marked as private will not be visited.
             cycle_check:
                 A dictionary which stores objects and the location they were first imported.
                 Used to detect cycles and raise an exception if one occurs.
         
         Returns:
-            List of objects in the right order for linking. The original root object is the last
-            object in the list.
+            Ordered dictionary of objects in the build order and their export status.
+            Objects listed last are dependent on the objects listed at the front.
         """
         cycle_check = dict() if cycle_check is None else cycle_check
         build_order_cache = dict() if build_order_cache is None else build_order_cache
         if root not in build_order_cache:
-            objects = []
+            build_order: OrderedDict[StexObject, bool] = OrderedDict()
             for module, files in root.dependencies.items():
                 for path, locations in files.items():
                     if path not in module_index:
-                        for loc in locations:
-                            print(f'{loc.format_link()}: File not indexed:"{path}"')
+                        # for location in locations:
+                        #     root.errors[location].append(LinkError(f'Imported file not found: "{path}"'))
                         continue
                     object = module_index[path].get(module)
                     if not object:
-                        print(f'Undefined module: "{module}" not defined in "{path}"')
+                        # for location in locations:
+                        #     root.errors[location].append(LinkError(f'Module not found: "{module.identifier}"'))
                         continue
+                    if len(locations) > 1:
+                        l = list(locations)
+                        for location in l[1:]:
+                            root.errors[location].append(LinkWarning(f'Multiple imports of module "{module}", first imported in {l[0].range.start.format()}.'))
                     for location, (public, _) in locations.items():
-                        if not import_private_imports and not public:
-                            continue # skip private imports
+                        if not public:
+                            build_order[object] = public
+                            continue
                         if object in cycle_check:
                             raise LinkError(f'{location.format_link()}: Cyclic dependency "{module}" imported at "{cycle_check[object].format_link()}"')
                         child_cycle_check = cycle_check.copy() # copy to emulate depth first search
                         child_cycle_check[object] = location
-                        subobjects = Linker._make_build_order(
+                        child_build_order = Linker._make_build_order(
                             root=object,
                             module_index=module_index,
                             import_location=location,
                             build_order_cache=build_order_cache,
-                            import_private_imports=False, #TODO: THIS DOESNT WORK BECAUSE THE CACHED OBJECT MUST BE built AGAIN, BUT CANT BECAUSE IT WAS ALREADY WITHOUT PRIVATE IMPORTS
                             cycle_check=child_cycle_check)
                         if root in build_order_cache:
                             root.errors[location].append(LinkError(f'Invalid build order: "{root.path}" was built multiple times.'))
-                        for subobject in subobjects:
-                            if subobject in objects:
-                                objects.remove(subobject)
-                        objects = subobjects + objects
-            build_order_cache[root] = objects + [root]
+                        new_build_order = OrderedDict()
+                        for child, exported in child_build_order.items():
+                            if not exported:
+                                continue
+                            if child in build_order:
+                                del build_order[child]
+                            new_build_order[child] = public
+                        new_build_order.update(build_order)
+                        build_order = new_build_order
+            build_order[root] = True
+            build_order_cache[root] = build_order
         return build_order_cache[root]
 
     def _gather_removed_files(self) -> Set[Path]:

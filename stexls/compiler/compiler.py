@@ -239,11 +239,11 @@ class StexObject:
                     if not path.is_file():
                         for location in locations:
                             self.errors[location].append(
-                                LinkError(f'Unable to locate file: "{path}"'))
+                                LinkError(f'Not a file: "{path}"'))
                     if module not in self.symbol_table:
                         for location in locations:
                             self.errors[location].append(
-                                LinkError(f'Missing module: "{path}" does not export module "{module}"'))
+                                LinkError(f'Module not exported: "{module.identifier}"'))
                     if module in self.dependencies:
                         for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
@@ -540,7 +540,8 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
         location=name_location,
         file=modnl.path,
         module_name=modnl.name.text,
-        module_type_hint=DefinitionType.MODSIG)
+        module_type_hint=DefinitionType.MODSIG,
+        export=True)
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)

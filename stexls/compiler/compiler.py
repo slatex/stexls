@@ -554,7 +554,7 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
             module=module,
             noverb=None,
             noverbs=None,
-            definition_type=DefinitionType.SYMDEF)
+            definition_type=DefinitionType.SYMDEF) # TODO: Special definition type required?
         obj.add_symbol(symbol, export=True)
     else:
         defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)

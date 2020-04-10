@@ -562,6 +562,12 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
         obj.add_reference(defi.location, symbol_id)
 
 def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
+    if trefi.defi:
+        if module_id is None:
+            raise CompilerError('Invalid drefi configuration: Missing parent module name')
+        id = SymbolIdentifier(trefi.name, SymbolType.SYMBOL)
+        symbol = Symbol(trefi.location, id, module_id, DefinitionType.DEFI) # TODO: DefinitionType.DREFI required?
+        obj.add_symbol(symbol, export=True)
     if trefi.module:
         module_id = SymbolIdentifier(trefi.module.text, SymbolType.MODULE)
         reference_location = trefi.location.replace(positionOrRange=trefi.module.range)

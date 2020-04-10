@@ -382,7 +382,7 @@ class Defi(ParsedEnvironment):
 
 
 class Trefi(ParsedEnvironment):
-    PATTERN = re.compile(r'\\?([ma]*)(t|T)ref([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'\\?([ma]*)(d|D|t|T)ref([ivx]+)(s)?(\*)?')
     def __init__(
         self,
         location: Location,
@@ -391,6 +391,7 @@ class Trefi(ParsedEnvironment):
         m: bool,
         a: bool,
         capital: bool,
+        defi: bool,
         i: int,
         s: bool,
         asterisk: bool):
@@ -400,6 +401,7 @@ class Trefi(ParsedEnvironment):
         self.m = m
         self.a = a
         self.capital = capital
+        self.defi = defi
         self.i = i
         self.s = s
         self.asterisk = asterisk
@@ -463,6 +465,7 @@ class Trefi(ParsedEnvironment):
             m='m' in match.group(1),
             a='a' in match.group(1),
             capital=match.group(2) == 'T',
+            defi=match.group(2) in ('d', 'D'),
             i=roman_numerals.roman2int(match.group(3)),
             s=match.group(4) is not None,
             asterisk=match.group(5) is not None,

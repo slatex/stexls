@@ -39,6 +39,8 @@ def read_location(loc: Location):
 
 while True:
     linker.update(args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
+    with open(args.cache.as_posix(), 'wb') as fd:
+        pickle.dump(linker, fd)
 
     if args.tagfile:
         trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,'})
@@ -59,7 +61,6 @@ while True:
         del lines
 
     if args.file:
-        args.file = args.root / args.file.absolute().relative_to(args.root.absolute())
         linker.info(args.file)
         if args.view_graph:
             linker.view_import_graph(args.file)
@@ -77,9 +78,6 @@ while True:
                                     column=loc.range.start.character,
                                     severity=type(err).__name__,
                                     message=str(err)))
-
-    with open(args.cache.as_posix(), 'wb') as fd:
-        pickle.dump(linker, fd)
 
     if args.continuous:
         print("Press <ENTER> to update...")

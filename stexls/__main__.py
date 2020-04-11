@@ -13,7 +13,7 @@ parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ z
 parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
 parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
 parser.add_argument('--progress-indicator', const=tqdm, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
-parser.add_argument('--no-use-multiprocessing', action='store_false', help='Schalte multiprocessing ab. Macht alles aber langsam.')
+parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
 parser.add_argument('--format', default='{file}:{line}:{column} - {severity} - {message}')
 
 args = parser.parse_args()

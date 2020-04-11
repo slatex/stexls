@@ -72,6 +72,7 @@ Make an alias `alias stexls="python -m stexls"` or create an
 executable script in your path containing the following lines:
 
 > #!/bin/bash
+>
 > python -m stexls $@
 
 # Quirks and Bugs

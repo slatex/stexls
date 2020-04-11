@@ -155,7 +155,6 @@ class Linker:
                 self.links[object] = link
             except LinkError as e:
                 errors[object] = e
-                raise
         return errors
 
     def link(self, objects: List[StexObject]) -> StexObject:
@@ -222,7 +221,8 @@ class Linker:
                             build_order[object] = public
                             continue
                         if object in cycle_check:
-                            raise LinkError(f'{location.format_link()}: Cyclic dependency "{module}" imported at "{cycle_check[object].format_link()}"')
+                            root.errors[location].append(LinkError(f'{location.format_link()}: Cyclic dependency "{module}" imported at "{cycle_check[object].format_link()}"'))
+                            continue
                         child_cycle_check = cycle_check.copy() # copy to emulate depth first search
                         child_cycle_check[object] = location
                         child_build_order = Linker._make_build_order(

@@ -16,6 +16,7 @@ parser.add_argument('--progress-indicator', const=tqdm, default=(lambda x: x), a
 parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
 parser.add_argument('--format', default='{file}:{line}:{column} - {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
 parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')
+parser.add_argument('--continuous', action='store_true', help='Anstatt das programm zu beenden, kannst du <ENTER> drücken, damit noch ein update veranlasst wird. Beende das Program mit CTRL+C.')
 
 args = parser.parse_args()
 
@@ -26,9 +27,6 @@ if args.cache.is_file():
         linker = pickle.load(fd)
 else:
     linker = Linker(root=args.root, file_pattern=args.filter)
-    linker.update(progress=args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
-    with open(args.cache.as_posix(), 'wb') as fd:
-        pickle.dump(linker, fd)
 
 def read_location(loc: Location):
     with open(loc.uri, 'r') as fd:
@@ -39,42 +37,52 @@ def read_location(loc: Location):
             lines = lines[loc.range.start.line:loc.range.end.line+1]
             return '\n'.join(lines)[loc.range.start.character:-loc.range.end.character]
 
-if args.tagfile:
-    trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,'})
-    lines = []
-    for path, objects in linker.objects.items():
-        for object in objects:
-            for id, symbols in object.symbol_table.items():
-                for symbol in symbols:
-                    keyword = symbol.identifier.identifier
-                    file = symbol.location.uri.as_posix()
-                    pattern = read_location(symbol.location).translate(trans)
-                    lines.append(f'{keyword}\t{file}\t/{pattern}\n')
-                    qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
-                    if qkeyword != keyword:
-                        lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
-    with open((args.root/args.tagfile).as_posix(), 'w') as fd:
-        fd.writelines(sorted(lines))
-    del lines
+while True:
+    linker.update(args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
 
+    if args.tagfile:
+        trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,'})
+        lines = []
+        for path, objects in linker.objects.items():
+            for object in objects:
+                for id, symbols in object.symbol_table.items():
+                    for symbol in symbols:
+                        keyword = symbol.identifier.identifier
+                        file = symbol.location.uri.as_posix()
+                        pattern = read_location(symbol.location).translate(trans)
+                        lines.append(f'{keyword}\t{file}\t/{pattern}\n')
+                        qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
+                        if qkeyword != keyword:
+                            lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
+        with open((args.root/args.tagfile).as_posix(), 'w') as fd:
+            fd.writelines(sorted(lines))
+        del lines
 
-if args.file:
-    args.file = args.root / args.file.absolute().relative_to(args.root.absolute())
-    linker.info(args.file)
-    if args.view_graph:
-        linker.view_import_graph(args.file)
-    sys.exit()
+    if args.file:
+        args.file = args.root / args.file.absolute().relative_to(args.root.absolute())
+        linker.info(args.file)
+        if args.view_graph:
+            linker.view_import_graph(args.file)
+    else:
+        for path, objects in linker.objects.items():
+            for object in objects:
+                link = linker.links.get(object, object)
+                if link.errors:
+                    for loc, errs in link.errors.items():
+                        for err in errs:
+                            print(
+                                args.format.format(
+                                    file=loc.uri,
+                                    line=loc.range.start.line,
+                                    column=loc.range.start.character,
+                                    severity=type(err).__name__,
+                                    message=str(err)))
 
-for path, objects in linker.objects.items():
-    for object in objects:
-        link = linker.links.get(object, object)
-        if link.errors:
-            for loc, errs in link.errors.items():
-                for err in errs:
-                    print(
-                        args.format.format(
-                            file=loc.uri,
-                            line=loc.range.start.line,
-                            column=loc.range.start.character,
-                            severity=type(err).__name__,
-                            message=str(err)))
+    with open(args.cache.as_posix(), 'wb') as fd:
+        pickle.dump(linker, fd)
+
+    if args.continuous:
+        print("Press <ENTER> to update...")
+        input()
+    else:
+        break

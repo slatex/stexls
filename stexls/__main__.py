@@ -10,6 +10,7 @@ parser = ArgumentParser()
 parser.add_argument('--cache', required=True, type=Path, help='Datei die als cache verwendet wird und beim neustart des Programms geladen wird. Die Datei kann einfach gelöscht werden ohne dass was schlimmes passiert.')
 parser.add_argument('--root', required=True, type=Path, help='Pfad zum obersten MathHub Ordner, der smglom und MiKoMH usw. enthält.')
 parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ zu <root> sein muss. Default ist "**/*.tex". Erlaubt, dass man selektiv Dateien analysiert. Z.b. "--filter smglom/**/*.tex" würde alle Dateien in smglom analysieren. "--filter **/primes/*.tex" würde alle Dateien auschließlich im Repository "primes" sich anschauen.')
+parser.add_argument('--prune', default=None, help='Gegenteil zu --filter. Alle Dateien, die von diesem glob eingeschlossen werden, werden ignoriert. Glob muss relative zur root sein.')
 parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
 parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
 parser.add_argument('--progress-indicator', const=tqdm, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
@@ -28,7 +29,7 @@ if args.cache.is_file():
     with open(args.cache.as_posix(), 'rb') as fd:
         linker = pickle.load(fd)
 else:
-    linker = Linker(root=args.root, file_pattern=args.filter)
+    linker = Linker(root=args.root, file_pattern=args.filter, ignore=args.prune)
 
 def read_location(loc: Location):
     with open(loc.uri, 'r') as fd:

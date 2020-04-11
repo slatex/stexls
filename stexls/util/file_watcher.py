@@ -1,5 +1,6 @@
 from typing import Dict, List, Awaitable, Union
 from glob import glob
+import fnmatch
 import os
 import itertools
 import collections
@@ -17,13 +18,15 @@ class WorkspaceWatcher:
     Instead, everytime the index is updated, all files inside a folder will be
     checked at once.
     """
-    def __init__(self, pattern: 'glob'):
+    def __init__(self, pattern: 'glob', ignore: 'glob' = None):
         """Initializes the watcher with a pattern of files to watch.
 
         Args:
             pattern (glob): Pattern of files to add.
+            ignore (glob): Ignore pattern of files to not add.
         """
         self.pattern = pattern
+        self.ignore = ignore
         self.files: Dict[Path, float] = {}
 
     def __getstate__(self):
@@ -48,7 +51,10 @@ class WorkspaceWatcher:
         # get list of files & folders in the workspace
         files = glob(self.pattern, recursive=True)
         # filter out files
-        files = filter(os.path.isfile, files)
+        files = set(filter(os.path.isfile, files))
+        if self.ignore:
+            ignored_files = fnmatch.filter(files, self.ignore)
+            files = files.difference(ignored_files)
         # create new index of files and modified times
         files = dict(map(lambda x: (Path(x).absolute(), os.path.getmtime(x)), files))
         # newly created files are the difference of files before and after update

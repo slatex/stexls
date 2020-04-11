@@ -16,15 +16,18 @@ setuptools.setup(
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "Operating System :: POSIX",
     ],
     python_requires='>=3.7',
     install_requires=[
+        'cython',
         'numpy',
         'scikit-learn',
         'antlr4-python3-runtime',
         'nltk',
         'tqdm',
+        'matplotlib',
+        'graphviz',
         #'tensorflow-gpu >= 1.15',
     ]
 )

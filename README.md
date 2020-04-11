@@ -42,6 +42,10 @@ This will output a huge list of all imported files, dependencies, symbols, refer
 errors related to only this file.
 Use this in case you want to know why something doesn't work.
 
+To view the current progress, you can also specify the `--progress-indicator` argument.
+This will display three loading bars. First for parsing, second for compiling and the
+third is for linking.
+
 # Usage
 
 This is a preview build and only has a small portion of commands available:

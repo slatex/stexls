@@ -15,6 +15,7 @@ parser.add_argument('--file', default=None, type=Path, help='Gibt informationen 
 parser.add_argument('--progress-indicator', const=tqdm, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
 parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
 parser.add_argument('--format', default='{file}:{line}:{column} - {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
+parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')
 
 args = parser.parse_args()
 
@@ -59,6 +60,8 @@ if args.tagfile:
 
 if args.file:
     linker.info(args.file)
+    if args.view_graph:
+        linker.view_import_graph(args.file)
     sys.exit()
 
 for path, objects in linker.objects.items():

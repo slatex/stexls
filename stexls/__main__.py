@@ -59,6 +59,7 @@ if args.tagfile:
 
 
 if args.file:
+    args.file = args.root / args.file.absolute().relative_to(args.root.absolute())
     linker.info(args.file)
     if args.view_graph:
         linker.view_import_graph(args.file)

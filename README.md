@@ -49,6 +49,11 @@ third is for linking.
 Use `--view-graph` in junction with `--file` to view the import-graph of that file,
 in case you want to debug something.
 
+
+Use `--continuous` to keep the instance alive, which saves time because the cache
+does not have to be reloaded every time you start the program.
+`--continuous` will promt you to press ENTER after each update to update again.
+
 # Usage
 
 This is a preview build and only has a small portion of commands available:

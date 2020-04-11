@@ -10,6 +10,7 @@ parser = ArgumentParser()
 parser.add_argument('--cache', required=True, type=Path, help='Datei die als cache verwendet wird und beim neustart des Programms geladen wird. Die Datei kann einfach gelöscht werden ohne dass was schlimmes passiert.')
 parser.add_argument('--root', required=True, type=Path, help='Pfad zum obersten MathHub Ordner, der smglom und MiKoMH usw. enthält.')
 parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ zu <root> sein muss. Default ist "**/*.tex". Erlaubt, dass man selektiv Dateien analysiert. Z.b. "--filter smglom/**/*.tex" würde alle Dateien in smglom analysieren. "--filter **/primes/*.tex" würde alle Dateien auschließlich im Repository "primes" sich anschauen.')
+# TODO: prune must be a list..
 parser.add_argument('--prune', default=None, help='Gegenteil zu --filter. Alle Dateien, die von diesem glob eingeschlossen werden, werden ignoriert. Glob muss relative zur root sein.')
 parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
 parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')

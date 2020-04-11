@@ -75,9 +75,8 @@ class Linker:
     def info(self, path: Path) -> Iterator[str]:
         path = path if isinstance(path, Path) else Path(path)
         for object in self.objects.get(path, ()):
-            link: StexObject = self.links.get(object)
-            if link:
-                print(link.format())
+            link: StexObject = self.links.get(object, object)
+            print(link.format())
 
     def update(self, progress=None, use_multiprocessing: bool = True):
         """ Updates the linker.

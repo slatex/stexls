@@ -80,8 +80,8 @@ executable script in your path containing the following lines:
 are only relinked if the set of generated or imported symbols change. This may cause some location data to be messed up, but can be easily fixed by
 writing to the file where the data is wrong.
 2. Nested inline environments are not parsed properly. This causes symbols to not be parsed properly: For example `symbol` in `\\inlinedef{... \\defi{symbol} ...}` will not be added to the exported symbols.
-3. If a module is already imported indirectly by another import it will only display the *module that can be removed*, follwed by
-where the module is already imported (example: `LinkWarning - Module "function-properties/MODULE" previously imported at "MathHub/MiKoMH/GenCS/source/dmath/en/cardinality.tex:3:1"`). This makes it difficult to verify the error but the import stack is not tracked properly. Use `--file {file} --view-graph` to
+3. If a module is already imported indirectly by another import it will only display the *module that can be removed beginning at <location>*, follwed by
+where the module is already imported (example: `<location> - LinkWarning - Module "function-properties/MODULE" previously imported at "MathHub/MiKoMH/GenCS/source/dmath/en/cardinality.tex:3:1"`). This makes it difficult to verify the error but the import stack is not tracked properly. Use `--file {file} --view-graph` to
 get an overview of the import graph in case you want to verify the decision to remove the reported location.
 4. Import statements are only local to the module they are in. But there are some imports that should be local to {omdoc} and {definition} environments.
 These environments are not tracked, which is why there are some false positives like: `LinkWarning - Multiple imports of module "peano-axioms/MODULE", first imported in line 28, column 6.`

@@ -24,6 +24,7 @@ setuptools.setup(
         'scikit-learn',
         'antlr4-python3-runtime',
         'nltk',
+        'tqdm',
         #'tensorflow-gpu >= 1.15',
     ]
 )

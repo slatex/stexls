@@ -86,3 +86,4 @@ get an overview of the import graph in case you want to verify the decision to r
 4. Import statements are only local to the module they are in. But there are some imports that should be local to {omdoc} and {definition} environments.
 These environments are not tracked, which is why there are some false positives like: `LinkWarning - Multiple imports of module "peano-axioms/MODULE", first imported in line 28, column 6.`
 5. Noverbs are tracked but not handled yet.
+6. Some argument given over the cli are bound to the cache. To change them you have to delete the cache.

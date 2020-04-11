@@ -58,3 +58,11 @@ The most common usage is probably the following:
 
 This writes the full error report to stdout and generates the tagfile
 in the root directory.
+
+# Tips
+
+Make an alias `alias stexls="python -m stexls"` or create an
+executable script in your path containing the following lines:
+
+> #!/bin/bash
+> python -m stexls $@

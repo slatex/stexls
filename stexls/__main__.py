@@ -20,6 +20,8 @@ parser.add_argument('--continuous', action='store_true', help='Anstatt das progr
 
 args = parser.parse_args()
 
+args.root = args.root.absolute()
+
 from stexls import *
 
 if args.cache.is_file():

@@ -6,11 +6,11 @@ import tempfile
 
 from antlr4.error.ErrorListener import ErrorListener
 
-from stexls.util.latex.grammar.out.LatexLexer import LatexLexer as _LatexLexer
-from stexls.util.latex.grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
-from stexls.util.latex.grammar.out.LatexParser import LatexParser as _LatexParser
 from stexls.util.location import Location, Range, Position
 
+from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
+from .grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
+from .grammar.out.LatexParser import LatexParser as _LatexParser
 from .exceptions import LatexException
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node', 'SyntaxErrorException']

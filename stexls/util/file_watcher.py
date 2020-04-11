@@ -50,7 +50,7 @@ class WorkspaceWatcher:
         # filter out files
         files = filter(os.path.isfile, files)
         # create new index of files and modified times
-        files = dict(map(lambda x: (Path(x), os.path.getmtime(x)), files))
+        files = dict(map(lambda x: (Path(x).absolute(), os.path.getmtime(x)), files))
         # newly created files are the difference of files before and after update
         new_files = set(files)
         created = new_files.difference(old_files)

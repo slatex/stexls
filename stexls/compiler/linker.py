@@ -13,7 +13,7 @@ __all__ = ['Linker']
 
 class Linker:
     def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex'):
-        self.root = Path(root)
+        self.root = Path(root).resolve().absolute()
         assert self.root.is_dir()
         self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern))
         self.objects: Dict[Path, List[StexObject]] = {}

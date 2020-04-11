@@ -58,7 +58,7 @@ class ParsedFile:
             parser.parse()
             exceptions = parser.syntax_errors or []
             parser.walk(lambda env: _visitor(env, self, exceptions))
-        except (CompilerError, LatexException) as ex:
+        except (CompilerError, LatexException, UnicodeError) as ex:
             exceptions.append((self.default_location, ex))
         for loc, e in exceptions:
             self.errors[loc].append(e)

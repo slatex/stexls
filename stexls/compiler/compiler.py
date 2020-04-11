@@ -3,6 +3,7 @@ from typing import Dict, Optional, Set, Union, Iterable
 from pathlib import Path
 from collections import defaultdict
 
+import difflib
 import itertools
 import functools
 
@@ -229,7 +230,7 @@ class StexObject:
         """
         pass
 
-    def link(self, other: StexObject, finalize: bool = False):
+    def link(self, other: StexObject, finalize: bool = False, explain: bool = True):
         self.files.update(other.files)
         if finalize:
             for location, errors in other.errors.items():
@@ -239,16 +240,27 @@ class StexObject:
                     if not path.is_file():
                         for location in locations:
                             self.errors[location].append(
-                                LinkError(f'Not a file: "{path}"'))
+                                LinkError(f'File targeted by import does not exist: "{path}"'))
                     if module not in self.symbol_table:
+                        modules_set = set(
+                            id.identifier
+                            for id, symbols in self.symbol_table.items()
+                            for symbol in symbols
+                            if symbol.location.uri == path
+                            and symbol.identifier.symbol_type == SymbolType.MODULE)
+                        available_modules = '", "'.join(modules_set)
                         for location in locations:
-                            self.errors[location].append(
-                                LinkError(f'Module not exported: "{module.identifier}"'))
+                            if modules_set:
+                                self.errors[location].append(
+                                    LinkError(f'Module "{module.identifier}" is not exported in the file "{path}": Available modules are "{available_modules}"'))
+                            else:
+                                self.errors[location].append(
+                                    LinkError(f'Module not exported "{module.identifier}" in the file "{path}"'))
                     if module in self.dependencies:
                         for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
-                                    LinkWarning(f'Module "{module}" previously imported at "{previous_location.format_link()}"'))
+                                    LinkWarning(f'Module "{module}" was imported at "{previous_location.format_link()}" and may be removed.'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
                 for location, (public, module_type_hint) in locations.items():
@@ -264,8 +276,14 @@ class StexObject:
                 for range, id in ranges.items():
                     location = Location(path, range)
                     if id not in self.symbol_table:
-                        self.errors[location].append(
-                            LinkError(f'Undefined symbol: "{id}"'))
+                        close_matches = set(difflib.get_close_matches(id.identifier, map(lambda i: i.identifier, self.symbol_table)))
+                        if close_matches and explain:
+                            close_matches_str = '", "'.join(close_matches)
+                            self.errors[location].append(
+                                LinkError(f'Undefined symbol: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))
+                        else:
+                            self.errors[location].append(
+                                LinkError(f'Undefined symbol: "{id}"'))
                 self.references[path].update(ranges)
 
     def copy(self) -> StexObject:

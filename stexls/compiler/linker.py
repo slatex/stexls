@@ -151,10 +151,10 @@ class Linker:
                         build_order_cache=self.build_orders))
                 for object in progressfn(changed_links, "Resolving Dependencies")}
 
-            links = mapfn(self.link, progressfn(new_build_orders.values(), "Linking"))
-        self.links.update(dict(zip(new_build_orders.keys(), links)))
+            links = mapfn(functools.partial(self._link, root=self.root), progressfn(new_build_orders.values(), "Linking"))
 
-    def link(self, objects: List[StexObject]) -> StexObject:
+    @staticmethod
+    def _link(objects: List[StexObject], root: Path) -> StexObject:
         """ Links a list of objects in the order they are provided.
 
         The last object will be treated as the "entry point" and only that
@@ -163,11 +163,12 @@ class Linker:
 
         Paramters:
             objects: List of object to be linked.
+            root: Path to root of the project.
         
         Returns:
             A new object with all the relevant information of all objects.
         """
-        linked = StexObject(self.root)
+        linked = StexObject(root)
         for object in objects:
             linked.link(object, object == objects[-1])
         return linked

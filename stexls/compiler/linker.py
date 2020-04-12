@@ -215,7 +215,8 @@ class Linker:
                             root.errors[location].append(LinkWarning(f'Multiple imports of module "{module}", first imported in {l[0].range.start.format()}.'))
                     for location, (public, _) in locations.items():
                         if not public:
-                            build_order[object] = public
+                            if object not in build_order:
+                                build_order[object] = public
                             continue
                         if object in cycle_check:
                             root.errors[location].append(LinkError(f'{location.format_link()}: Cyclic dependency "{module}" imported at "{cycle_check[object].format_link()}"'))
@@ -235,6 +236,7 @@ class Linker:
                             if not exported:
                                 continue
                             if child in build_order:
+                                public |= build_order[child]
                                 del build_order[child]
                             new_build_order[child] = public
                         new_build_order.update(build_order)

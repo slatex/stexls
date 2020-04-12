@@ -29,10 +29,10 @@ class WorkspaceWatcher:
         self.files: Dict[Path, float] = {}
 
     def __getstate__(self):
-        return (self.pattern, self.files)
+        return (self.pattern, self.ignore, self.files)
 
     def __setstate__(self, state):
-        self.pattern, self.files = state
+        self.pattern, self.ignore, self.files = state
 
     def update(self) -> Changes:
         """Updates the internal file index.

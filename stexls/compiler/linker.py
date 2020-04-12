@@ -78,41 +78,42 @@ class Linker:
             link: StexObject = self.links.get(object, object)
             print(link.format())
 
-    def update(self, progress=None, use_multiprocessing: bool = True):
+    def update(self, progressfn=None, use_multiprocessing: bool = True):
         """ Updates the linker.
 
         Parameters:
-            progress: Optional function which returns it's argument and can be used to track progress.
+            progressfn: Optional function which returns it's argument and can be used to track progressfn.
             use_multiprocessing: Enables multiprocessing with the default number of processes.
         
         Returns:
             List of errors occured during linking.
         """
-        progress = progress or (lambda x: x)
+        progressfn = progressfn or (lambda x: x)
         self.changes = self.watcher.update()
         changed_files = self._gather_changed_files()
         with multiprocessing.Pool() as pool:
             mapfn = pool.map if use_multiprocessing else map
+
             parsed = {
                 file: parsed
                 for file, parsed
                 in zip(
                     changed_files,
-                    mapfn(ParsedFile.parse, progress(list(map(ParsedFile, changed_files))))
+                    mapfn(ParsedFile.parse, progressfn(list(map(ParsedFile, changed_files)), "Parsing"))
                 )
                 if parsed
             }
+
             compiled = {
                 file: objects
                 for file, objects
                 in zip(
                     parsed.keys(),
-                    mapfn(functools.partial(StexObject.compile, self.root), progress(parsed.values()))
+                    mapfn(functools.partial(StexObject.compile, self.root), progressfn(parsed.values(), "Compiling"))
                 )
                 if objects
             }
-            # self.non_objects = {file for file, objects in compiled.items() if not objects}
-            # compiled = {file: objects for file, objects in compiled.items() if objects}
+
             modules = {
                 file: {
                     object.module: object
@@ -122,40 +123,36 @@ class Linker:
                 for file, objects in compiled.items()
             }
 
-        removed_files = self._gather_removed_files()
-        removed_objects = self._gather_removed_objects(removed_files)
-        changed_objects = self._gather_changed_objects(changed_files)
-        changed_build_orders = self._gather_changed_build_orders(modules, changed_objects, removed_objects)
+            removed_files = self._gather_removed_files()
+            removed_objects = self._gather_removed_objects(removed_files)
+            changed_objects = self._gather_changed_objects(changed_files)
+            changed_build_orders = self._gather_changed_build_orders(modules, changed_objects, removed_objects)
 
-        self._cleanup(
-            removed_files,
-            changed_files,
-            removed_objects,
-            changed_objects,
-            changed_build_orders)
+            self._cleanup(
+                removed_files,
+                changed_files,
+                removed_objects,
+                changed_objects,
+                changed_build_orders)
 
-        self.module_index.update(modules)
-        self.objects.update(compiled)
+            self.module_index.update(modules)
 
-        changed_links = changed_build_orders | set(
-            object
-            for objects in compiled.values()
-            for object in objects)
+            self.objects.update(compiled)
 
-        errors = {}
-        for object in progress(changed_links):
-            try:
-                build_order = list(Linker._make_build_order(
-                    root=object,
-                    module_index=self.module_index,
-                    build_order_cache=self.build_orders))
+            changed_links = changed_build_orders | set(
+                object
+                for objects in compiled.values()
+                for object in objects)
 
-                link = self.link(build_order)
+            new_build_orders = {
+                object: list(Linker._make_build_order(
+                        root=object,
+                        module_index=self.module_index,
+                        build_order_cache=self.build_orders))
+                for object in progressfn(changed_links, "Building")}
 
-                self.links[object] = link
-            except LinkError as e:
-                errors[object] = e
-        return errors
+            links = mapfn(self.link, progressfn(new_build_orders.values(), "Linking"))
+        self.links.update(dict(zip(new_build_orders.keys(), links)))
 
     def link(self, objects: List[StexObject]) -> StexObject:
         """ Links a list of objects in the order they are provided.

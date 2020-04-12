@@ -5,32 +5,7 @@ import re
 from tqdm import tqdm
 from pathlib import Path
 
-parser = ArgumentParser()
-
-parser.add_argument('--cache', required=True, type=Path, help='Datei die als cache verwendet wird und beim neustart des Programms geladen wird. Die Datei kann einfach gelöscht werden ohne dass was schlimmes passiert.')
-parser.add_argument('--root', required=True, type=Path, help='Pfad zum obersten MathHub Ordner, der smglom und MiKoMH usw. enthält.')
-parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ zu <root> sein muss. Default ist "**/*.tex". Erlaubt, dass man selektiv Dateien analysiert. Z.b. "--filter smglom/**/*.tex" würde alle Dateien in smglom analysieren. "--filter **/primes/*.tex" würde alle Dateien auschließlich im Repository "primes" sich anschauen.')
-# TODO: prune must be a list..
-parser.add_argument('--prune', default=None, help='Gegenteil zu --filter. Alle Dateien, die von diesem glob eingeschlossen werden, werden ignoriert. Glob muss relative zur root sein.')
-parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
-parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
-parser.add_argument('--progress-indicator', const=tqdm, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
-parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
-parser.add_argument('--format', default='{file}:{line}:{column}: {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
-parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')
-parser.add_argument('--continuous', action='store_true', help='Anstatt das programm zu beenden, kannst du <ENTER> drücken, damit noch ein update veranlasst wird. Beende das Program mit CTRL+C.')
-
-args = parser.parse_args()
-
-args.root = args.root.absolute()
-
 from stexls import *
-
-if args.cache.is_file():
-    with open(args.cache.as_posix(), 'rb') as fd:
-        linker = pickle.load(fd)
-else:
-    linker = Linker(root=args.root, file_pattern=args.filter, ignore=args.prune)
 
 def read_location(loc: Location):
     with open(loc.uri, 'r') as fd:
@@ -41,8 +16,38 @@ def read_location(loc: Location):
             lines = lines[loc.range.start.line:loc.range.end.line+1]
             return '\n'.join(lines)[loc.range.start.character:-loc.range.end.character]
 
+def progress_function(iterable, description = None):
+    i = tqdm(iterable)
+    i.set_description(description)
+    return i
+
+parser = ArgumentParser()
+
+parser.add_argument('--cache', required=True, type=Path, help='Datei die als cache verwendet wird und beim neustart des Programms geladen wird. Die Datei kann einfach gelöscht werden ohne dass was schlimmes passiert.')
+parser.add_argument('--root', required=True, type=Path, help='Pfad zum obersten MathHub Ordner, der smglom und MiKoMH usw. enthält.')
+parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ zu <root> sein muss. Default ist "**/*.tex". Erlaubt, dass man selektiv Dateien analysiert. Z.b. "--filter smglom/**/*.tex" würde alle Dateien in smglom analysieren. "--filter **/primes/*.tex" würde alle Dateien auschließlich im Repository "primes" sich anschauen.')
+# TODO: prune must be a list..
+parser.add_argument('--prune', default=None, help='Gegenteil zu --filter. Alle Dateien, die von diesem glob eingeschlossen werden, werden ignoriert. Glob muss relative zur root sein.')
+parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
+parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
+parser.add_argument('--progress-indicator', const=progress_function, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
+parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
+parser.add_argument('--format', default='{file}:{line}:{column}: {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
+parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')
+parser.add_argument('--continuous', action='store_true', help='Anstatt das programm zu beenden, kannst du <ENTER> drücken, damit noch ein update veranlasst wird. Beende das Program mit CTRL+C.')
+
+args = parser.parse_args()
+
+args.root = args.root.absolute()
+
+if args.cache.is_file():
+    with open(args.cache.as_posix(), 'rb') as fd:
+        linker = pickle.load(fd)
+else:
+    linker = Linker(root=args.root, file_pattern=args.filter, ignore=args.prune)
+
 while True:
-    linker.update(args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
+    linker.update(progressfn=args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
     with open(args.cache.as_posix(), 'wb') as fd:
         pickle.dump(linker, fd)
 

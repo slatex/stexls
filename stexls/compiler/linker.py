@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict
+from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict, Pattern
 from pathlib import Path
 from itertools import chain
 import os, functools
@@ -12,7 +12,7 @@ from .exceptions import *
 __all__ = ['Linker']
 
 class Linker:
-    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex', ignore: 'glob' = None):
+    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex', ignore: Pattern = None):
         self.root = Path(root).resolve().absolute()
         assert self.root.is_dir()
         self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern), ignore=ignore)

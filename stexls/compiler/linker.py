@@ -149,7 +149,7 @@ class Linker:
                         root=object,
                         module_index=self.module_index,
                         build_order_cache=self.build_orders))
-                for object in progressfn(changed_links, "Building")}
+                for object in progressfn(changed_links, "Resolving Dependencies")}
 
             links = mapfn(self.link, progressfn(new_build_orders.values(), "Linking"))
         self.links.update(dict(zip(new_build_orders.keys(), links)))

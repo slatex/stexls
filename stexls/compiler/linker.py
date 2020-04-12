@@ -209,10 +209,11 @@ class Linker:
                         # for location in locations:
                         #     root.errors[location].append(LinkError(f'Module not found: "{module.identifier}"'))
                         continue
-                    if len(locations) > 1:
-                        l = list(locations)
-                        for location in l[1:]:
-                            root.errors[location].append(LinkWarning(f'Multiple imports of module "{module}", first imported in {l[0].range.start.format()}.'))
+                    # TODO: Do multiple import warnings somewhere else
+                    # if len(locations) > 1:
+                    #     l = list(locations)
+                    #     for location in l[1:]:
+                    #         root.errors[location].append(LinkWarning(f'Multiple imports of module "{module}", first imported in {l[0].range.start.format()}.'))
                     for location, (public, _) in locations.items():
                         if not public:
                             if object not in build_order:

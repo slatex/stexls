@@ -94,6 +94,8 @@ while True:
 
     if args.continuous:
         print("Press <ENTER> to update...")
-        input()
+        file = Path(input())
+        if file.is_file():
+            args.file = file
     else:
         break

@@ -23,7 +23,7 @@ class Linker:
         self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = {}
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
-        self.lazy_build_order_update = True
+        self.lazy_build_order_update = False
 
     def get_relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         file = Path(file)
@@ -151,9 +151,17 @@ class Linker:
                 for object in changed_links
             }
 
-            build_orders: Dict[StexObject, List[StexObject]] = dict(zip(changed_links, map(
-                lambda obj: Linker._make_build_order(obj, module_index=self.module_index, errors=links[obj].errors),
-                progressfn(changed_links, "Resolving Dependencies"))))
+            _build_orders = list(map(
+                lambda obj: Linker._make_build_order(
+                    current=obj,
+                    module_index=self.module_index,
+                    errors=links[obj].errors,
+                    root=obj),
+                progressfn(changed_links, "Resolving Dependencies")
+            ))
+
+            assert len(changed_links) == len(_build_orders)
+            build_orders: Dict[StexObject, List[StexObject]] = dict(zip(changed_links, _build_orders))
             
             self.build_orders.update(build_orders)
 
@@ -174,23 +182,18 @@ class Linker:
 
     @staticmethod
     def _make_build_order(
-        root: StexObject,
+        current: StexObject,
         module_index: Dict[Path, Dict[str, StexObject]],
         errors: Dict[Location, List[Exception]]=None,
-        current: StexObject = None,
         build_order_cache: Dict[StexObject, List[StexObject]] = None,
-        cyclic_stack: Dict[StexObject, Location] = None) -> List[StexObject]:
+        cyclic_stack: OrderedDict[StexObject, Location] = None,
+        at_toplevel: bool = True,
+        root: StexObject = None) -> List[StexObject]:
         """ Recursively creates the build order for a root object. """
 
         # create default values if none are given
         build_order_cache = dict() if build_order_cache is None else build_order_cache
-        cyclic_stack = dict() if cyclic_stack is None else cyclic_stack
-
-        # current object is the root object if not specified
-        if not current:
-            cyclic_stack[root] = Location('<root>', Position(0, 0))
-
-        current = current or root
+        cyclic_stack: OrderedDict[StexObject, Location] = OrderedDict() if cyclic_stack is None else cyclic_stack
 
         # check if the build order for the current not was created yet
         if current not in build_order_cache:
@@ -202,14 +205,14 @@ class Linker:
                 for path, locations in files.items():
                     # ignore not indexed files or if the file does not contain the module
                     if path not in module_index:
-                        if current == root:
+                        if at_toplevel:
                             e = LinkError(f'Not a file: "{path}" does not exist or does not export any modules.')
                             for location in locations:
                                 errors[location].append(e)
                         continue
 
                     if module not in module_index[path]:
-                        if current == root:
+                        if at_toplevel:
                             e = LinkError(f'Imported module not exported: "{module}" is not exported by "{path}"')
                             for location in locations:
                                 errors[location].append(e)
@@ -219,7 +222,7 @@ class Linker:
 
                     # Warning for multiple imports of same module
                     import_locations = list(locations)
-                    if current == root and len(import_locations) > 1:
+                    if at_toplevel and len(import_locations) > 1:
                         first_import = import_locations[0].range.start.translate(1, 1).format()
                         for import_location in import_locations[1:]:
                             e = LinkWarning(f'Multiple imports of module "{module}" in this file, first imported in {first_import}.')
@@ -228,28 +231,34 @@ class Linker:
                     # For each import location
                     for location, (public, _) in locations.items():
                         # ignore if not public (except if the root imports it)
-                        if not public and current != root:
-                            #print(location.format_link(), "IGNORE PRIVATE", module)
+                        if not public:
+                            if not at_toplevel:
+                                continue
+                            while object in build_order:
+                                build_order.remove(object)
+                            build_order = [object] + build_order
                             continue
-                        
+
                         # ignore if already on stack
                         if object in cyclic_stack:
-                            #print(location.format_link(), "CYCLIC", module)
-                            # except if currently the root: then give error message
-                            if current == root:
-                                e = LinkError(f'Cyclic dependency of module "{module.identifier}": First imported at "{cyclic_stack[object].format_link()}"')
-                                errors.setdefault(location, []).append(e)
+                            cycle = list(cyclic_stack.items())
+                            cycle_end_module, cycle_end = cycle[-1]
+                            if not at_toplevel and cycle_end_module == root:
+                                cycle_module, cycle_start = cycle[0]
+                                errors[cycle_start].append(
+                                    LinkError(f'Cyclic dependency: Import of "{cycle_module.module.identifier}" creates cycle at "{cycle_end.format_link()}"'))
                             continue
 
                         # Stack the child at the current location and compute it's build order
                         cyclic_stack[object] = location
                         child_build_order: List[StexObject] = Linker._make_build_order(
-                            root=root,
-                            module_index=module_index,
                             current=object,
+                            module_index=module_index,
                             errors=errors,
                             build_order_cache=build_order_cache,
-                            cyclic_stack=cyclic_stack)
+                            cyclic_stack=cyclic_stack,
+                            at_toplevel=False,
+                            root=root)
                         del cyclic_stack[object]
 
                         # remove duplicates

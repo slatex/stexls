@@ -1,0 +1,1 @@
+python3 -mstexls --cache /tmp/stex-cache.bin --root ~/localmh/MathHub --progress-indicator --prune ODK > errors.txt

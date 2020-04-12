@@ -230,7 +230,13 @@ class StexObject:
         """
         pass
 
-    def link(self, other: StexObject, finalize: bool = False, explain: bool = True):
+    def link_list(self, others: StexObject) -> StexObject:
+        ' Links this with a list of other object, where the last object will be the finalized one. Returns self '
+        for other in others:
+            self.link(other, finalize=other==others[-1])
+        return self
+
+    def link(self, other: StexObject, finalize: bool = False):
         self.files.update(other.files)
         if finalize:
             for location, errors in other.errors.items():
@@ -249,23 +255,28 @@ class StexObject:
                             if symbol.location.uri == path
                             and symbol.identifier.symbol_type == SymbolType.MODULE)
                         available_modules = '", "'.join(modules_set)
+                        close_matches = difflib.get_close_matches(module.identifier, modules_set)
+                        if close_matches:
+                            close_matches = '", "'.join(close_matches)
                         for location in locations:
-                            if modules_set:
+                            if close_matches:
                                 self.errors[location].append(
-                                    LinkError(f'Module "{module.identifier}" is not exported in the file "{path}": Available modules are "{available_modules}"'))
+                                    LinkError(f'Not a module: "{module.identifier}", did you maybe mean "{available_modules}"?'))
+                            elif modules_set:
+                                self.errors[location].append(
+                                    LinkError(f'Not a module: "{module.identifier}", available modules are "{available_modules}"'))
                             else:
                                 self.errors[location].append(
-                                    LinkError(f'Module not exported "{module.identifier}" in the file "{path}"'))
+                                    LinkError(f'Not a module: "{module.identifier}"'))
                     if module in self.dependencies:
                         for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
-                                    LinkWarning(f'Module "{module}" was imported at "{previous_location.format_link()}" and may be removed.'))
+                                    LinkWarning(f'Module "{module}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
                 for location, (public, module_type_hint) in locations.items():
                     # add dependencies only if public, except for the finalize case, then always add
-                    # TODO: guse and usemhmodule in modsig -> Do bindings see these imports?
                     if public or finalize:
                         self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint)
         for id, symbols in other.symbol_table.items():
@@ -277,7 +288,7 @@ class StexObject:
                     location = Location(path, range)
                     if id not in self.symbol_table:
                         close_matches = set(difflib.get_close_matches(id.identifier, map(lambda i: i.identifier, self.symbol_table)))
-                        if close_matches and explain:
+                        if close_matches:
                             close_matches_str = '", "'.join(close_matches)
                             self.errors[location].append(
                                 LinkError(f'Undefined symbol: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))

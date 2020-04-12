@@ -3,6 +3,8 @@ from pathlib import Path
 from itertools import chain
 import os, functools
 import multiprocessing
+import difflib
+from collections import defaultdict
 from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
 from .parser import ParsedFile
@@ -144,108 +146,123 @@ class Linker:
                 for objects in compiled.values()
                 for object in objects)
 
-            new_build_orders = {
-                object: list(Linker._make_build_order(
-                        root=object,
-                        module_index=self.module_index,
-                        build_order_cache=self.build_orders))
-                for object in progressfn(changed_links, "Resolving Dependencies")}
+            links: Dict[StexObject, StexObject] = {
+                object: StexObject(self.root)
+                for object in changed_links
+            }
 
-            links = mapfn(functools.partial(self._link, root=self.root), progressfn(new_build_orders.values(), "Linking"))
+            build_orders: Dict[StexObject, List[StexObject]] = dict(zip(changed_links, map(
+                lambda obj: Linker._make_build_order(obj, module_index=self.module_index, errors=links[obj].errors),
+                progressfn(changed_links, "Resolving Dependencies"))))
+            
+            self.build_orders.update(build_orders)
 
-    @staticmethod
-    def _link(objects: List[StexObject], root: Path) -> StexObject:
-        """ Links a list of objects in the order they are provided.
-
-        The last object will be treated as the "entry point" and only that
-        object will give it's non-build-list related information to the
-        linked object.
-
-        Paramters:
-            objects: List of object to be linked.
-            root: Path to root of the project.
+            assert len(links.values()) == len(build_orders.values())
+            args = progressfn(list(zip(links.values(), build_orders.values())), "Linking")
+            if use_multiprocessing and len(links.values()) != 0 and len(build_orders.values()) != 0:
+                links: List[StexObject] = pool.starmap(StexObject.link_list, args)
+            else:
+                links: List[StexObject] = [
+                    l.link_list(order)
+                    for l, order
+                    in args
+                ]
         
-        Returns:
-            A new object with all the relevant information of all objects.
-        """
-        linked = StexObject(root)
-        for object in objects:
-            linked.link(object, object == objects[-1])
-        return linked
+        links: Dict[StexObject, StexObject] = dict(zip(changed_links, links))
+
+        self.links.update(links)
 
     @staticmethod
     def _make_build_order(
         root: StexObject,
         module_index: Dict[Path, Dict[str, StexObject]],
-        build_order_cache: Dict[StexObject, OrderedDict[StexObject, bool]] = None,
-        import_location: Location = None,
-        cycle_check: Dict[StexObject, Location] = None) -> OrderedDict[StexObject, bool]:
-        """ Recursively creates the build order for a root object.
+        errors: Dict[Location, List[Exception]]=None,
+        current: StexObject = None,
+        build_order_cache: Dict[StexObject, List[StexObject]] = None,
+        cyclic_stack: Dict[StexObject, Location] = None) -> List[StexObject]:
+        """ Recursively creates the build order for a root object. """
 
-        Parameters:
-            root: Root StexObject the build order will be created for.
-            module_index: Index of file->module_name->module_object. Required for the dependencies each module has.
-            build_order_cache: Dynamic programming cache which stores the build orders of already visited objects.
-            import_location: Optional location the root object was imported from.
-            cycle_check:
-                A dictionary which stores objects and the location they were first imported.
-                Used to detect cycles and raise an exception if one occurs.
-        
-        Returns:
-            Ordered dictionary of objects in the build order and their export status.
-            Objects listed last are dependent on the objects listed at the front.
-        """
-        cycle_check = dict() if cycle_check is None else cycle_check
+        # create default values if none are given
         build_order_cache = dict() if build_order_cache is None else build_order_cache
-        if root not in build_order_cache:
-            build_order: OrderedDict[StexObject, bool] = OrderedDict()
-            for module, files in root.dependencies.items():
+        cyclic_stack = dict() if cyclic_stack is None else cyclic_stack
+
+        # current object is the root object if not specified
+        if not current:
+            cyclic_stack[root] = Location('<root>', Position(0, 0))
+
+        current = current or root
+
+        # check if the build order for the current not was created yet
+        if current not in build_order_cache:
+            # new build order
+            build_order: List[StexObject] = list()
+
+            # check all dependencies
+            for module, files in current.dependencies.items():
                 for path, locations in files.items():
+                    # ignore not indexed files or if the file does not contain the module
                     if path not in module_index:
-                        # for location in locations:
-                        #     root.errors[location].append(LinkError(f'Imported file not found: "{path}"'))
+                        if current == root:
+                            e = LinkError(f'Not a file: "{path}" does not exist or does not export any modules.')
+                            for location in locations:
+                                errors[location].append(e)
                         continue
-                    object = module_index[path].get(module)
-                    if not object:
-                        # for location in locations:
-                        #     root.errors[location].append(LinkError(f'Module not found: "{module.identifier}"'))
+
+                    if module not in module_index[path]:
+                        if current == root:
+                            e = LinkError(f'Imported module not exported: "{module}" is not exported by "{path}"')
+                            for location in locations:
+                                errors[location].append(e)
                         continue
-                    # TODO: Do multiple import warnings somewhere else
-                    # if len(locations) > 1:
-                    #     l = list(locations)
-                    #     for location in l[1:]:
-                    #         root.errors[location].append(LinkWarning(f'Multiple imports of module "{module}", first imported in {l[0].range.start.format()}.'))
+
+                    object = module_index[path][module]
+
+                    # Warning for multiple imports of same module
+                    import_locations = list(locations)
+                    if current == root and len(import_locations) > 1:
+                        first_import = import_locations[0].range.start.translate(1, 1).format()
+                        for import_location in import_locations[1:]:
+                            e = LinkWarning(f'Multiple imports of module "{module}" in this file, first imported in {first_import}.')
+                            errors.setdefault(import_location, []).append(e)
+
+                    # For each import location
                     for location, (public, _) in locations.items():
-                        if not public:
-                            if object not in build_order:
-                                build_order[object] = public
+                        # ignore if not public (except if the root imports it)
+                        if not public and current != root:
+                            #print(location.format_link(), "IGNORE PRIVATE", module)
                             continue
-                        if object in cycle_check:
-                            root.errors[location].append(LinkError(f'{location.format_link()}: Cyclic dependency "{module}" imported at "{cycle_check[object].format_link()}"'))
+                        
+                        # ignore if already on stack
+                        if object in cyclic_stack:
+                            #print(location.format_link(), "CYCLIC", module)
+                            # except if currently the root: then give error message
+                            if current == root:
+                                e = LinkError(f'Cyclic dependency of module "{module.identifier}": First imported at "{cyclic_stack[object].format_link()}"')
+                                errors.setdefault(location, []).append(e)
                             continue
-                        child_cycle_check = cycle_check.copy() # copy to emulate depth first search
-                        child_cycle_check[object] = location
-                        child_build_order = Linker._make_build_order(
-                            root=object,
+
+                        # Stack the child at the current location and compute it's build order
+                        cyclic_stack[object] = location
+                        child_build_order: List[StexObject] = Linker._make_build_order(
+                            root=root,
                             module_index=module_index,
-                            import_location=location,
+                            current=object,
+                            errors=errors,
                             build_order_cache=build_order_cache,
-                            cycle_check=child_cycle_check)
-                        if root in build_order_cache:
-                            root.errors[location].append(LinkError(f'Invalid build order: "{root.path}" was built multiple times.'))
-                        new_build_order = OrderedDict()
-                        for child, exported in child_build_order.items():
-                            if not exported:
-                                continue
-                            if child in build_order:
-                                public |= build_order[child]
-                                del build_order[child]
-                            new_build_order[child] = public
-                        new_build_order.update(build_order)
-                        build_order = new_build_order
-            build_order[root] = True
-            build_order_cache[root] = build_order
-        return build_order_cache[root]
+                            cyclic_stack=cyclic_stack)
+                        del cyclic_stack[object]
+
+                        # remove duplicates
+                        for child in child_build_order:
+                            while child in build_order:
+                                build_order.remove(child)
+
+                        # Move all imports from the child to the front
+                        build_order = child_build_order + build_order
+            # cache the current object
+            build_order_cache[current] = build_order + [current]
+        # return cached build order
+        return build_order_cache[current]
 
     def _gather_removed_files(self) -> Set[Path]:
         ' Returns set of files that were removed from the workspace. '

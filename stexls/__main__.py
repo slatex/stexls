@@ -39,6 +39,11 @@ args = parser.parse_args()
 
 args.root = args.root.absolute()
 
+if args.file:
+    if not args.file.is_file():
+        raise ValueError(f'Not a file: --file "{args.file}"')
+    args.file = args.file.absolute()
+
 if args.cache.is_file():
     with open(args.cache.as_posix(), 'rb') as fd:
         linker = pickle.load(fd)

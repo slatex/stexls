@@ -76,7 +76,11 @@ while True:
     if args.file:
         linker.info(args.file)
         if args.view_graph:
-            linker.view_import_graph(args.file)
+            try:
+                linker.view_import_graph(args.file)
+            except Exception as e:
+                print(f'Exception raised when viewing import graph of file "{args.file}"')
+                print(f'{type(e).__name__}: {e}')
     else:
         for path, objects in linker.objects.items():
             for object in objects:
@@ -93,9 +97,9 @@ while True:
                                     message=str(err)))
 
     if args.continuous:
-        print("Press <ENTER> to update...")
-        file = Path(input())
-        if file.is_file():
+        print("Press <ENTER> to update and view error dump. Enter a file and press <ENTER> to instead show the single dump.")
+        file = Path(input()).expanduser().resolve().absolute()
+        if file:
             args.file = file
         else:
             args.file = None

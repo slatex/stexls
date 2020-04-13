@@ -20,14 +20,11 @@ setuptools.setup(
     ],
     python_requires='>=3.7',
     install_requires=[
-        'cython',
-        'numpy',
-        'scikit-learn',
-        'antlr4-python3-runtime',
-        'nltk',
+        'antlr4-python3-runtime>=4.8',
         'tqdm',
-        'matplotlib',
-        'graphviz',
-        #'tensorflow-gpu >= 1.15',
-    ]
+    ],
+    extras_require = {
+        'ml': ['cython', 'numpy', 'scikit-learn', 'nltk', 'tensorflow'],
+        'graphs': ['matplotlib', 'graphviz'],
+    }
 )

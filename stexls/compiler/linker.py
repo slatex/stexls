@@ -10,6 +10,7 @@ from stexls.util.file_watcher import WorkspaceWatcher
 from .parser import ParsedFile
 from .compiler import StexObject
 from .exceptions import *
+import pkg_resources
 
 __all__ = ['Linker']
 
@@ -24,6 +25,7 @@ class Linker:
         self.links: Dict[StexObject, StexObject] = {}
         self.changes = None
         self.lazy_build_order_update = False
+        self.version = pkg_resources.require("stexls")[0].version
 
     def get_relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         file = Path(file)
@@ -90,6 +92,9 @@ class Linker:
         Returns:
             List of errors occured during linking.
         """
+        version = pkg_resources.require('stexls')[0].version
+        if self.version != version:
+            raise ValueError(f'This linker was created with a different version "{self.version}": Current version is "{version}". Delete the cache to resolve this.')
         progressfn = progressfn or (lambda x, _: x)
         self.changes = self.watcher.update()
         changed_files = self._gather_changed_files()

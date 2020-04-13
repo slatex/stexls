@@ -84,7 +84,7 @@ class Linker:
         """ Updates the linker.
 
         Parameters:
-            progressfn: Optional function which returns it's argument and can be used to track progressfn.
+            progressfn: Optional function which takes an iterator and a description and returns an identity iterator which tracks progress.
             use_multiprocessing: Enables multiprocessing with the default number of processes.
         
         Returns:

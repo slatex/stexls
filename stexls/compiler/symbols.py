@@ -42,8 +42,8 @@ class SymbolIdentifier:
     def typed_identifier(self):
         return self.identifier + '/' + self.symbol_type.name
     
-    def prepend(self, identifier: str):
-        return SymbolIdentifier(identifier + '.' + self.identifier, self.symbol_type)
+    def prepend(self, identifier: str, delim: str = '?'):
+        return SymbolIdentifier(identifier + delim + self.identifier, self.symbol_type)
     
     def append(self, identifier: SymbolIdentifier):
         return identifier.prepend(self.identifier)
@@ -91,7 +91,7 @@ class Symbol:
         >>> symbol.identifier'
         'child/SYMBOL'
         >>> symbol.qualified_identifier
-        'parent.child/SYMBOL'
+        'parent?child/SYMBOL'
         """
         if self.parent is None:
             return self.identifier

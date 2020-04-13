@@ -97,5 +97,7 @@ while True:
         file = Path(input())
         if file.is_file():
             args.file = file
+        else:
+            args.file = None
     else:
         break

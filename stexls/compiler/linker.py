@@ -193,6 +193,7 @@ class Linker:
         build_order_cache: Dict[StexObject, List[StexObject]] = None,
         cyclic_stack: OrderedDict[StexObject, Location] = None,
         at_toplevel: bool = True,
+        usemodule_on_stack: bool = False,
         root: StexObject = None) -> List[StexObject]:
         """ Recursively creates the build order for a root object. """
 
@@ -235,35 +236,39 @@ class Linker:
 
                     # For each import location
                     for location, (public, _) in locations.items():
-                        # ignore if not public (except if the root imports it)
-                        if not public:
-                            if not at_toplevel:
-                                continue
-                            while object in build_order:
-                                build_order.remove(object)
-                            build_order = [object] + build_order
+                        # ignore all private imports that are not done by the toplevel root
+                        if not public and not at_toplevel:
                             continue
 
-                        # ignore if already on stack
+                        # If a importmodule of the root is done while the stack is marked as "usemodule used", ignore the import
+                        if usemodule_on_stack and object == root:
+                            continue
+
+                        # Check if cycle created 
                         if object in cyclic_stack:
                             cycle = list(cyclic_stack.items())
                             cycle_end_module, cycle_end = cycle[-1]
+                            # Create error only if we are at the toplevel for a clean diagnostic report
                             if not at_toplevel and cycle_end_module == root:
                                 cycle_module, cycle_start = cycle[0]
                                 errors[cycle_start].append(
                                     LinkError(f'Cyclic dependency: Import of "{cycle_module.module.identifier}" creates cycle at "{cycle_end.format_link()}"'))
+                            # always ignore this import to prevent infinite loops
                             continue
 
                         # Stack the child at the current location and compute it's build order
                         cyclic_stack[object] = location
                         child_build_order: List[StexObject] = Linker._make_build_order(
-                            current=object,
-                            module_index=module_index,
-                            errors=errors,
-                            build_order_cache=build_order_cache,
-                            cyclic_stack=cyclic_stack,
+                            current=object, # next object
+                            module_index=module_index, # inherit
+                            errors=errors, # inherit
+                            build_order_cache=build_order_cache, # inherit
+                            cyclic_stack=cyclic_stack, # inherit
+                            # only the toplevel call _make_build_order can do certain things
                             at_toplevel=False,
-                            root=root)
+                            root=root, # inherit
+                            # mark child as used if any import in the stack is imported via "usemodule"
+                            usemodule_on_stack=usemodule_on_stack or not public)
                         del cyclic_stack[object]
 
                         # remove duplicates

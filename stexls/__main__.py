@@ -29,7 +29,7 @@ parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ z
 parser.add_argument('--prune', default=None, type=re.compile, help='Ein Regex, dass das gegenteil zu --filter macht. Ein Dateinamen, dass dieses Regex beinhaltet, wird ignoriert.')
 parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
 parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
-parser.add_argument('--progress-indicator', const=progress_function, default=(lambda x: x), action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
+parser.add_argument('--progress-indicator', const=progress_function, default=None, action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
 parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
 parser.add_argument('--format', default='{file}:{line}:{column}: {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
 parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')

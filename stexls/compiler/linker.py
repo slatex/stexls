@@ -90,7 +90,7 @@ class Linker:
         Returns:
             List of errors occured during linking.
         """
-        progressfn = progressfn or (lambda x: x)
+        progressfn = progressfn or (lambda x, _: x)
         self.changes = self.watcher.update()
         changed_files = self._gather_changed_files()
         with multiprocessing.Pool() as pool:

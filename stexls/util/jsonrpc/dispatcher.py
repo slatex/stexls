@@ -136,7 +136,7 @@ class Dispatcher:
         return dispatcher, conn_task
 
     @classmethod
-    async def open_stdio_connection(
+    async def open_ipc_connection(
         dispatcher_factory: type,
         input_fd: int = 'stdin',
         output_fd: int = 'stdout',
@@ -144,7 +144,7 @@ class Dispatcher:
         charset: str = None,
         newline: str = '\r\n',
         loop = None) -> Tuple[Dispatcher, asyncio.Task]:
-        """ Opens connection using stdio.
+        """ Opens connection using a pipe or file.
 
         Takes input and output file descriptors and uses
         them as the streams for the json connection.

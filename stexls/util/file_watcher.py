@@ -1,6 +1,7 @@
 from typing import Dict, List, Awaitable, Union, Pattern
 from glob import glob
 import os
+import re
 import itertools
 import collections
 import asyncio
@@ -25,7 +26,7 @@ class WorkspaceWatcher:
             ignore: Ignore REGEX pattern of files to not add.
         """
         self.pattern = pattern
-        self.ignore = ignore
+        self.ignore = ignore if isinstance(ignore, re.Pattern) else re.compile(ignore)
         self.files: Dict[Path, float] = {}
 
     def update(self) -> Changes:

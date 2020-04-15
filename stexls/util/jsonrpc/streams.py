@@ -29,16 +29,15 @@ class JsonStream:
         self.reader = reader
         self.writer= writer
         self.encoding = encoding
-        self.charset = charset
+        self.charset = charset or encoding
         self.newline = newline.encode(charset or encoding)
 
     def write_json(self, o: Any):
         ' Serializes the object with json and writes it to the underlying stream writer. '
         serialized = json.dumps(o, default=lambda x: x.__dict__)
-        charset = self.charset or self.encoding
-        content = serialized.encode(charset)
+        content = serialized.encode(self.charset)
         length_header = f'Content-Length: {len(content)}'.encode(self.encoding)
-        type_header = f'Content-Type: application/json; charset={charset}'.encode(self.encoding)
+        type_header = f'Content-Type: application/json; charset={self.charset}'.encode(self.encoding)
         self.writer.write(length_header + self.newline)
         self.writer.write(type_header + self.newline)
         self.writer.write(self.newline + content)

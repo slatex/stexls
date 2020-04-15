@@ -16,7 +16,8 @@ class JsonStream:
             writer: asyncio.StreamWriter,
             encoding: str = 'utf-8',
             charset: str = None,
-            newline: str = '\r\n'):
+            newline: str = '\r\n',
+            with_content_type: bool = False):
         """ Initializes the json stream with underlying stream reader and writer.
 
         Args:
@@ -25,21 +26,25 @@ class JsonStream:
             encoding: Encoding to use for header.
             charset: Encoding to use for body content. Same as encoding if None.
             newline: Which character should be used to represent newlines.
+            with_content_type: Serialize with Content-Type header
         """
         self.reader = reader
         self.writer= writer
         self.encoding = encoding
         self.charset = charset or encoding
         self.newline = newline.encode(charset or encoding)
+        self.with_content_type = with_content_type
 
     def write_json(self, o: Any):
         ' Serializes the object with json and writes it to the underlying stream writer. '
-        serialized = json.dumps(o, default=lambda x: x.__dict__)
+        serialized = json.dumps(o, default=lambda x: dict(x.__dict__.items()))
         content = serialized.encode(self.charset)
         length_header = f'Content-Length: {len(content)}'.encode(self.encoding)
-        type_header = f'Content-Type: application/json; charset={self.charset}'.encode(self.encoding)
+        if self.with_content_type:
+            type_header = f'Content-Type: application/json; charset={self.charset}'.encode(self.encoding)
         self.writer.write(length_header + self.newline)
-        self.writer.write(type_header + self.newline)
+        if self.with_content_type:
+            self.writer.write(type_header + self.newline)
         self.writer.write(self.newline + content)
 
     async def read_json(self) -> Any:

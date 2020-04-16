@@ -320,7 +320,7 @@ class Range:
 
 class Location:
     def __init__(self, uri: Path, positionOrRange: Union[Position, Range]):
-        self.uri = uri
+        self.uri = Path(uri)
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)
         else:

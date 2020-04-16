@@ -3,6 +3,7 @@ represent positions or ranges in files. '''
 from __future__ import annotations
 from typing import Union, Optional, List, Tuple
 from pathlib import Path
+import urllib
 
 __all__ = ['Position', 'Range', 'Location']
 
@@ -119,6 +120,13 @@ class Position:
 
     def __repr__(self):
         return f'[Position ({self.line} {self.character})]'
+
+    def to_json(self) -> dict:
+        return { 'line': self.line, 'character': self.character }
+    
+    @staticmethod
+    def from_json(json: dict) -> Position:
+        return Position(json['line'], json['character'])
 
 
 class Range:
@@ -302,6 +310,13 @@ class Range:
     def __repr__(self):
         return f'[Range ({self.start.line} {self.start.character}) ({self.end.line} {self.end.character})]'
 
+    def to_json(self) -> dict:
+        return { 'start': self.start.to_json(), 'end': self.end.to_json() }
+
+    @staticmethod
+    def from_json(json: dict) -> Range:
+        return Range(Position.from_json(json['start']), Position.from_json(json['end']))
+
 
 class Location:
     def __init__(self, uri: Path, positionOrRange: Union[Position, Range]):
@@ -339,3 +354,12 @@ class Location:
 
     def __repr__(self):
         return f'[Location uri="{self.uri}" range={self.range}]'
+    
+    def to_json(self) -> dict:
+        return {'uri': str(self.uri.as_uri()), 'range': self.range.to_json() }
+    
+    @staticmethod
+    def from_json(json: dict) -> Location:
+        p = urllib.parse.urlparse(json['uri'])
+        return Location(Path(p.path), Range.from_json(json['range']))
+

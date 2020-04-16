@@ -1,12 +1,19 @@
-''' The location module contains simple structures that
-represent positions or ranges in files. '''
+# Copied from https://microsoft.github.io/language-server-protocol/specifications/specification-3-14/
 from __future__ import annotations
-from typing import Union, Optional, List, Tuple
+from typing import Optional, Union, Any, List, NewType, Generic, T, Tuple
 from pathlib import Path
 import urllib
 
-__all__ = ['Position', 'Range', 'Location']
 
+class Undefined:
+    def __bool__(self) -> bool:
+        return False
+
+undefined = Undefined()
+
+DocumentUri = NewType('DocumentUri', str)
+
+ProgressToken = NewType('ProgressToken', Union[int, str])
 
 class Position:
     ' Representation of a zero indexed line and character inside a file. '''
@@ -319,13 +326,17 @@ class Range:
 
 
 class Location:
-    def __init__(self, uri: Path, positionOrRange: Union[Position, Range]):
-        self.uri = Path(uri)
+    def __init__(self, uri: DocumentUri, positionOrRange: Union[Position, Range]):
+        self.uri = DocumentUri(uri)
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)
         else:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
+
+    @property
+    def path(self) -> Path:
+        return Path(urllib.parse.urlparse(self.uri).path)
 
     def contains(self, loc: Union[Location, Range, Position]) -> bool:
         if isinstance(loc, (Range, Position)):
@@ -334,11 +345,13 @@ class Location:
 
     def format_link(self, relative: bool = False, relative_to: Path = None) -> str:
         range = self.range.translate(1, 1)
-        path = self.uri.relative_to(relative_to or Path.cwd()) if relative else self.uri
+        path = self.path
+        if relative:
+            path = path.relative_to(relative_to or Path.cwd())
         path = path.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
         return f'{path}:{range.start.line}:{range.start.character}'
 
-    def replace(self, uri: Path = None, positionOrRange: Union[Position, Range] = None):
+    def replace(self, uri: DocumentUri = None, positionOrRange: Union[Position, Range] = None):
         ''' Creates a copy of this location and replaces uri and/or range if given.
 
         Parameters:
@@ -356,10 +369,216 @@ class Location:
         return f'[Location uri="{self.uri}" range={self.range}]'
     
     def to_json(self) -> dict:
-        return {'uri': str(self.uri.as_uri()), 'range': self.range.to_json() }
+        return { 'uri': str(self.uri), 'range': self.range.to_json() }
     
     @staticmethod
     def from_json(json: dict) -> Location:
-        p = urllib.parse.urlparse(json['uri'])
-        return Location(Path(p.path), Range.from_json(json['range']))
+        return Location(DocumentUri(json['uri']), Range.from_json(json['range']))
 
+
+class ProgressParams(Generic[T]):
+    def __init__(
+        self,
+        token: ProgressToken,
+        value: T):
+        self.token = token
+        self.value = value
+
+
+class LocationLink:
+    def __init__(
+        self,
+        targetUri: DocumentUri,
+        targetRange: Range,
+        targetSelectionRange: Range,
+        originalSelectionRange: Optional[Range] = undefined):
+        self.targetUri = targetUri
+        self.targetRange = targetRange
+        self.targetSelectionRange = targetSelectionRange
+        if originalSelectionRange:
+            self.originalSelectionRange = originalSelectionRange
+
+    def to_json(self) -> dict:
+        json = { 'targetUri': str(self.targetUri), 'targetRange': self.targetRange.to_json(), 'targetSelectionRange': self.targetRange.to_json() }
+        if hasattr(self, 'originalSelectionRange'):
+            json['originalSelectionRange'] = self.originalSelectionRange.to_json()
+        return json
+
+    @staticmethod
+    def from_json(json: dict) -> Location:
+        return LocationLink(
+            DocumentUri(json['targetUri']),
+            Range.from_json(json['targetRange']),
+            Range.from_json(json['targetSelectionRange']),
+            undefined if 'originalSelectionRange' not in json else Range.from_json(json['originalSelectionRange']))
+
+
+class TextDocumentIdentifier:
+    def __init__(self, uri: DocumentUri):
+        self.uri = uri
+
+    def to_json(self) -> dict:
+        return { 'uri': str(self.uri) }
+
+    @staticmethod
+    def from_json(json: dict) -> TextDocumentIdentifier:
+        return TextDocumentIdentifier(DocumentUri(json['uri']))
+
+
+class DiagnosticSeverity:
+    Error: int = 1
+    Warning: int = 2
+    Information: int = 3
+    Hint: int = 4
+
+
+class DiagnosticRelatedInformation:
+    def __init__(
+        self,
+        location: Location,
+        message: str):
+        self.location = location
+        self.message = message
+
+
+class DiagnosticTag:
+    Unnecessary: int = 1
+    Deprecated: int = 2
+
+
+class Diagnostic:
+    def __init__(
+        self,
+        range: Range,
+        message: str,
+        severity: DiagnosticSeverity = undefined,
+        code: Union[int, str] = undefined,
+        source: str = undefined,
+        tags: List[DiagnosticTag] = undefined,
+        relatedInformation: List[DiagnosticRelatedInformation] = undefined):
+        self.range = range
+        if severity is not None:
+            self.severity = severity
+        if code is not None:
+            self.code = code
+        if source is not None:
+            self.source = source
+        self.message = message
+        if relatedInformation is not None:
+            self.relatedInformation = relatedInformation
+
+
+class Command:
+    def __init__(
+        self,
+        title: str,
+        command: str,
+        arguments: Optional[List[Any]]):
+        self.title = title
+        self.command = command
+        if arguments is not None:
+            self.arguments = arguments
+
+
+class TextEdit:
+    def __init__(
+        self,
+        range: Range,
+        newText: str):
+        self.range = range
+        self.newText = newText
+
+
+class TextDocumentEdit:
+    def __init__(
+        self,
+        textDocument: 'VersionedTextDocumentIdentifier',
+        edits: List[TextEdit]):
+        self.textDocument = textDocument
+        self.edits = edits
+
+
+class CreateFileOptions:
+    def __init__(
+        self,
+        overwrite: bool = undefined,
+        ignoreIfExists: bool = undefined):
+        if overwrite not in (None, undefined):
+            self.overwrite = overwrite
+        if ignoreIfExists not in (None, undefined):
+            self.ignoreIfExists = ignoreIfExists
+
+
+class CreateFile:
+    def __init__(
+        self,
+        uri: str,
+        options: CreateFileOptions = undefined):
+        self.kind = 'create'
+        self.uri = uri
+        if options not in (None, undefined):
+            self.options = options
+
+
+class RenameFileOptions:
+    def __init__(
+        self,
+        overwrite: bool = undefined,
+        ignoreIfExists: bool = undefined):
+        if overwrite not in (None, undefined):
+            self.overwrite = overwrite
+        if ignoreIfExists not in (None, undefined):
+            self.ignoreIfExists = ignoreIfExists
+
+
+class RenameFile:
+    def __init__(
+        self,
+        oldUri: DocumentUri,
+        newUri: DocumentUri,
+        options: RenameFileOptions = undefined):
+        self.kind = 'rename'
+        self.oldUri = oldUri
+        self.newUri = newUri
+        if options not in (None, undefined):
+            self.options = options
+
+
+class DeleteFileOptions:
+    def __init__(
+        self,
+        recursive: Optional[bool],
+        ignoreIfNotExists: Optional[bool]):
+        if recursive is not None:
+            self.recursive = recursive
+        if ignoreIfNotExists is not None:
+            self.ignoreIfExists = ignoreIfNotExists
+
+
+class DeleteFile:
+    def __init__(
+        self,
+        uri: str,
+        options: Optional[DeleteFileOptions]):
+        self.uri = uri
+        if options is not None:
+            self.options = options
+
+
+class MessageType:
+    Error: int = 1
+    Warning: int = 2
+    Info: int = 3
+    Log: int = 4
+
+
+class MessageActionItem:
+    def __init__(self, title: str):
+        self.title = title
+
+    def to_json(self) -> dict:
+        return { 'title': self.title }
+
+    @staticmethod
+    def from_json(json: dict) -> MessageActionItem:
+        return MessageActionItem(json['title'])

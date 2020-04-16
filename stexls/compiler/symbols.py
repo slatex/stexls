@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Set
 from enum import Enum
-from stexls.util.location import *
+from stexls.util.vscode import Location
 
 __all__ = [
     'SymbolType',

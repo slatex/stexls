@@ -7,7 +7,7 @@ import itertools
 import multiprocessing
 
 from stexls.util import roman_numerals
-from stexls.util.location import Location, Range, Position
+from stexls.util.vscode import *
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
 from stexls.util.latex.exceptions import LatexException
 
@@ -110,9 +110,9 @@ class ParsedFile:
             lines = content.split('\n')
             num_lines = len(lines)
             len_last_line = len(lines[-1])
-            return Location(self.path, Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
+            return Location(self.path.as_uri(), Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
         except:
-            return Location(self.path, Position(0, 0))
+            return Location(self.path.as_uri(), Position(0, 0))
 
 def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[Location, Exception]]):
     try:
@@ -279,7 +279,7 @@ class Modnl(ParsedEnvironment):
             >>> binding.path.as_posix()
             'path/to/glossary/repo/source/module/module.tex'
         '''
-        return (self.location.uri.parents[0] / (self.name.text + '.tex'))
+        return (self.location.path.parents[0] / (self.name.text + '.tex'))
     
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[Modnl]:
@@ -598,8 +598,8 @@ class ImportModule(ParsedEnvironment):
         self.export = export
         self.mh_mode = mh_mode
         self.asterisk = asterisk
-        if len(list(self.location.uri.parents)) < 4:
-            raise CompilerWarning(f'Unable to compile module with a path depth of less than 4: {self.location.uri}')
+        if len(list(self.location.path.parents)) < 4:
+            raise CompilerWarning(f'Unable to compile module with a path depth of less than 4: {self.location.path}')
         if mh_mode:
             # mhimport{}
             # mhimport[dir=..]{}
@@ -628,26 +628,27 @@ class ImportModule(ParsedEnvironment):
         load: Optional[str],
         filename: str):
         if load:
-            return root / load / filename
+            return (root / load / filename).expanduser().resolve().absolute()
         if not mhrepo and not path and not dir:
-            return current_file
+            return (current_file).expanduser().resolve().absolute()
         if mhrepo:
             source: Path = root / mhrepo / 'source'
         else:
             source: Path = root / list(current_file.relative_to(root).parents)[-4]
         assert source.name == 'source', "invalid source directory"
         if dir:
-            return source / dir / filename
+            result = source / dir / filename
         elif path:
-            return source / (path + '.tex')
+            result = source / (path + '.tex')
         else:
             raise ValueError('Invalid arguments: "path" or "dir" must be specified if "mhrepo" is.')
+        return result.expanduser().resolve().absolute()
 
     def path_to_imported_file(self, root: Path = None) -> Path:
         root = Path.cwd() if root is None else Path(root)
         return ImportModule.build_path_to_imported_module(
             root or Path.cwd(),
-            self.location.uri,
+            self.location.path,
             self.mhrepos.text if self.mhrepos else None,
             self.path.text if self.path else None,
             self.dir.text if self.dir else None,
@@ -700,9 +701,11 @@ class GImport(ParsedEnvironment):
         root = Path.cwd() if root is None else Path(root)
         filename = self.module.text.strip() + '.tex'
         if self.repository is None:
-            return self.location.uri.parents[0] / filename
-        source = root / self.repository.text.strip() / 'source'
-        return source / filename
+            path = self.location.path.parents[0] / filename
+        else:
+            source = root / self.repository.text.strip() / 'source'
+            path = source / filename
+        return path.expanduser().resolve().absolute()
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GImport]:

@@ -7,7 +7,7 @@ import difflib
 import itertools
 import functools
 
-from stexls.util.location import *
+from stexls.util.vscode import DocumentUri, Position, Range, Location
 
 from .parser import *
 from .symbols import *
@@ -25,7 +25,7 @@ class StexObject:
         self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, DefinitionType]]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
-        # Referenced symbol <str> in file <Path> at written in range <Range>
+        # Referenced symbol <SymbolIdentifier> in file <Path> in range <Range>
         self.references: Dict[Path, Dict[Range, SymbolIdentifier]] = defaultdict(dict)
         # Dict of list of errors generated at specific location
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
@@ -65,7 +65,8 @@ class StexObject:
         """
         symbols = set(self.symbol_table.get(SymbolIdentifier(id, SymbolType.SYMBOL), ())) | set(self.symbol_table.get(SymbolIdentifier, SymbolType.MODULE), ())
         if unique and len(symbols) > 1:
-            raise CompilerError(f'Multiple symbols with id "{id}" found: {symbols}')
+            str_locations = '", "'.join(symbol.location.format_link() for symbol in symbols)
+            raise CompilerError(f'Multiple symbols with id "{id}" found: {str_locations}')
         if must_resolve and not symbols:
             raise CompilerError(f'Unable to resolve id "{id}".')
         return symbols
@@ -101,12 +102,12 @@ class StexObject:
             path,
             dir,
             None,
-            context).as_posix()
+            context).expanduser().resolve().as_posix()
         return [
             symbol.identifier
             for id, symbols in self.symbol_table.items()
             for symbol in symbols
-            if symbol.location.uri.as_posix().startswith(path)
+            if symbol.location.path.startswith(path)
             if str(symbol.identifier).startswith(context)
         ]
     

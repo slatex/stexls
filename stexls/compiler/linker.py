@@ -5,10 +5,11 @@ import os, functools
 import multiprocessing
 import difflib
 from collections import defaultdict
-from stexls.util.location import Location, Position
 from stexls.util.file_watcher import WorkspaceWatcher
+from stexls.util.vscode import *
 from .parser import ParsedFile
 from .compiler import StexObject
+from .symbols import Symbol
 from .exceptions import *
 import pkg_resources
 
@@ -28,7 +29,7 @@ class Linker:
         self.version = pkg_resources.require("stexls")[0].version
 
     def get_relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
-        file = Path(file)
+        file = Path(file).as_uri()
         if file not in self.objects:
             raise ValueError(f'File not found: "{file}"')
         for object in self.objects[file]:
@@ -40,6 +41,35 @@ class Linker:
             else:
                 if object in self.links:
                     yield self.links[object]
+
+    def get_definitions(self, file: Path, line: int, column: int) -> Tuple[List[Range], List[Symbol]]:
+        references = []
+        definitions = []
+        position = Position(line, column)
+        for object in self.get_relevant_objects(Path(file).as_uri(), line, column):
+            for id, symbols in object.symbol_table.items():
+                for symbol in symbols:
+                    if symbol.location.contains(position) and symbol not in definitions:
+                        references.append(symbol.location.range)
+                        definitions.append(symbol)
+            for path, ranges in object.references.items():
+                for range, id in ranges.items():
+                    if not range.contains(position):
+                        continue
+                    for symbol in object.symbol_table.get(id, ()):
+                        if symbol not in definitions:
+                            references.append(range)
+                            definitions.append(symbol)
+        return references, definitions
+
+    def get_references(self, symbol: Symbol) -> List[Location]:
+        references = []
+        for path, objects in self.objects.items():
+            for object in objects:
+                for range, id in object.references.get(symbol.location.uri, {}).items():
+                    if symbol.identifier == id:
+                        references.append(Location(path, range))
+        return references
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:
@@ -53,7 +83,7 @@ class Linker:
         G = Digraph()
         edges = dict()
         found = False
-        for object in self.objects.get(Path(file), ()):
+        for object in self.objects.get(Path(file).as_uri(), ()):
             if module_name and (not object.module or object.module != module_name):
                 continue
             found = True
@@ -219,7 +249,7 @@ class Linker:
 
                     if module not in module_index[path]:
                         if at_toplevel:
-                            e = LinkError(f'Imported module not exported: "{module}" is not exported by "{path}"')
+                            e = LinkError(f'Imported module not exported: "{module.identifier}" is not exported by "{path}"')
                             for location in locations:
                                 errors[location].append(e)
                         continue
@@ -231,7 +261,7 @@ class Linker:
                     if at_toplevel and len(import_locations) > 1:
                         first_import = import_locations[0].range.start.translate(1, 1).format()
                         for import_location in import_locations[1:]:
-                            e = LinkWarning(f'Multiple imports of module "{module}" in this file, first imported in {first_import}.')
+                            e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, first imported in {first_import}.')
                             errors.setdefault(import_location, []).append(e)
 
                     # For each import location

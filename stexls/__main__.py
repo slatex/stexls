@@ -1,107 +1,126 @@
-from argparse import ArgumentParser
+''' This is the entrypoint for the language server.
+The server can be used by using tcp sockets or
+it can simply communicate with another process using
+stdin and stdout. After the starver has started,  '''
+from typing import Pattern
+import logging
+import asyncio
 import pickle
-import sys
 import re
 from tqdm import tqdm
 from pathlib import Path
 
-from stexls import *
+from stexls.util.cli import Cli, command, Arg
+from stexls.util.vscode import *
+from stexls.compiler import Linker
+from stexls.lsp.server import Server
 
-def read_location(loc: Location):
-    with open(loc.uri, 'r') as fd:
-        lines = fd.readlines()
-        if loc.range.is_single_line():
-            return lines[loc.range.start.line][loc.range.start.character:loc.range.end.character]
-        else:
-            lines = lines[loc.range.start.line:loc.range.end.line+1]
-            return '\n'.join(lines)[loc.range.start.character:-loc.range.end.character]
+log = logging.getLogger(__name__)
 
-def progress_function(iterable, description = None):
-    i = tqdm(iterable)
-    i.set_description(description)
-    return i
+@command(
+    root=Arg(type=Path, help="Root directory. Required to resolve imports."),
+    file_pattern=Arg('--file-pattern', '-f', default='**/*.tex', type=str, help='Glob pattern of files to add to watchlist.'),
+    ignore=Arg('--ignore', '-i', default=None, type=re.compile, help='Regex pattern that if a file path contains this, it will not be watched for changes.'),
+    progress_indicator=Arg('--progress-indicator', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
+    no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
+    no_cache=Arg('--no-cache', action='store_true', help="Disables cache usage."),
+    format=Arg('--format', '-F', help='Formatter for the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".'),
+    tagfile=Arg('--tagfile', '-t', const=Path('./tags'), action='store', default=None, nargs='?', type=Path, help='Optional name for a vim tagfile. If no argument is specified "./tags" will be used. Defaults to no tagfile generated.'),
+    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel. Defaults to "error".'),
+    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile. Defaults to "/tmp/stexls.log".')
+)
+async def linter(
+    root: Path,
+    file_pattern: 'glob' = '**/*.tex',
+    ignore: Pattern = None,
+    progress_indicator: bool = False,
+    no_use_multiprocessing: bool = False,
+    no_cache: bool = False,
+    format: str = '{file}:{line}:{column} {severity} - {message}',
+    tagfile: Path = None,
+    loglevel: str = 'error',
+    logfile: Path = '/tmp/stexls.log'):
+    """ Run the language server in linter mode. In this mode only diagnostics and progress are printed to stdout. """
 
-parser = ArgumentParser()
+    logging.basicConfig(
+        filename=logfile,
+        level=getattr(logging, loglevel.upper()))
+    
+    root = root.expanduser().resolve().absolute()
 
-parser.add_argument('--cache', required=True, type=Path, help='Datei die als cache verwendet wird und beim neustart des Programms geladen wird. Die Datei kann einfach gelöscht werden ohne dass was schlimmes passiert.')
-parser.add_argument('--root', required=True, type=Path, help='Pfad zum obersten MathHub Ordner, der smglom und MiKoMH usw. enthält.')
-parser.add_argument('--filter', default='**/*.tex', help='Ein glob der relativ zu <root> sein muss. Default ist "**/*.tex". Erlaubt, dass man selektiv Dateien analysiert. Z.b. "--filter smglom/**/*.tex" würde alle Dateien in smglom analysieren. "--filter **/primes/*.tex" würde alle Dateien auschließlich im Repository "primes" sich anschauen.')
-parser.add_argument('--prune', default=None, type=re.compile, help='Ein Regex, dass das gegenteil zu --filter macht. Ein Dateinamen, dass dieses Regex beinhaltet, wird ignoriert.')
-parser.add_argument('--tagfile', default=None, const='tags', action='store', nargs='?', type=Path, help='Optionaler Pfad, der raltive zu <root> ist, für ein Tagfile. "tags" wird verwendet, wenn kein Wert übergeben wurde. Kein Tagfile wird generiert, wenn diese Option nicht angegeben wird.')
-parser.add_argument('--file', default=None, type=Path, help='Gibt informationen nur für eine Datei aus. Wenn diese Option nicht angegeben ist, werden alle Fehler für alle Dateien ausgegeben.')
-parser.add_argument('--progress-indicator', const=progress_function, default=None, action='store_const', help='Gib eine Fortschrittsanzeige aus, während geupdated wird.')
-parser.add_argument('--no-use-multiprocessing', action='store_true', help='Schalte multiprocessing ab. Macht alles aber langsam.')
-parser.add_argument('--format', default='{file}:{line}:{column}: {severity} - {message}', help='Format für die Fehlermeldungen. Mögliche variablen sind: {file}, {line}, {column}, {severity} und {message}. Das Standartformat verwende alle diese Variablen und muss nicht angepasst werden, wenn du alle informationen haben willst.')
-parser.add_argument('--view-graph', action='store_true', help='Zeigt den Importgraphen der Datei, die mit --file spezifiziert wurde.')
-parser.add_argument('--continuous', action='store_true', help='Anstatt das programm zu beenden, kannst du <ENTER> drücken, damit noch ein update veranlasst wird. Beende das Program mit CTRL+C.')
+    log.debug('Setting linker root to "%s"', root)
 
-args = parser.parse_args()
+    cache = root / 'stexls-cache.bin'
 
-args.root = args.root.absolute()
+    log.debug('Linker cache at "%s"', cache)
 
-if args.file:
-    if not args.file.is_file():
-        raise ValueError(f'Not a file: --file "{args.file}"')
-    args.file = args.file.absolute()
+    linker = None
+    if not no_cache and cache.is_file():
+        log.info('Loading linker from cache')
+        try:
+            with open(cache, 'rb') as fd:
+                linker = pickle.load(fd)
+        except:
+            log.exception('Failed to load state from cachefile "%s"', cache)
 
-if args.cache.is_file():
-    with open(args.cache.as_posix(), 'rb') as fd:
-        linker = pickle.load(fd)
-else:
-    linker = Linker(root=args.root, file_pattern=args.filter, ignore=args.prune)
+    if linker is None:
+        log.info('No cached linker found or an exception occured: Creating new linker')
+        linker = Linker(root, file_pattern=file_pattern, ignore=ignore)
 
-while True:
-    linker.update(progressfn=args.progress_indicator, use_multiprocessing=not args.no_use_multiprocessing)
-    with open(args.cache.as_posix(), 'wb') as fd:
-        pickle.dump(linker, fd)
+    def progressfn(it, title):
+        log.debug('Progress "%s":%i', title, len(it))
+        if progress_indicator:
+            it = tqdm(it)
+            it.set_description(title)
+        return it
 
-    if args.tagfile:
-        trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,'})
-        lines = []
-        for path, objects in linker.objects.items():
-            for object in objects:
-                for id, symbols in object.symbol_table.items():
-                    for symbol in symbols:
-                        keyword = symbol.identifier.identifier
-                        file = symbol.location.uri.as_posix()
-                        pattern = read_location(symbol.location).translate(trans)
-                        lines.append(f'{keyword}\t{file}\t/{pattern}\n')
-                        qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
-                        if qkeyword != keyword:
-                            lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
-        with open((args.root/args.tagfile).as_posix(), 'w') as fd:
-            fd.writelines(sorted(lines))
-        del lines
+    log.info('Updating linker...')
+    linker.update(progressfn=progressfn, use_multiprocessing=not no_use_multiprocessing)
 
-    if args.file:
-        linker.info(args.file)
-        if args.view_graph:
-            try:
-                linker.view_import_graph(args.file)
-            except Exception as e:
-                print(f'Exception raised when viewing import graph of file "{args.file}"')
-                print(f'{type(e).__name__}: {e}')
-    else:
-        for path, objects in linker.objects.items():
-            for object in objects:
-                link = linker.links.get(object, object)
-                if link.errors:
-                    for loc, errs in link.errors.items():
-                        for err in errs:
-                            print(
-                                args.format.format(
-                                    file=loc.uri,
-                                    line=loc.range.start.line,
-                                    column=loc.range.start.character,
-                                    severity=type(err).__name__,
-                                    message=str(err)))
+    if not no_cache:
+        with open(cache, 'wb') as fd:
+            log.info('Dumping linker cache to "%s"', cache)
+            pickle.dump(linker, fd)
 
-    if args.continuous:
-        print("Press <ENTER> to update and view error dump. Enter a file and press <ENTER> to instead show the single dump.")
-        file = Path(input()).expanduser().resolve().absolute()
-        if file:
-            args.file = file
-        else:
-            args.file = None
-    else:
-        break
+    log.debug('Dumping diagnostics of %i objects.', len(linker.objects))
+    for path, objects in linker.objects.items():
+        for object in objects:
+            link = linker.links.get(object, object)
+            if link.errors:
+                for loc, errs in link.errors.items():
+                    for err in errs:
+                        print(
+                            format.format(
+                                file=str(loc.path),
+                                line=loc.range.start.line + 1,
+                                column=loc.range.start.character + 1,
+                                severity=type(err).__name__,
+                                message=str(err)))
+
+@command(
+    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use. Choices are "ipc" or "tcp". Default is "ipc".'),
+    host=Arg('--host', '-H', help='Hostname to bind server to. Defaults to "localhost".'),
+    port=Arg('--port', '-p', help='Port number to bind server to. Defaults to 0'),
+    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel. Defaults to "error".'),
+    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile. Defaults to "/tmp/stexls.log"'),
+)
+async def lsp(
+    transport_kind: str = 'ipc',
+    host: str = 'localhost',
+    port: int = 0,
+    loglevel: str = 'error',
+    logfile: Path = '/tmp/stexls.log'):
+    ' Start the server using stdin and stdout as communication ports. '
+    logging.basicConfig(
+        filename=logfile,
+        level=getattr(logging, loglevel.upper()))
+    if transport_kind == 'ipc':
+        _, connection = await Server.open_ipc_connection()
+    elif transport_kind == 'tcp':
+        _, connection = await Server.open_connection(host=host, port=port)
+    await connection
+
+
+if __name__ == '__main__':
+    cli = Cli([linter, lsp], __doc__)
+    asyncio.run(cli.dispatch())

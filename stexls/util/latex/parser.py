@@ -6,7 +6,7 @@ import tempfile
 
 from antlr4.error.ErrorListener import ErrorListener
 
-from stexls.util.location import Location, Range, Position
+from stexls.util.vscode import Location, Range, Position
 
 from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
 from .grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
@@ -53,7 +53,7 @@ class Node:
         " Location of this node in the file. "
         begin = self.parser.offset_to_position(self.begin)
         end = self.parser.offset_to_position(self.end)
-        return Location(self.parser.file, Range(begin, end))
+        return Location(Path(self.parser.file).as_uri(), Range(begin, end))
 
     @property
     def content_range(self) -> Range:
@@ -419,12 +419,12 @@ class _SyntaxErrorErrorListener(ErrorListener):
             file (str): Filename
         """
         super().__init__()
-        self.file = file
+        self.file = Path(file)
         self.syntax_errors: List[Tuple[Location, SyntaxErrorException]] = []
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
         position = Position(line, column)
-        location = Location(Path(self.file), position)
+        location = Location(self.file.as_uri(), position)
         exception = SyntaxErrorException(msg)
         self.syntax_errors.append((location, exception))
 

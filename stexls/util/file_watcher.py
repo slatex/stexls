@@ -26,7 +26,7 @@ class WorkspaceWatcher:
             ignore: Ignore REGEX pattern of files to not add.
         """
         self.pattern = pattern
-        self.ignore = ignore if isinstance(ignore, re.Pattern) else re.compile(ignore)
+        self.ignore = ignore if not ignore or isinstance(ignore, re.Pattern) else re.compile(ignore)
         self.files: Dict[Path, float] = {}
 
     def update(self) -> Changes:

@@ -6,7 +6,7 @@ import functools
 from pathlib import Path
 import urllib
 
-from stexls.compiler import Linker
+from stexls.stex import Linker
 from stexls.util.jsonrpc import *
 from stexls.util.vscode import *
 

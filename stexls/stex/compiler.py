@@ -273,7 +273,7 @@ class StexObject:
                         for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
-                                    LinkWarning(f'Module "{module}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
+                                    LinkWarning(f'Module "{module.identifier}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
                 for location, (public, module_type_hint) in locations.items():
@@ -292,10 +292,10 @@ class StexObject:
                         if close_matches:
                             close_matches_str = '", "'.join(close_matches)
                             self.errors[location].append(
-                                LinkError(f'Undefined symbol: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))
+                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))
                         else:
                             self.errors[location].append(
-                                LinkError(f'Undefined symbol: "{id}"'))
+                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}"'))
                 self.references[path].update(ranges)
 
     def copy(self) -> StexObject:

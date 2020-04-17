@@ -12,7 +12,7 @@ from pathlib import Path
 
 from stexls.util.cli import Cli, command, Arg
 from stexls.util.vscode import *
-from stexls.compiler import Linker
+from stexls.stex import Linker
 from stexls.lsp.server import Server
 
 log = logging.getLogger(__name__)

@@ -300,6 +300,58 @@ class Modnl(ParsedEnvironment):
         return f'[{mh}Modnl {self.name.text} lang={self.lang.text}]'
 
 
+class View(ParsedEnvironment):
+    PATTERN = re.compile(r'mhview|gviewnl')
+    def __init__(
+        self,
+        location: Location,
+        env: str,
+        module: TokenWithLocation,
+        lang: Optional[TokenWithLocation],
+        imports: List[TokenWithLocation],
+        fromrepos: Optional[TokenWithLocation],
+        frompath: Optional[TokenWithLocation]):
+        super().__init__(location)
+        self.env = env
+        self.module = module
+        self.lang = lang
+        self.imports = imports
+        self.fromrepos = fromrepos
+        self.frompath = frompath
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[View]:
+        match = cls.PATTERN.match(e.env_name)
+        if not match:
+            return None
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        lang = None
+        if e.env_name == 'gviewnl':
+            if len(e.rargs) < 2:
+                raise CompilerError(f'gviewnl requires at least 2 arguments. Found {len(e.rargs)}.')
+            if 'frompath' in named:
+                raise CompilerError('frompath argument not allowed in gviewnl.')
+            lang = e.rargs[1]
+            imports = e.rargs[2:]
+        elif e.env_name == 'mhview':
+            if len(e.rargs) < 1:
+                raise CompilerError(f'mhview requires at least 1 argument. Found {len(e.rargs)}.')
+            if 'fromrepos' in named:
+                raise CompilerError('fromrepos argument not allowed in mhview.')
+            imports = e.rargs[1:]
+        else:
+            raise CompilerError(f'Invalid environment name "{e.env_name}"')
+        module = e.rargs[0]
+        return View(
+            location=e.location,
+            env=e.env_name,
+            module=module,
+            lang=lang,
+            imports=imports,
+            fromrepos=named.get('fromrepos'),
+            frompath=named.get('frompath'))
+
+
 class Module(ParsedEnvironment):
     PATTERN = re.compile(r'\\?module(\*)?')
     def __init__(

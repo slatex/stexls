@@ -16,10 +16,15 @@ import pkg_resources
 __all__ = ['Linker']
 
 class Linker:
-    def __init__(self, root: Path = '.', file_pattern: 'glob' = '**/*.tex', ignore: Pattern = None):
+    def __init__(
+        self,
+        root: Path = '.',
+        include: Pattern = None,
+        ignore: Pattern = None):
         self.root = Path(root).resolve().absolute()
-        assert self.root.is_dir()
-        self.watcher = WorkspaceWatcher(os.path.join(root, file_pattern), ignore=ignore)
+        if not self.root.is_dir():
+            raise ValueError(f'Linker root "{self.root}" is not a directory.')
+        self.watcher = WorkspaceWatcher((self.root / '**' / '*.tex').as_posix(), include=include, ignore=ignore)
         self.objects: Dict[Path, List[StexObject]] = {}
         self.module_index: Dict[Path, Dict[str, StexObject]] = {}
         self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = {}

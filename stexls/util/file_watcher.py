@@ -18,14 +18,16 @@ class WorkspaceWatcher:
     Instead, everytime the index is updated, all files inside a folder will be
     checked at once.
     """
-    def __init__(self, pattern: 'glob', ignore: Pattern = None):
+    def __init__(self, pattern: 'glob', include: Pattern = None, ignore: Pattern = None):
         """Initializes the watcher with a pattern of files to watch.
 
         Args:
-            pattern: GLOB pattern of files to add.
-            ignore: Ignore REGEX pattern of files to not add.
+            pattern: GLOB pattern of which files to add.
+            include: Whitelist REGEX pattern. Used to filter out WANTED files. None to skip include step.
+            ignore: Blacklist REGEX pattern. Used to filter out UNWANTED files. None to skip ignore step.
         """
         self.pattern = pattern
+        self.include = include if not include or isinstance(include, re.Pattern) else re.compile(include)
         self.ignore = ignore if not ignore or isinstance(ignore, re.Pattern) else re.compile(ignore)
         self.files: Dict[Path, float] = {}
 
@@ -46,6 +48,10 @@ class WorkspaceWatcher:
         files = glob(self.pattern, recursive=True)
         # filter out files
         files = set(filter(os.path.isfile, files))
+        # apply whitelist
+        if self.include:
+            files = set(filter(self.include.match, files))
+        # apply blacklist
         if self.ignore:
             files = set(itertools.filterfalse(self.ignore.match, files))
         # create new index of files and modified times

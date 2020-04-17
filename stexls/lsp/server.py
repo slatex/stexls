@@ -32,7 +32,7 @@ class Server(Dispatcher):
                 log.exception('Failed to load server state from cachefile: "%s"', self._cache)
         if self._linker is None:
             log.debug('Creating new linker at root "%s"', self._root)
-            self._linker = Linker(root=self._root, file_pattern='**/smglom/**/*.tex')
+            self._linker = Linker(root=self._root)
 
     def savestate(self):
         log.info('Saving state to file: "%s"', self._cache)

@@ -36,8 +36,8 @@ def _read_location(loc: Location):
 
 @command(
     root=Arg(type=Path, help="Root directory. Required to resolve imports."),
-    file_pattern=Arg('--file-pattern', '-f', default='**/*.tex', type=str, help='Glob pattern of files to add to watchlist.'),
-    ignore=Arg('--ignore', '-i', default=None, type=re.compile, help='Regex pattern that if a file path contains this, it will not be watched for changes.'),
+    include=Arg('--include', '-I', default=None, type=re.compile, help='Whitelist regex pattern for which files to include.'),
+    ignore=Arg('--ignore', '-i', default=None, type=re.compile, help='Blacklist regex pattern for which files to ignore.'),
     progress_indicator=Arg('--progress-indicator', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
     no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
     no_cache=Arg('--no-cache', action='store_true', help="Disables cache usage."),
@@ -48,7 +48,7 @@ def _read_location(loc: Location):
 )
 async def linter(
     root: Path,
-    file_pattern: 'glob' = '**/*.tex',
+    include: Pattern = None,
     ignore: Pattern = None,
     progress_indicator: bool = False,
     no_use_multiprocessing: bool = False,
@@ -63,8 +63,8 @@ async def linter(
     
     Parameters:
         root: Root of stex imports.
-        file_pattern: Pattern of files to add.
-        ignore: Regex that can be used to ignore certain file patterns.
+        include: Whitelist regex pattern for which files to include. None to not use this feature. Defaults to None.
+        ignore: Blacklist regex pattern for which files to ignore. None to not use this. Defaults to None.
         progress_indicator: Enables a progress bar being printed to stderr.
         no_use_multiprocessing: Disables multiprocessing.
         no_cache: Disables cache.
@@ -100,7 +100,7 @@ async def linter(
 
     if linker is None:
         log.info('No cached linker found or an exception occured: Creating new linker')
-        linker = Linker(root, file_pattern=file_pattern, ignore=ignore)
+        linker = Linker(root, include=include, ignore=ignore)
 
     def progressfn(it, title):
         log.debug('Progress "%s":%i', title, len(it))

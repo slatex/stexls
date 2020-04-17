@@ -8,7 +8,7 @@
     executes the commands with the given parameters when
     dispatch() is called.
 '''
-from typing import Any
+from typing import Any, List, Dict, Callable
 import sys
 import inspect
 import functools
@@ -66,10 +66,11 @@ def command(**kwargs):
 
 class Cli:
     ' The cli binds a list of commands together and makes them executable by dispatching an argv.'
-    def __init__(self, commands, description: str = None):
+    def __init__(self, commands: List[Callable], aliases: Dict[str, Callable] = None, description: str = None):
         ''' Initializes the internal argument parsers using the provided commands.
         Parameters:
             commands: List of commands decorated with the @command decorator from this module.
+            aliases: Same as commands, but the key is the user-defined alias name of the value command.
             description: An optional description for this cli.
         '''
         self.parser = argparse.ArgumentParser(
@@ -88,6 +89,8 @@ class Cli:
             command.__name__: command
             for command in commands
         }
+
+        self.command_index.update(aliases)
 
         command_subparsers = self.parser.add_subparsers(dest='_command')
 

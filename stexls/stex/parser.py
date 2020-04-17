@@ -328,14 +328,14 @@ class View(ParsedEnvironment):
         lang = None
         if e.env_name == 'gviewnl':
             if len(e.rargs) < 2:
-                raise CompilerError(f'gviewnl requires at least 2 arguments. Found {len(e.rargs)}.')
+                raise CompilerError(f'Argument count mismatch: gviewnl requires at least 2 arguments, found {len(e.rargs)}.')
             if 'frompath' in named:
                 raise CompilerError('frompath argument not allowed in gviewnl.')
             lang = e.rargs[1]
             imports = e.rargs[2:]
         elif e.env_name == 'mhview':
             if len(e.rargs) < 1:
-                raise CompilerError(f'mhview requires at least 1 argument. Found {len(e.rargs)}.')
+                raise CompilerError(f'Argument count mismatch: mhview requires at least 1 argument, found {len(e.rargs)}.')
             if 'fromrepos' in named:
                 raise CompilerError('fromrepos argument not allowed in mhview.')
             imports = e.rargs[1:]

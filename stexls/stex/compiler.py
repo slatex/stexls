@@ -288,7 +288,12 @@ class StexObject:
                 for range, id in ranges.items():
                     location = Location(path, range)
                     if id not in self.symbol_table:
-                        close_matches = set(difflib.get_close_matches(id.identifier, map(lambda i: i.identifier, self.symbol_table)))
+                        identifiers_of_same_type = (
+                            symbol.qualified_identifier.identifier
+                            for symbols in self.symbol_table.values()
+                            for symbol in symbols
+                            if symbol.identifier.symbol_type == id.symbol_type)
+                        close_matches = set(difflib.get_close_matches(id.identifier, identifiers_of_same_type))
                         if close_matches:
                             close_matches_str = '", "'.join(close_matches)
                             self.errors[location].append(

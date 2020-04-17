@@ -18,6 +18,22 @@ from stexls.lsp.server import Server
 
 log = logging.getLogger(__name__)
 
+
+def _read_location(loc: Location):
+    ' Opens the file and returns the text at the range of the location. Returns None if the file does not exist or the location can\'t be read. '
+    try:
+        with open(loc.path, 'r') as fd:
+            lines = fd.readlines()
+            if loc.range.is_single_line():
+                return lines[loc.range.start.line][loc.range.start.character:loc.range.end.character]
+            else:
+                lines = lines[loc.range.start.line:loc.range.end.line+1]
+                return '\n'.join(lines)[loc.range.start.character:-loc.range.end.character]
+    except (IndexError, FileNotFoundError):
+        log.exception('Failed to read location: "%s"', loc.format_link())
+        return None
+
+
 @command(
     root=Arg(type=Path, help="Root directory. Required to resolve imports."),
     file_pattern=Arg('--file-pattern', '-f', default='**/*.tex', type=str, help='Glob pattern of files to add to watchlist.'),
@@ -100,6 +116,33 @@ async def linter(
         with open(cache, 'wb') as fd:
             log.info('Dumping linker cache to "%s"', cache)
             pickle.dump(linker, fd)
+
+    if tagfile:
+        trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,', '\t': ''})
+        lines = []
+        for path, objects in linker.objects.items():
+            for object in objects:
+                for id, symbols in object.symbol_table.items():
+                    for symbol in symbols:
+                        keyword = symbol.identifier.identifier.replace('\t', '')
+                        file = symbol.location.path.as_posix()
+                        text = _read_location(symbol.location)
+                        if not text:
+                            continue
+                        pattern = text.translate(trans)
+                        lines.append(f'{keyword}\t{file}\t/{pattern}\n')
+                        qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
+                        if qkeyword != keyword:
+                            lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
+        try:
+            tagfile_path = (root/tagfile).as_posix()
+            log.info('Writing tagfile to "%s" (%i tags)', tagfile_path, len(lines))
+            with open(tagfile_path, 'w') as fd:
+                fd.writelines(sorted(lines))
+        except FileExistsError:
+            log.exception('Failed to write tagfile')
+
+        del lines
 
     log.debug('Dumping diagnostics of %i objects.', len(linker.objects))
     for path, objects in linker.objects.items():

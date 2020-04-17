@@ -7,6 +7,7 @@ import logging
 import asyncio
 import pickle
 import re
+import pkg_resources
 from tqdm import tqdm
 from pathlib import Path
 
@@ -122,5 +123,5 @@ async def lsp(
 
 
 if __name__ == '__main__':
-    cli = Cli([linter, lsp], __doc__)
+    cli = Cli(commands=[linter, lsp], description=__doc__, version=pkg_resources.require('stexls')[0].version)
     asyncio.run(cli.dispatch())

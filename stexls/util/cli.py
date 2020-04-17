@@ -66,16 +66,20 @@ def command(**kwargs):
 
 class Cli:
     ' The cli binds a list of commands together and makes them executable by dispatching an argv.'
-    def __init__(self, commands: List[Callable], aliases: Dict[str, Callable] = None, description: str = None):
+    def __init__(self, commands: List[Callable], aliases: Dict[str, Callable] = None, description: str = None, version: str = None):
         ''' Initializes the internal argument parsers using the provided commands.
         Parameters:
             commands: List of commands decorated with the @command decorator from this module.
             aliases: Same as commands, but the key is the user-defined alias name of the value command.
             description: An optional description for this cli.
+            version: Optional pre-determined output for the --version command. None to not add this command.
         '''
         self.parser = argparse.ArgumentParser(
             description=description,
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        
+        if version:
+            self.parser.add_argument('--version', '-v', action='version', version=version)
         
         class ExtendAction(argparse.Action):
             def __call__(self, parser, namespace, values, option_string=None):
@@ -90,7 +94,8 @@ class Cli:
             for command in commands
         }
 
-        self.command_index.update(aliases)
+        if aliases:
+            self.command_index.update(aliases)
 
         command_subparsers = self.parser.add_subparsers(dest='_command')
 

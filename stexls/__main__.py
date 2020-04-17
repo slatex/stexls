@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
     no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
     no_cache=Arg('--no-cache', action='store_true', help="Disables cache usage."),
     format=Arg('--format', '-F', help='Formatter for the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".'),
-    tagfile=Arg('--tagfile', '-t', const=Path('./tags'), action='store', default=None, nargs='?', type=Path, help='Optional name for a vim tagfile. If no argument is specified "./tags" will be used. Defaults to no tagfile generated.'),
+    tagfile=Arg('--tagfile', '-t', const='tags', action='store', default=None, nargs='?', help='Optional name for a vim tagfile. If no argument is specified "tags" will be used. Defaults to no tagfile generated.'),
     loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel. Defaults to "error".'),
     logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile. Defaults to "/tmp/stexls.log".')
 )
@@ -41,7 +41,25 @@ async def linter(
     tagfile: Path = None,
     loglevel: str = 'error',
     logfile: Path = '/tmp/stexls.log'):
-    """ Run the language server in linter mode. In this mode only diagnostics and progress are printed to stdout. """
+    """ Run the language server in linter mode.
+    
+        In this mode only diagnostics and progress are printed to stdout.
+    
+    Parameters:
+        root: Root of stex imports.
+        file_pattern: Pattern of files to add.
+        ignore: Regex that can be used to ignore certain file patterns.
+        progress_indicator: Enables a progress bar being printed to stderr.
+        no_use_multiprocessing: Disables multiprocessing.
+        no_cache: Disables cache.
+        format: Format of the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".
+        tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
+        loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
+        logfile: File to which logs will be logged. Defaults to "/tmp/stexls.log"
+
+    Returns:
+        Awaitable task.
+    """
 
     logging.basicConfig(
         filename=logfile,
@@ -99,11 +117,11 @@ async def linter(
                                 message=str(err)))
 
 @command(
-    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use. Choices are "ipc" or "tcp". Default is "ipc".'),
-    host=Arg('--host', '-H', help='Hostname to bind server to. Defaults to "localhost".'),
-    port=Arg('--port', '-p', help='Port number to bind server to. Defaults to 0'),
-    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel. Defaults to "error".'),
-    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile. Defaults to "/tmp/stexls.log"'),
+    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use. Choices are "ipc" or "tcp".'),
+    host=Arg('--host', '-H', help='Hostname to bind server to.'),
+    port=Arg('--port', '-p', help='Port number to bind server to.'),
+    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
+    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile.'),
 )
 async def lsp(
     transport_kind: str = 'ipc',
@@ -111,7 +129,18 @@ async def lsp(
     port: int = 0,
     loglevel: str = 'error',
     logfile: Path = '/tmp/stexls.log'):
-    ' Start the server using stdin and stdout as communication ports. '
+    """ Starts the language server in either ipc or tcp mode.
+
+    Parameters:
+        transport_kind: Mode of transportation to use.
+        host: Host for "tcp" transport. Defaults to localhost.
+        port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
+        loglevel: Loglevel. Choices are critical, error, warning, info and debug.
+        logfile: File to which logs are written. Defaults to /tmp/stexls.log
+
+    Returns:
+        Awaitable task.
+    """
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))

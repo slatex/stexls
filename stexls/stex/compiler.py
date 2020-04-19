@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import Dict, Optional, Set, Union, Iterable
+from typing import Dict, Optional, Set, Union, Iterable, Callable, List, Tuple
 from pathlib import Path
 from collections import defaultdict
-
+from hashlib import sha1
+import multiprocessing
+import pickle
 import difflib
 import itertools
 import functools
+import glob
 
 from stexls.util.vscode import DocumentUri, Position, Range, Location
 
@@ -13,7 +16,7 @@ from .parser import *
 from .symbols import *
 from .exceptions import *
 
-__all__ = ['StexObject']
+__all__ = ['Compiler', 'StexObject']
 
 class StexObject:
     def __init__(self, root: Path):
@@ -231,11 +234,13 @@ class StexObject:
         """
         pass
 
-    def link_list(self, others: StexObject) -> StexObject:
-        ' Links this with a list of other object, where the last object will be the finalized one. Returns self '
+    @staticmethod
+    def link_list(others: List[StexObject], root: Path) -> StexObject:
+        ' Links new object with a list of other object, where the last object will be the finalized one. '
+        link = StexObject(root)
         for other in others:
-            self.link(other, finalize=other==others[-1])
-        return self
+            link.link(other, finalize=other==others[-1])
+        return link
 
     def link(self, other: StexObject, finalize: bool = False):
         self.files.update(other.files)
@@ -482,6 +487,101 @@ class StexObject:
                     _compile_module(module, obj, toplevel)
                     objects.append(obj)
         return objects
+
+
+class Compiler:
+    def __init__(self, root: Path, outdir: Path):
+        self.root = root.expanduser().resolve().absolute()
+        self.outdir = outdir.expanduser().resolve().absolute()
+        self.objects: Dict[Path, List[StexObject]] = {}
+        self.modules: Dict[Path, Dict[SymbolIdentifier, StexObject]] = {}
+
+    def modified(self, files: Iterable[Path]) -> List[Path]:
+        ' Returns list of files that need to be compiled because the objectfile does not exist or is out-of-date. '
+        objectfiles = map(functools.partial(Compiler._get_objectfile_path, self.outdir), files)
+        return [
+            file
+            for file, objectfile in zip(files, objectfiles)
+            if not objectfile.is_file()
+            or objectfile.lstat().st_mtime < file.lstat().st_mtime
+        ]
+
+    def compile(
+        self,
+        files: Iterable[Path],
+        progressfn: Callable[[Iterable], Iterable] = None,
+        use_multiprocessing: bool = True) -> Dict[Path, List[StexObject]]:
+        progressfn = progressfn or (lambda x: x)
+        files = list(files)
+        with multiprocessing.Pool() as pool:
+            mapfn = pool.map if use_multiprocessing else map
+            compiled_files = mapfn(
+                functools.partial(
+                    Compiler._load_or_compile_single_file,
+                    outdir=self.outdir,
+                    root=self.root), progressfn(files))
+            objects: Dict[Path, List[StexObject]] = dict(filter(lambda x: x[-1], zip(files, compiled_files)))
+            modules: Dict[Path, Dict[SymbolIdentifier, StexObject]] = {
+                path: {
+                    object.module: object
+                    for object in objects2
+                    if object.module
+                }
+                for path, objects2 in objects.items()
+                if any(object.module for object in objects2)
+            }
+        self.objects.update(objects)
+        self.modules.update(modules)
+        return objects
+
+    @property
+    def objectfiles(self) -> Set[Path]:
+        return set(map(Path, glob.glob((self.outdir / '**/*.stexobj').as_posix(), recursive=True)))
+
+    def clean_objects_up(self, files: Iterable[Path]) -> Set[Path]:
+        transform = functools.partial(Compiler._get_objectfile_path, self.outdir)
+        deleted = self.objectfiles - set(map(transform, map(Path, files)))
+        for objectfile in deleted:
+            if objectfile.is_file():
+                objectfile.unlink()
+                if not list(objectfile.parent.iterdir()):
+                    objectfile.parent.rmdir()
+        return deleted
+
+    @staticmethod
+    def _load_or_compile_single_file(file: Path, outdir: Path, root: Path) -> List[StexObject]:
+        objectfile = Compiler._get_objectfile_path(outdir, file)
+        objectdir = objectfile.parent
+        for _ in range(2): # give it two attempts to figure out whats going on
+            if not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
+                # if not already compiled or the compiled object is old, create a new object
+                objectdir.mkdir(parents=True, exist_ok=True)
+                parsed = ParsedFile(file).parse()
+                objects = list(StexObject.compile(root, parsed))
+                with open(objectfile, 'wb') as fd:
+                    pickle.dump(objects, fd)
+                return objects
+            try:
+                # else load from cached
+                with open(objectfile, 'rb') as fd:
+                    return pickle.load(fd)
+            except:
+                # if loading fails, attempt to delete the cachefile
+                if objectfile.is_file():
+                    objectfile.unlink()
+                # because this is a for loop, try again after deleting it
+        return []
+
+    @staticmethod
+    def _compute_object_origin_hash(path: Path) -> str:
+        ' Computes an object has for the path to an objectfile. '
+        return sha1(path.parent.as_posix().encode()).hexdigest()
+
+    @staticmethod
+    def _get_objectfile_path(outdir: Path, file: Path) -> Path:
+        ' Returns the file where the objectfile should be cached. '
+        return outdir / Compiler._compute_object_origin_hash(file) / (file.name + '.stexobj')
+
 
 def _map_compile(compile_fun, arr: List, obj: StexObject):
     for item in arr:

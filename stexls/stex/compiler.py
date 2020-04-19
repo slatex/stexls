@@ -513,26 +513,38 @@ class Compiler:
         use_multiprocessing: bool = True) -> Dict[Path, List[StexObject]]:
         progressfn = progressfn or (lambda x: x)
         files = list(files)
+        visited: Set[Path] = set()
+        results = None
         with multiprocessing.Pool() as pool:
             mapfn = pool.map if use_multiprocessing else map
-            compiled_files = mapfn(
-                functools.partial(
-                    Compiler._load_or_compile_single_file,
-                    outdir=self.outdir,
-                    root=self.root), progressfn(files))
-            objects: Dict[Path, List[StexObject]] = dict(filter(lambda x: x[-1], zip(files, compiled_files)))
-            modules: Dict[Path, Dict[SymbolIdentifier, StexObject]] = {
-                path: {
-                    object.module: object
-                    for object in objects2
-                    if object.module
+            while files:
+                compiled_files = mapfn(
+                    functools.partial(
+                        Compiler._load_or_compile_single_file,
+                        outdir=self.outdir,
+                        root=self.root), progressfn(files))
+                objects: Dict[Path, List[StexObject]] = dict(filter(lambda x: x[-1], zip(files, compiled_files)))
+                if results is None:
+                    results = objects
+                modules: Dict[Path, Dict[SymbolIdentifier, StexObject]] = {
+                    path: {
+                        object.module: object
+                        for object in objects2
+                        if object.module
+                    }
+                    for path, objects2 in objects.items()
+                    if any(object.module for object in objects2)
                 }
-                for path, objects2 in objects.items()
-                if any(object.module for object in objects2)
-            }
-        self.objects.update(objects)
-        self.modules.update(modules)
-        return objects
+                self.objects.update(objects)
+                self.modules.update(modules)
+                visited.update(files)
+                files = set()
+                for file in objects.values():
+                    for object in file:
+                        for dependencies in object.dependencies.values():
+                            files.update(dependencies)
+                files -= visited
+        return results
 
     @property
     def objectfiles(self) -> Set[Path]:
@@ -550,26 +562,27 @@ class Compiler:
 
     @staticmethod
     def _load_or_compile_single_file(file: Path, outdir: Path, root: Path) -> List[StexObject]:
-        objectfile = Compiler._get_objectfile_path(outdir, file)
-        objectdir = objectfile.parent
-        for _ in range(2): # give it two attempts to figure out whats going on
-            if not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
-                # if not already compiled or the compiled object is old, create a new object
-                objectdir.mkdir(parents=True, exist_ok=True)
-                parsed = ParsedFile(file).parse()
-                objects = list(StexObject.compile(root, parsed))
-                with open(objectfile, 'wb') as fd:
-                    pickle.dump(objects, fd)
-                return objects
-            try:
-                # else load from cached
-                with open(objectfile, 'rb') as fd:
-                    return pickle.load(fd)
-            except:
-                # if loading fails, attempt to delete the cachefile
-                if objectfile.is_file():
-                    objectfile.unlink()
-                # because this is a for loop, try again after deleting it
+        if file.is_file():
+            objectfile = Compiler._get_objectfile_path(outdir, file)
+            objectdir = objectfile.parent
+            for _ in range(2): # give it two attempts to figure out whats going on
+                if not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
+                    # if not already compiled or the compiled object is old, create a new object
+                    objectdir.mkdir(parents=True, exist_ok=True)
+                    parsed = ParsedFile(file).parse()
+                    objects = list(StexObject.compile(root, parsed))
+                    with open(objectfile, 'wb') as fd:
+                        pickle.dump(objects, fd)
+                    return objects
+                try:
+                    # else load from cached
+                    with open(objectfile, 'rb') as fd:
+                        return pickle.load(fd)
+                except:
+                    # if loading fails, attempt to delete the cachefile
+                    if objectfile.is_file():
+                        objectfile.unlink()
+                    # because this is a for loop, try again after deleting it
         return []
 
     @staticmethod

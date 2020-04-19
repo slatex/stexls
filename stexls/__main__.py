@@ -13,61 +13,46 @@ from pathlib import Path
 
 from stexls.util.cli import Cli, command, Arg
 from stexls.util.vscode import *
-from stexls.stex import Linker
-from stexls.lsp.server import Server
+from stexls.stex import Compiler, Linker
+from stexls.lsp import Server
 
 log = logging.getLogger(__name__)
 
 
-def _read_location(loc: Location):
-    ' Opens the file and returns the text at the range of the location. Returns None if the file does not exist or the location can\'t be read. '
-    try:
-        with open(loc.path, 'r') as fd:
-            lines = fd.readlines()
-            if loc.range.is_single_line():
-                return lines[loc.range.start.line][loc.range.start.character:loc.range.end.character]
-            else:
-                lines = lines[loc.range.start.line:loc.range.end.line+1]
-                return '\n'.join(lines)[loc.range.start.character:-loc.range.end.character]
-    except (IndexError, FileNotFoundError):
-        log.exception('Failed to read location: "%s"', loc.format_link())
-        return None
-
-
 @command(
-    root=Arg(type=Path, help="Root directory. Required to resolve imports."),
-    include=Arg('--include', '-I', default=None, type=re.compile, help='Whitelist regex pattern for which files to include.'),
-    ignore=Arg('--ignore', '-i', default=None, type=re.compile, help='Blacklist regex pattern for which files to ignore.'),
+    files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
+    root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
+    include=Arg('--include', '-I', type=re.compile, help='Whitelist regex pattern for which files to include.'),
+    ignore=Arg('--ignore', '-i', type=re.compile, help='Blacklist regex pattern for which files to ignore.'),
     progress_indicator=Arg('--progress-indicator', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
     no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
-    no_cache=Arg('--no-cache', action='store_true', help="Disables cache usage."),
-    format=Arg('--format', '-F', help='Formatter for the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".'),
-    tagfile=Arg('--tagfile', '-t', const='tags', action='store', default=None, nargs='?', help='Optional name for a vim tagfile. If no argument is specified "tags" will be used. Defaults to no tagfile generated.'),
-    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel. Defaults to "error".'),
-    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile. Defaults to "/tmp/stexls.log".')
+    format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
+    tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?', help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
+    loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
+    logfile=Arg('--logfile', '-L', type=Path, help='Optional path to a logfile.')
 )
 async def linter(
-    root: Path,
+    files: List[Path],
+    root: Path = '.',
     include: Pattern = None,
     ignore: Pattern = None,
     progress_indicator: bool = False,
     no_use_multiprocessing: bool = False,
-    no_cache: bool = False,
     format: str = '{file}:{line}:{column} {severity} - {message}',
-    tagfile: Path = None,
+    tagfile: str = None,
     loglevel: str = 'error',
-    logfile: Path = '/tmp/stexls.log'):
+    logfile: Path = Path('stexls.log')):
     """ Run the language server in linter mode.
     
         In this mode only diagnostics and progress are printed to stdout.
     
     Parameters:
         root: Root of stex imports.
+        files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
         include: Whitelist regex pattern for which files to include. None to not use this feature. Defaults to None.
         ignore: Blacklist regex pattern for which files to ignore. None to not use this. Defaults to None.
         progress_indicator: Enables a progress bar being printed to stderr.
         no_use_multiprocessing: Disables multiprocessing.
-        no_cache: Disables cache.
         format: Format of the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
@@ -76,88 +61,58 @@ async def linter(
     Returns:
         Awaitable task.
     """
+    
+    root = root.expanduser().resolve().absolute()
+
+    settings_dir = root / '.stexls'
+
+    settings_dir.mkdir(exist_ok=True)
+
+    if not logfile.is_absolute():
+        logfile = settings_dir / logfile
 
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
-    
-    root = root.expanduser().resolve().absolute()
 
     log.debug('Setting linker root to "%s"', root)
 
-    cache = root / 'stexls-cache.bin'
+    outdir = settings_dir / 'objects'
 
-    log.debug('Linker cache at "%s"', cache)
+    outdir.mkdir(exist_ok=True)
 
-    linker = None
-    if not no_cache and cache.is_file():
-        log.info('Loading linker from cache')
-        try:
-            with open(cache, 'rb') as fd:
-                linker = pickle.load(fd)
-        except:
-            log.exception('Failed to load state from cachefile "%s"', cache)
+    log.debug('Compiler outdir at "%s"', outdir)
 
-    if linker is None:
-        log.info('No cached linker found or an exception occured: Creating new linker')
-        linker = Linker(root, include=include, ignore=ignore)
+    def progressfn(title):
+        def wrapper(it):
+            log.debug('Progress "%s":%i', title, len(it))
+            if progress_indicator:
+                it = tqdm(it)
+                it.set_description(title)
+            return it
+        return wrapper
 
-    def progressfn(it, title):
-        log.debug('Progress "%s":%i', title, len(it))
-        if progress_indicator:
-            it = tqdm(it)
-            it.set_description(title)
-        return it
-
-    log.info('Updating linker...')
-    linker.update(progressfn=progressfn, use_multiprocessing=not no_use_multiprocessing)
-
-    if not no_cache:
-        with open(cache, 'wb') as fd:
-            log.info('Dumping linker cache to "%s"', cache)
-            pickle.dump(linker, fd)
+    compiler = Compiler(root, outdir)
+    objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)
+    linker = Linker(root)
+    links = linker.link(objects, compiler.modules, progressfn, not no_use_multiprocessing)
 
     if tagfile:
-        trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,', '\t': ''})
-        lines = []
-        for path, objects in linker.objects.items():
-            for object in objects:
-                for id, symbols in object.symbol_table.items():
-                    for symbol in symbols:
-                        keyword = symbol.identifier.identifier.replace('\t', '')
-                        file = symbol.location.path.as_posix()
-                        text = _read_location(symbol.location)
-                        if not text:
-                            continue
-                        pattern = text.translate(trans)
-                        lines.append(f'{keyword}\t{file}\t/{pattern}\n')
-                        qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
-                        if qkeyword != keyword:
-                            lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
-        try:
-            tagfile_path = (root/tagfile).as_posix()
-            log.info('Writing tagfile to "%s" (%i tags)', tagfile_path, len(lines))
-            with open(tagfile_path, 'w') as fd:
-                fd.writelines(sorted(lines))
-        except FileExistsError:
-            log.exception('Failed to write tagfile')
+        log.debug('Creating tagfile at "%s"', root / tagfile)
+        compiler.create_tagfile(tagfile)
 
-        del lines
-
-    log.debug('Dumping diagnostics of %i objects.', len(linker.objects))
-    for path, objects in linker.objects.items():
-        for object in objects:
-            link = linker.links.get(object, object)
-            if link.errors:
-                for loc, errs in link.errors.items():
-                    for err in errs:
-                        print(
-                            format.format(
-                                file=str(loc.path),
-                                line=loc.range.start.line + 1,
-                                column=loc.range.start.character + 1,
-                                severity=type(err).__name__,
-                                message=str(err)))
+    log.debug('Dumping diagnostics of %i objects.', len(links))
+    for object in links.values():
+        if object.errors:
+            for loc, errs in object.errors.items():
+                for err in errs:
+                    print(
+                        format.format(
+                            file=str(loc.path),
+                            line=loc.range.start.line + 1,
+                            column=loc.range.start.character + 1,
+                            severity=type(err).__name__,
+                            message=str(err)))
 
 @command(
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use. Choices are "ipc" or "tcp".'),

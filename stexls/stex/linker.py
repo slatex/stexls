@@ -158,7 +158,7 @@ class Linker:
         inputs: Dict[Path, List[StexObject]],
         modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
         progressfn: Callable[[str], Callable[[Iterable], Iterable]] = None,
-        use_multiprocessing: bool = True):
+        use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
         progressfn = progressfn or (lambda title: lambda it: it)
         self._cleanup(inputs)
         build_orders = self._resolve_dependencies(inputs, modules, progressfn('Resolving Dependencies'))

@@ -583,6 +583,7 @@ class Compiler:
 
     @staticmethod
     def _load_or_compile_single_file(file: Path, outdir: Path, root: Path) -> List[StexObject]:
+        file = file.expanduser().resolve().absolute()
         if file.is_file():
             objectfile = Compiler._get_objectfile_path(outdir, file)
             objectdir = objectfile.parent

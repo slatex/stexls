@@ -506,6 +506,27 @@ class Compiler:
             or objectfile.lstat().st_mtime < file.lstat().st_mtime
         ]
 
+    def create_tagfile(self, name: str = 'tags', root: Path = None):
+        trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,', '\t': ''})
+        lines = []
+        for objects in self.objects.values():
+            for object in objects:
+                for symbols in object.symbol_table.values():
+                    for symbol in symbols:
+                        keyword = symbol.identifier.identifier.replace('\t', '')
+                        file = symbol.location.path.as_posix()
+                        text = symbol.location.read()
+                        if not text:
+                            continue
+                        pattern = text.translate(trans)
+                        lines.append(f'{keyword}\t{file}\t/{pattern}\n')
+                        qkeyword = symbol.qualified_identifier.identifier.replace('.', '?')
+                        if qkeyword != keyword:
+                            lines.append(f'{qkeyword}\t{file}\t/{pattern}\n')
+        tagfile_path = ((self.root or root) / name).as_posix()
+        with open(tagfile_path, 'w') as fd:
+            fd.writelines(sorted(lines))
+
     def compile(
         self,
         files: Iterable[Path],
@@ -544,7 +565,7 @@ class Compiler:
                         for dependencies in object.dependencies.values():
                             files.update(dependencies)
                 files -= visited
-        return results
+        return results or {}
 
     @property
     def objectfiles(self) -> Set[Path]:

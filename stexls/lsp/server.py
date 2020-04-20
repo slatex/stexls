@@ -21,24 +21,6 @@ class Server(Dispatcher):
         self._linker = None
         self._root = None
 
-    def load_or_create_state(self):
-        self._linker = None
-        if self._cache.is_file():
-            try:
-                log.debug('Attempting to load state from cachefile at "%s"', self._cache)
-                with open(self._cache, 'rb') as fd:
-                    self._linker = pickle.load(fd)
-            except:
-                log.exception('Failed to load server state from cachefile: "%s"', self._cache)
-        if self._linker is None:
-            log.debug('Creating new linker at root "%s"', self._root)
-            self._linker = Linker(root=self._root)
-
-    def savestate(self):
-        log.info('Saving state to file: "%s"', self._cache)
-        with open(self._cache, 'wb') as fd:
-            pickle.dump(self._linker, fd)
-
     @method
     def initialize(self, **kparams):
         if self._initialized:
@@ -64,8 +46,6 @@ class Server(Dispatcher):
             raise ValueError('Server already initialized')
         self._initialized = True
         self._root = Path.cwd()
-        self._cache = self._root / 'stexls-cache.bin'
-        self.load_or_create_state()
         def progfn(it, title):
             try:
                 log.info("%s: %i", title, len(it))
@@ -144,3 +124,20 @@ class Server(Dispatcher):
     def references(self, textDocument, position, context):
         log.info('get references of document %s at position %s with context %s', textDocument, position, context)
         raise NotImplementedError
+
+    # TEXT SYNCHRONIZATIOn
+
+    @method
+    @alias('textDocument/open')
+    def text_document_open(self):
+        pass
+
+    @method
+    @alias('textDocument/change')
+    def text_document_change(self):
+        pass
+
+    @method
+    @alias('textDocument/close')
+    def text_document_close(self):
+        pass

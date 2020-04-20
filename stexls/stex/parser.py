@@ -47,7 +47,7 @@ class ParsedFile:
         self.errors: Dict[Location, List[Exception]] = defaultdict(list)
         self.parsed = False
 
-    def parse(self) -> ParsedFile:
+    def parse(self, content: str = None) -> ParsedFile:
         ' Parse the file from the in the constructor given path. '
         if self.parsed:
             raise ValueError('File already parsed.')
@@ -55,7 +55,7 @@ class ParsedFile:
         exceptions: List[Tuple[Location, Exception]] = []
         try:
             parser = LatexParser(self.path)
-            parser.parse()
+            parser.parse(content)
             exceptions = parser.syntax_errors or []
             parser.walk(lambda env: _visitor(env, self, exceptions))
         except (CompilerError, LatexException, UnicodeError) as ex:

@@ -1,6 +1,6 @@
 # Copied from https://microsoft.github.io/language-server-protocol/specifications/specification-3-14/
 from __future__ import annotations
-from typing import Optional, Union, Any, List, NewType, Generic, T, Tuple
+from typing import Optional, Union, Any, List, NewType, Generic, T, Tuple, Iterable
 from pathlib import Path
 import urllib
 
@@ -334,16 +334,25 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
-    def read(self) -> str:
-        ' Opens the file and returns the text at the range of the location. Returns None if the file does not exist or the location can\'t be read. '
+    def read(self, lines: Optional[List[str]] = None) -> str:
+        ''' Opens the file and returns the text at the range of the location.
+
+        Parameters:
+            lines: Optional content of the file. If None, then the file will be read from disk with open().
+
+        Returns:
+            The range this location includes.
+            None if the file does not exist or the location can\'t be read.
+        '''
         try:
-            with open(self.path, 'r') as fd:
-                lines = fd.readlines()
-                if self.range.is_single_line():
-                    return lines[self.range.start.line][self.range.start.character:self.range.end.character]
-                else:
-                    lines = lines[self.range.start.line:self.range.end.line+1]
-                    return '\n'.join(lines)[self.range.start.character:-self.range.end.character]
+            if lines is None:
+                with open(self.path, 'r') as fd:
+                    lines = fd.readlines()
+            if self.range.is_single_line():
+                return lines[self.range.start.line][self.range.start.character:self.range.end.character]
+            else:
+                lines = lines[self.range.start.line:self.range.end.line+1]
+                return '\n'.join(lines)[self.range.start.character:-self.range.end.character]
         except (IndexError, FileNotFoundError):
             return None
 

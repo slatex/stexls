@@ -8,8 +8,6 @@ from hashlib import sha1
 from pathlib import Path
 from typing import List, Iterator, Pattern, Callable, Iterable, Set, Dict
 
-from stexls.stex import parser, linker
-from stexls.stex.compiler import StexObject
 from stexls.util.vscode import *
 
 log = logging.getLogger(__name__)
@@ -23,8 +21,12 @@ class Workspace:
         """
         self.root = Path(root).expanduser().resolve().absolute()
         self._open_files: Dict[Path, str] = {}
-        self._ignore: Union[Pattern, List[Pattern], None] = None
-        self._include: Union[Pattern, List[Pattern], None] = None
+        self._ignore: Optional[List[Pattern]] = None
+        self._include: Optional[List[Pattern]] = None
+
+    def is_open(self, file: Path) -> bool:
+        ' Returns true if a modified version of this file that can be queried with read_file() is in memory. '
+        return file in self._open_files
 
     def open_file(self, path: Path, content: str):
         """ Opens a file in the current workspace.
@@ -123,14 +125,16 @@ class Workspace:
 
     @include.setter
     def include(self, value: Union[Pattern, str, Iterable[Union[Pattern, str]], None]):
-        try:
-            self._include = [
-                pattern if isinstance(pattern, Pattern) else re.compile(pattern)
-                for pattern in value
-                if pattern
-            ]
-        except TypeError:
-            self._include = value if not value or isinstance(value, Pattern) else re.compile(value)
+        if value is None:
+            self._include = None
+            return
+        if isinstance(value, str) or not isinstance(value, Iterable):
+            value = [value]
+        self._include = [
+            pattern if isinstance(pattern, Pattern) else re.compile(pattern)
+            for pattern in value
+            if pattern
+        ]
 
     @property
     def ignore(self) -> Union[Pattern, List[Pattern], None]:
@@ -139,34 +143,35 @@ class Workspace:
 
     @ignore.setter
     def ignore(self, value: Union[Pattern, str, Iterable[Union[Pattern, str]], None]):
-        try:
-            self._ignore = [
-                pattern if isinstance(pattern, Pattern) else re.compile(pattern)
-                for pattern in value
-                if pattern
-            ]
-        except TypeError:
-            self._ignore = value if not value or isinstance(value, Pattern) else re.compile(value)
+        if value is None:
+            self._ignore = None
+            return
+        if isinstance(value, str) or not isinstance(value, Iterable):
+            value = [value]
+        self._ignore = [
+            pattern if isinstance(pattern, Pattern) else re.compile(pattern)
+            for pattern in value
+            if pattern
+        ]
 
     @property
     def files(self) -> Set[Path]:
         ' Returns the set of .tex files in this workspace after they are filtered using ignore and include patterns. '
         # get all files from the workspace root
-        files = glob.glob((self.root / '**' / '*.tex').as_posix(), recursive=True)
+        files = list(glob.glob((self.root / '**' / '*.tex').as_posix(), recursive=True))
         # filter out non-included files
-        if self._include:
-            try:
-                for include in self._include:
-                    files = filter(include.match, files)
-            except:
-                files = filter(self._include.match, files)
+        if isinstance(self._include, Iterable):
+            # list of includes is ORed together
+            files = list(
+                file
+                for pattern in self._include
+                for file in filter(pattern.match, files)
+            )
         # filter out ignored files
-        if self._ignore:
-            try:
-                for ignore in self._ignore:
-                    files = itertools.filterfalse(ignore.match, files)
-            except:
-                files = itertools.filterfalse(self._ignore.match, files)
+        if isinstance(self._ignore, Iterable):
+            # list of ignores is ANDed together
+            for pattern in self._ignore:
+                files = list(itertools.filterfalse(pattern.match, files))
         # map to paths
         files = map(Path, files)
         # filter out non-files

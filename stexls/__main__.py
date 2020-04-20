@@ -13,6 +13,7 @@ from pathlib import Path
 
 from stexls.util.cli import Cli, command, Arg
 from stexls.util.vscode import *
+from stexls.util.workspace import Workspace
 from stexls.stex import Compiler, Linker
 from stexls.lsp import Server
 
@@ -92,7 +93,8 @@ async def linter(
             return it
         return wrapper
 
-    compiler = Compiler(root, outdir)
+    workspace = Workspace(root)
+    compiler = Compiler(workspace, root, outdir)
     objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)
     linker = Linker(root)
     links = linker.link(objects, compiler.modules, progressfn, not no_use_multiprocessing)
@@ -115,18 +117,18 @@ async def linter(
                             message=str(err)))
 
 @command(
-    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use. Choices are "ipc" or "tcp".'),
+    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
-    loglevel=Arg('--loglevel', '-l', default='error', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
-    logfile=Arg('--logfile', '-L', default='/tmp/stexls.log', type=Path, help='Optional path to a logfile.'),
+    loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
+    logfile=Arg('--logfile', '-L',  type=Path, help='Logfile name.'),
 )
 async def lsp(
     transport_kind: str = 'ipc',
     host: str = 'localhost',
     port: int = 0,
     loglevel: str = 'error',
-    logfile: Path = '/tmp/stexls.log'):
+    logfile: Path = '.stexls/stexls.log'):
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:

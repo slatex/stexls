@@ -6,7 +6,8 @@ import functools
 from pathlib import Path
 import urllib
 
-from stexls.stex import Linker
+from stexls.stex import Linker, Compiler
+from stexls.util.workspace import Workspace
 from stexls.util.jsonrpc import *
 from stexls.util.vscode import *
 
@@ -17,22 +18,28 @@ class Server(Dispatcher):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._initialized = False
-        self._cache = None
-        self._linker = None
+        self._workspace: Workspace = None
+        self._compiler: Compiler = None
+        self._linker: Linker = None
         self._root = None
-
     @method
-    def initialize(self, **kparams):
+    def initialize(self, **params):
         if self._initialized:
             raise ValueError('Server already initialized')
-        log.info('initialize')
         return {
             'capabilities': {
+                'textDocumentSync': {
+                    'openClose': True,
+                    'change': 1, # TODO: full=1, incremental=2
+                },
                 'definitionProvider': True,
                 'referencesProvider': True,
-                # 'documentSymbolProvider': True,
-                # 'workspaceSymbolProvider': True,
-                # 'workspace': { 'workspaceFolders' }
+                'workspace': {
+                    'workspaceFolders': {
+                        'supported': True,
+                        'changeNotifications': True
+                    }
+                }
             },
             'serverInfo': {
                 'name': 'stexls',
@@ -41,49 +48,27 @@ class Server(Dispatcher):
         }
     
     @method
-    def initialized(self, *params, **kparams):
+    def initialized(self):
         if self._initialized:
             raise ValueError('Server already initialized')
         self._initialized = True
-        self._root = Path.cwd()
-        def progfn(it, title):
-            try:
-                log.info("%s: %i", title, len(it))
-            except:
-                log.exception(title)
-            yield from it
-        self._linker.update(progfn)
-        return self.show_message_request(1, "This is a message!", [])
+        root = Path.cwd()
+        outdir = root / '.stexls' / 'objects'
+        self._workspace = Workspace(root)
+        self._compiler = Compiler(self._workspace, outdir)
+        self._linker = Linker(root)
+        # objects = self._compiler.compile(self._workspace.files)
+        # self._linker.link(objects, self._compiler.modules)
+        log.info('Initialized: %s')
 
     @method
     def shutdown(self):
         log.info('Shutting down server...')
-        # store the state
-        self.savestate()
-        # make unusable in case something wants to change the sate after it was stored
-        self._linker = None
-        self._cache = None
-        self._root = None
 
     @method
     def exit(self):
         log.info('exit')
         sys.exit()
-
-    @method
-    @alias('$/cancelRequest')
-    def cancel_request(self, id: int):
-        log.info('Received cancel request for: %s', id)
-
-    @method
-    @alias('$/progress')
-    def receive_progress(self, token: ProgressToken, value):
-        pass
-
-    @notification
-    @alias('$/progress')
-    def send_progress(self, token: ProgressToken, value):
-        pass
     
     @notification
     @alias('window/showMessage')
@@ -103,41 +88,29 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/definition')
     def definition(self, textDocument: TextDocumentIdentifier, position: Position, **params):
-        path = Path(urllib.parse.urlparse(textDocument['uri']).path)
-        log.info('get definition of document %s at position %s with context %s', path, position, params)
-        return [
-            LocationLink(
-                targetUri=str(symbol.location.uri.as_uri()),
-                targetRange=symbol.location.range,
-                targetSelectionRange=symbol.location.range,
-                originalSelectionRange=referenceRange).to_json()
-            for referenceRange, symbol
-            in self._linker.get_definitions(
-                path,
-                position['line'],
-                position['character']
-            )
-        ]
+        log.info('get definition of document %s at position %s with context %s', textDocument, position, params)
+        raise NotImplementedError
 
     @method
     @alias('textDocument/references')
-    def references(self, textDocument, position, context):
+    def references(self, textDocument: TextDocumentIdentifier, position: Position, context):
         log.info('get references of document %s at position %s with context %s', textDocument, position, context)
         raise NotImplementedError
 
-    # TEXT SYNCHRONIZATIOn
+    @method
+    @alias('textDocument/didOpen')
+    def text_document_did_open(self, textDocument: TextDocumentItem):
+        log.info('text document close: %s', textDocument)
+        self._workspace.open_file(textDocument.path, textDocument.text)
 
     @method
-    @alias('textDocument/open')
-    def text_document_open(self):
-        pass
+    @alias('textDocument/didChange')
+    def text_document_did_change(self, **params):
+        log.info('text document change: %s', params)
 
     @method
-    @alias('textDocument/change')
-    def text_document_change(self):
-        pass
-
-    @method
-    @alias('textDocument/close')
-    def text_document_close(self):
-        pass
+    @alias('textDocument/didClose')
+    def text_document_did_close(self, textDocument: TextDocumentItem):
+        log.info('text document close: %s', textDocument)
+        self._workspace.close_file(textDocument.path)
+        self._compiler.delete_objectfiles(textDocument.path)

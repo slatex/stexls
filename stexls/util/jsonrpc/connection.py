@@ -4,6 +4,7 @@ import re
 import asyncio
 import logging
 import json
+import inspect
 
 from .core import MessageObject, NotificationObject, RequestObject, ResponseObject, ErrorCodes, ErrorObject
 from .streams import JsonStream
@@ -135,12 +136,27 @@ class JsonRpcConnection:
                 id, error=ErrorObject(ErrorCodes.MethodNotFound, data=method))
         else:
             try:
+                m = self._methods[method]
                 if params is None:
-                    result = self._methods[method]()
+                    result = m()
                 elif isinstance(params, list):
-                    result = self._methods[method](*params)
+                    for i, (value, (name, param)) in enumerate(zip(params, inspect.signature(m).parameters.items())):
+                        if hasattr(param.annotation, 'from_json') and callable(param.annotation.from_json):
+                            log.debug(f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
+                            try:
+                                params[i] = param.annotation.from_json(value)
+                            except:
+                                log.exception(f'Failed to deserialize param "{name}" in method call "{method}"')
+                    result = m(*params)
                 elif isinstance(params, dict):
-                    result = self._methods[method](**params)
+                    for name, param in inspect.signature(m).parameters.items():
+                        if name in params and hasattr(param.annotation, 'from_json') and callable(param.annotation.from_json):
+                            log.debug(f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
+                            try:
+                                params[name] = param.annotation.from_json(params[name])
+                            except:
+                                log.exception(f'Failed to deserialize param "{name}" in method call "{method}"')
+                    result = m(**params)
                 else:
                     raise ValueError(f'Method params of invalid type: {type(params)}')
                 log.debug('Method %s(%s) call successful.', method, params)

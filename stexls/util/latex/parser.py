@@ -301,10 +301,21 @@ class LatexParser:
         self.syntax_errors: List[Tuple[Location, Exception]] = []
         self.parsed = False
     
-    def parse(self):
+    def parse(self, content: str = None) -> Node:
+        """ Actually parses the file given in the constructor.
+
+        Parameters:
+            content: Optional content of the file. If None, then the file is read from disk with open.
+        
+        Returns:
+            The root node of the parsed file.
+        """
         self.parsed = True
-        with open(self.file, encoding=self._encoding) as fd:
-            self.source: str = fd.read()
+        if content is None:
+            with open(self.file, encoding=self._encoding) as fd:
+                self.source: str = fd.read()
+        else:
+            self.source = content
         self._line_lengths = [
             len(line) + 1
             for line
@@ -324,6 +335,7 @@ class LatexParser:
         walker.walk(listener, parse_tree)
         self.syntax_errors.extend(error_listener.syntax_errors)
         self.root = listener.stack[0]
+        return self.root
 
     @staticmethod
     def from_source(source: str) -> LatexParser:

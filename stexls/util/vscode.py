@@ -439,6 +439,12 @@ class TextDocumentIdentifier:
     def __init__(self, uri: DocumentUri):
         self.uri = uri
 
+    @property
+    def path(self) -> Path:
+        ' Converts the uri to a path object. '
+        p = urllib.parse.urlparse(self.uri)
+        return Path(p.path)
+
     def to_json(self) -> dict:
         return { 'uri': str(self.uri) }
 
@@ -603,4 +609,25 @@ class MessageActionItem:
 
     @staticmethod
     def from_json(json: dict) -> MessageActionItem:
-        return MessageActionItem(json['title'])
+        return MessageActionItem(str(json['title']))
+
+
+class TextDocumentItem:
+    def __init__(self, uri: DocumentUri, languageId: str, version: int, text: str):
+        self.uri = uri
+        self.languageId = languageId
+        self.version = version
+        self.text = text
+
+    @property
+    def path(self):
+        ' Converts the uri to a Path object. '
+        p = urllib.parse.urlparse(self.uri)
+        return Path(p.path)
+
+    def to_json(self) -> dict:
+        return { 'uri': self.uri, 'languageId': self.languageId, 'version': self.version, 'text': self.text }
+
+    @staticmethod
+    def from_json(json: dict) -> TextDocumentItem:
+        return TextDocumentItem(str(json['uri']), languageId=str(json['languageId']), version=int(json['version']), text=str(json['text']))

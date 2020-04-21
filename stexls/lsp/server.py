@@ -60,6 +60,7 @@ class Server(Dispatcher):
                 'textDocumentSync': {
                     'openClose': True,
                     'change': 1, # TODO: full=1, incremental=2
+                    'save': True,
                 },
                 'completionProvider': {
                     'triggerCharacters': ['?', '[', '{', ',', '='],
@@ -211,6 +212,9 @@ class Server(Dispatcher):
         diagnostics: List[Diagnostic] = []
         for location, errors in link.errors.items():
             for error in errors:
+                if 0 in (location.range.start.character, location.range.end.character):
+                    log.error('Invalid character in diagnostic: %s', location)
+                    continue
                 diagnostic = Diagnostic(
                     range=location.range,
                     message=str(error),
@@ -228,7 +232,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[dict]):
-        log.info('text document "%s" changed (%i change(s)).', textDocument.path, len(contentChanges))
+        log.info('text document "%s" changed (%i change(s)).', textDocument.uri, len(contentChanges))
         for change in contentChanges:
             if not self._workspace.open_file(textDocument.path, change['text']):
                 return
@@ -237,9 +241,15 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didClose')
     def text_document_did_close(self, textDocument: TextDocumentIdentifier):
-        log.info('text document close: %s', textDocument)
+        log.info('text document close: %s', textDocument.uri)
         if self._workspace.close_file(textDocument.path):
             self._compiler.delete_objectfiles(textDocument.path)
+
+    @method
+    @alias('textDocument/didSave')
+    def text_document_did_save(self, textDocument: TextDocumentIdentifier, text: str = undefined):
+        log.info('text document saved: "%s"', textDocument.uri)
+        return self._update(specific_files=[textDocument.uri])
 
 
 class ProgressManager:

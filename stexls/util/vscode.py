@@ -423,26 +423,26 @@ class LocationLink:
         targetUri: DocumentUri,
         targetRange: Range,
         targetSelectionRange: Range,
-        originalSelectionRange: Optional[Range] = undefined):
+        originSelectionRange: Optional[Range] = undefined):
         self.targetUri = targetUri
         self.targetRange = targetRange
         self.targetSelectionRange = targetSelectionRange
-        if originalSelectionRange:
-            self.originalSelectionRange = originalSelectionRange
+        if originSelectionRange:
+            self.originSelectionRange = originSelectionRange
 
     def to_json(self) -> dict:
         json = { 'targetUri': str(self.targetUri), 'targetRange': self.targetRange.to_json(), 'targetSelectionRange': self.targetRange.to_json() }
-        if hasattr(self, 'originalSelectionRange'):
-            json['originalSelectionRange'] = self.originalSelectionRange.to_json()
+        if getattr(self, 'originSelectionRange', None):
+            json['originSelectionRange'] = self.originSelectionRange.to_json()
         return json
 
     @staticmethod
     def from_json(json: dict) -> LocationLink:
         return LocationLink(
-            DocumentUri(json['targetUri']),
-            Range.from_json(json['targetRange']),
-            Range.from_json(json['targetSelectionRange']),
-            undefined if 'originalSelectionRange' not in json else Range.from_json(json['originalSelectionRange']))
+            targetUri=DocumentUri(json['targetUri']),
+            targetRange=Range.from_json(json['targetRange']),
+            targetSelectionRange=Range.from_json(json['targetSelectionRange']),
+            originSelectionRange=undefined if 'originSelectionRange' not in json else Range.from_json(json['originSelectionRange']))
 
 
 class TextDocumentIdentifier:

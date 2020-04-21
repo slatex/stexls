@@ -114,12 +114,12 @@ class Linker:
         modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
         progressfn: Callable[[Iterable], Iterable]) -> Dict[Path, List[StexObject]]:
         build_orders: Dict[StexObject, List[StexObject]] = dict()
-        errors: Dict[StexObject, Dict[Location, List[Exception]]] = {}
         for _, objects in progressfn(inputs.items()):
             for object in objects:
-                build_orders[object] = Linker._make_build_order(object, modules, errors.setdefault(object, {}))
+                errors = {}
+                build_orders[object] = Linker._make_build_order(object, modules, errors)
+                self.errors[object] = errors
         self.build_orders.update(build_orders)
-        self.errors.update(errors)
         return build_orders
     
     def _link(
@@ -133,8 +133,8 @@ class Linker:
             futures = mapfn(linkfn, progressfn(build_orders.values()))
             links: Dict[StexObject, StexObject] = dict(zip(build_orders, futures))
             for obj, link in links.items():
-                for loc, err in self.errors.get(obj, {}).items():
-                    link.errors.setdefault(loc, []).append(err)
+                for loc, errors in self.errors.get(obj, {}).items():
+                    link.errors.setdefault(loc, []).extend(errors)
         self.links.update(links)
         return links
 

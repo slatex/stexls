@@ -28,7 +28,7 @@ class Workspace:
         ' Returns true if a modified version of this file that can be queried with read_file() is in memory. '
         return file in self._open_files
 
-    def open_file(self, path: Path, content: str):
+    def open_file(self, path: Path, content: str) -> bool:
         """ Opens a file in the current workspace.
 
             This is needed to be able to handle files which are not saved to disk.
@@ -38,12 +38,19 @@ class Workspace:
         Parameters:
             path: Path of the opened file.
             content: Content of the file when opening it.
+        
+        Returns:
+            True if the file was opened or is already open. False otherwise.
         """
         if path in self._open_files:
             log.warning('Opened already open file: "%s"', path)
         else:
             log.debug('Opening file: "%s"', path)
+        if path not in self.files:
+            log.debug('Ignoring open file attempt of "%s" because it is not part of this workspace.', path)
+            return False
         self._open_files[path] = content
+        return True
 
     def update_file_incremental(self, path: Path, content: str):
         """ Incremental update of an opened file.
@@ -62,7 +69,7 @@ class Workspace:
             log.warning('Updating not open file: "%s"', path)
         self._open_files[path] = content
 
-    def close_file(self, path: Path):
+    def close_file(self, path: Path) -> bool:
         """ Removes an opened file from ram.
 
             After a file is closed we don't need to store it's state anymore
@@ -71,12 +78,17 @@ class Workspace:
 
         Parameters:
             path: The closed file.
+        
+        Returns:
+            True if the file was closed because it was open.
         """
         if path in self._open_files:
             log.debug('Closing file: "%s"', path)
             del self._open_files[path]
+            return True
         else:
             log.warning('Closing not open file: "%s"', path)
+        return False
 
     def read_file(self, path: Path) -> Optional[str]:
         """ Reads a file modified in this workspace. If the accessed file is not modified

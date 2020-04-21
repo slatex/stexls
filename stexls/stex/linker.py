@@ -131,9 +131,10 @@ class Linker:
         with multiprocessing.Pool() as pool:
             mapfn = pool.map if use_multiprocessing else map
             futures = mapfn(linkfn, progressfn(build_orders.values()))
-            links = dict(zip(build_orders, futures))
-            for obj, errors in self.errors.items():
-                links[obj].errors.update(errors)
+            links: Dict[StexObject, StexObject] = dict(zip(build_orders, futures))
+            for obj, link in links.items():
+                for loc, err in self.errors.get(obj, {}).items():
+                    link.errors.setdefault(loc, []).append(err)
         self.links.update(links)
         return links
 

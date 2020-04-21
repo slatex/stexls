@@ -3,6 +3,8 @@ import pkg_resources
 import sys
 import pickle
 import functools
+import random
+import string
 import asyncio
 from pathlib import Path
 import urllib
@@ -10,7 +12,7 @@ import time
 from typing import Callable
 
 
-from stexls.stex import Linker, Compiler
+from stexls.stex import Linker, Compiler, StexObject
 from stexls.util.workspace import Workspace
 from stexls.util.jsonrpc import *
 from stexls.util.vscode import *
@@ -84,22 +86,20 @@ class Server(Dispatcher):
             }
         }
 
-    @method
-    async def initialized(self):
-        if self._initialized:
-            raise ValueError('Server already initialized')
-        self._initialized = True
-        outdir = self._root / '.stexls' / 'objects'
-        self._workspace = Workspace(self._root)
-        self._compiler = Compiler(self._workspace, outdir)
-        self._linker = Linker(self._root)
+    async def _update(self, all: bool = False, specific_files: List[DocumentUri] = None):
         try:
             loop = asyncio.get_event_loop()
+            if specific_files:
+                files = [Path(url.path) for url in map(urllib.parse.urlparse, specific_files)]
+            else:
+                files = self._workspace.files
+                if not all:
+                    files = self._compiler.modified(files)
             async with ProgressManager(self) as progressfn:
                 objects = await loop.run_in_executor(
                     None,
                     self._compiler.compile,
-                    self._workspace.files,
+                    files,
                     progressfn('Compiling'),
                     False)
                 links = await loop.run_in_executor(
@@ -109,9 +109,22 @@ class Server(Dispatcher):
                     self._compiler.modules,
                     progressfn,
                     False)
+                for obj, link in links.items():
+                    self.publish_diagnostics(uri=obj.path.as_uri(), diagnostics=self._create_diagnostics(link))
         except:
             log.exception('Failed to create progress')
+
+    @method
+    async def initialized(self):
+        if self._initialized:
+            raise ValueError('Server already initialized')
+        outdir = self._root / '.stexls' / 'objects'
+        self._workspace = Workspace(self._root)
+        self._compiler = Compiler(self._workspace, outdir)
+        self._linker = Linker(self._root)
+        await self._update(all=True)
         log.info('Initialized')
+        self._initialized = True
 
     @method
     def shutdown(self):
@@ -181,23 +194,44 @@ class Server(Dispatcher):
         log.info('completion invoked: %s', workDoneToken)
         raise NotImplementedError
 
+    @notification
+    @alias('textDocument/publishDiagnostics')
+    def publish_diagnostics(self, uri: DocumentUri, diagnostics: List[Diagnostic]):
+        pass
+
+    def _create_diagnostics(self, link: StexObject) -> List[Diagnostic]:
+        diagnostics: List[Diagnostic] = []
+        for location, errors in link.errors.items():
+            for error in errors:
+                diagnostic = Diagnostic(
+                    range=location.range,
+                    message=str(error),
+                    severity=DiagnosticSeverity.Warning if 'Warning' in type(error).__name__ else DiagnosticSeverity.Error)
+                diagnostics.append(diagnostic)
+        return diagnostics
+
     @method
     @alias('textDocument/didOpen')
-    def text_document_did_open(self, textDocument: TextDocumentItem):
+    async def text_document_did_open(self, textDocument: TextDocumentItem):
         log.info('text document close: %s', textDocument)
         self._workspace.open_file(textDocument.path, textDocument.text)
+        await self._update(specific_files=[textDocument.uri])
 
     @method
     @alias('textDocument/didChange')
-    def text_document_did_change(self, **params):
-        log.info('text document change: %s', params)
+    async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[dict]):
+        log.info('text document "%s" changed (%i change(s)).', textDocument.path, len(contentChanges))
+        for change in contentChanges:
+            if not self._workspace.open_file(textDocument.path, change['text']):
+                return
+        await self._update(specific_files=[textDocument.uri])
 
     @method
     @alias('textDocument/didClose')
-    def text_document_did_close(self, textDocument: TextDocumentItem):
+    def text_document_did_close(self, textDocument: TextDocumentIdentifier):
         log.info('text document close: %s', textDocument)
-        self._workspace.close_file(textDocument.path)
-        self._compiler.delete_objectfiles(textDocument.path)
+        if self._workspace.close_file(textDocument.path):
+            self._compiler.delete_objectfiles(textDocument.path)
 
 
 class ProgressManager:
@@ -226,7 +260,7 @@ class ProgressManager:
                 self.percentage = undefined
                 if self.title is None:
                     return
-                self.token = hash(self.titles[self.index])
+                self.token = ''.join(random.sample(string.ascii_letters, len(string.ascii_letters)))
                 self.index += 1
                 log.debug('Creating new progress %s (%s)', self.title, self.token)
                 await self.server.window_work_done_progress_create(token=self.token)

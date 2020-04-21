@@ -461,7 +461,7 @@ class TextDocumentIdentifier:
         return TextDocumentIdentifier(DocumentUri(json['uri']))
 
 
-class DiagnosticSeverity:
+class DiagnosticSeverity(SerializableEnum):
     Error: int = 1
     Warning: int = 2
     Information: int = 3
@@ -476,8 +476,11 @@ class DiagnosticRelatedInformation:
         self.location = location
         self.message = message
 
+    def to_json(self) -> dict:
+        return { 'location': self.location.to_json(), 'message': self.message }
 
-class DiagnosticTag:
+
+class DiagnosticTag(SerializableEnum):
     Unnecessary: int = 1
     Deprecated: int = 2
 
@@ -502,6 +505,13 @@ class Diagnostic:
         self.message = message
         if relatedInformation is not None:
             self.relatedInformation = relatedInformation
+
+    def to_json(self) -> dict:
+        return {
+            'range': self.range.to_json(),
+            'message': self.message,
+            'severity': self.severity.to_json(),
+        }
 
 
 class MessageType(SerializableEnum):

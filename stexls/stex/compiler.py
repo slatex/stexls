@@ -292,7 +292,7 @@ class StexObject:
         if finalize:
             for path, ranges in other.references.items():
                 for range, id in ranges.items():
-                    location = Location(path, range)
+                    location = Location(path.as_uri(), range)
                     if id not in self.symbol_table:
                         identifiers_of_same_type = (
                             symbol.qualified_identifier.identifier
@@ -377,7 +377,7 @@ class StexObject:
         else:
             for path, ranges in self.references.items():
                 for range, id in ranges.items():
-                    location = Location(path, range)
+                    location = Location(path.as_uri(), range)
                     formatted += f'\n\t{location.format_link()}:{id}'
         
         formatted += '\n\nErrors:'
@@ -415,7 +415,7 @@ class StexObject:
             location: Location of the string that creates this reference
             referenced_id: The id of the referenced symbol.
         """
-        self.references[location.uri][location.range] = referenced_id
+        self.references[location.path][location.range] = referenced_id
 
     def add_symbol(self, symbol: Symbol, export: Optional[bool] = False, severity: Optional[type] = CompilerError):
         if export is not None:

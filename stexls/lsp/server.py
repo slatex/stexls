@@ -12,7 +12,7 @@ import time
 from typing import Callable
 
 
-from stexls.stex import Linker, Compiler, StexObject
+from stexls.stex import Linker, Compiler, StexObject, Symbol
 from stexls.util.workspace import Workspace
 from stexls.util.jsonrpc import *
 from stexls.util.vscode import *
@@ -110,7 +110,7 @@ class Server(Dispatcher):
                     self._compiler.compile,
                     files,
                     progressfn('Compiling'),
-                    False)
+                    True)
                 links = await loop.run_in_executor(
                     None,
                     self._linker.link,
@@ -177,8 +177,16 @@ class Server(Dispatcher):
         position: Position,
         workDoneToken: ProgressToken = undefined,
         **params):
-        log.info('get definition: %s', workDoneToken)
-        raise NotImplementedError
+        symbols: List[Tuple[Range, Symbol]] = self._linker.definitions(textDocument.path, position.line, position.character)
+        log.debug('Found %i symbols at %s', len(symbols), position)
+        return [
+            LocationLink(
+                targetUri=symbol.location.uri,
+                targetRange=symbol.location.range,
+                targetSelectionRange=symbol.location.range,
+                originSelectionRange=original_selection_range)
+            for original_selection_range, symbol in symbols
+        ]
 
     @method
     @alias('textDocument/references')
@@ -189,8 +197,13 @@ class Server(Dispatcher):
         workDoneToken: ProgressToken = undefined,
         context = undefined,
         **params):
-        log.info('get references: %s', workDoneToken)
-        raise NotImplementedError
+        symbols: List[Tuple[Range, Symbol]] = self._linker.definitions(textDocument.path, position.line, position.character)
+        references: List[Location] = []
+        for _, symbol in symbols:
+            for reference in self._linker.references(symbol):
+                references.append(reference)
+        log.debug('Found %i references at %s', len(references), position)
+        return references
 
     @method
     @alias('textDocument/completion')
@@ -201,7 +214,7 @@ class Server(Dispatcher):
         context: CompletionContext = undefined,
         workDoneToken: ProgressToken = undefined):
         log.info('completion invoked: %s', workDoneToken)
-        raise NotImplementedError
+        return []
 
     @notification
     @alias('textDocument/publishDiagnostics')

@@ -16,6 +16,9 @@ import pkg_resources
 
 __all__ = ['Linker']
 
+import logging
+log = logging.getLogger(__name__)
+
 class Linker:
     def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve().absolute()
@@ -25,44 +28,39 @@ class Linker:
         self.links: Dict[StexObject, StexObject] = dict()
 
     def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
-        file = Path(file).as_uri()
-        if file not in self.objects:
-            raise ValueError(f'File not found: "{file}"')
-        for object in self.objects[file]:
+        for object in self.objects.get(file, ()):
             if object.module:
                 for module in object.symbol_table.get(object.module, ()):
                     if module.full_range.contains(Position(line, column)):
                         if object in self.links:
                             yield self.links[object]
-            else:
-                if object in self.links:
-                    yield self.links[object]
+            elif object in self.links:
+                yield self.links[object]
 
-    def definitions(self, file: Path, line: int, column: int) -> Tuple[List[Range], List[Symbol]]:
-        references = []
+    def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
         definitions = []
         position = Position(line, column)
-        for object in self.get_relevant_objects(Path(file).as_uri(), line, column):
+        origin = Location(file.as_uri(), position)
+        log.debug('Definitions at %s', origin.format_link())
+        for object in self.relevant_objects(file, line, column):
             for id, symbols in object.symbol_table.items():
                 for symbol in symbols:
-                    if symbol.location.contains(position) and symbol not in definitions:
-                        references.append(symbol.location.range)
-                        definitions.append(symbol)
-            for path, ranges in object.references.items():
-                for range, id in ranges.items():
-                    if not range.contains(position):
-                        continue
+                    log.debug('Compare to symbol %s at %s. Contained? %s', id, symbol.location.format_link(), symbol.location.contains(origin))
+                    if symbol.location.contains(origin):
+                        definitions.append((symbol.location.range, symbol))
+            for range, id in object.references.get(file, {}).items():
+                target = Location(file.as_uri(), range)
+                log.debug('Compare to reference %s at %s. Contained? %s', id, target.format_link(), target.contains(origin))
+                if target.contains(origin):
                     for symbol in object.symbol_table.get(id, ()):
-                        if symbol not in definitions:
-                            references.append(range)
-                            definitions.append(symbol)
-        return references, definitions
+                        definitions.append((range, symbol))
+        return definitions
 
     def references(self, symbol: Symbol) -> List[Location]:
         references = []
         for path, objects in self.objects.items():
             for object in objects:
-                for range, id in object.references.get(symbol.location.uri, {}).items():
+                for range, id in object.references.get(symbol.location.path, {}).items():
                     if symbol.identifier == id:
                         references.append(Location(path, range))
         return references

@@ -87,14 +87,22 @@ class Server(Dispatcher):
         }
 
     async def _update(self, all: bool = False, specific_files: List[DocumentUri] = None):
+        """ Compiles and links files.
+
+        After the set of files to compile is determined according to the parameters,
+        the linker will link them and diagnostics are published for each of the files.
+        Parameters:
+            all: If true, all files in the workspace are getting linked. If no specific files are provided, then all modified files are linked.
+            specific_files: If given, only those files are linked.
+        """
+        loop = asyncio.get_event_loop()
+        if specific_files:
+            files = [Path(url.path) for url in map(urllib.parse.urlparse, specific_files)]
+        else:
+            files = self._workspace.files
+            if not all:
+                files = self._compiler.modified(files)
         try:
-            loop = asyncio.get_event_loop()
-            if specific_files:
-                files = [Path(url.path) for url in map(urllib.parse.urlparse, specific_files)]
-            else:
-                files = self._workspace.files
-                if not all:
-                    files = self._compiler.modified(files)
             async with ProgressManager(self) as progressfn:
                 objects = await loop.run_in_executor(
                     None,

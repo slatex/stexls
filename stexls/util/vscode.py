@@ -664,3 +664,16 @@ class WorkDoneProgressEnd:
         return WorkDoneProgressBegin(
             json.get('message', undefined))
 
+
+class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
+    def __init__(self, uri: DocumentUri, version: Optional[int]):
+        super().__init__(uri)
+        self.version = version
+
+    def to_json(self) -> dict:
+        return { 'uri': self.uri, 'version': self.version }
+
+    @staticmethod
+    def from_json(json) -> VersionedTextDocumentIdentifier:
+        return VersionedTextDocumentIdentifier(json['uri'], json['version'])
+

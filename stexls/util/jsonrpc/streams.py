@@ -37,14 +37,16 @@ class JsonStream:
 
     def write_json(self, o: Any):
         ' Serializes the object with json and writes it to the underlying stream writer. '
-        try:
-            if hasattr(o, 'to_json') and callable(o.to_json):
-                o = o.to_json()
-            elif hasattr(o, 'serialize') and callable(o.serialize):
-                o = o.serialize()
-        except:
-            pass
-        serialized = json.dumps(o, default=lambda x: dict(x.__dict__.items()))
+        def serializer(child):
+            try:
+                if hasattr(child, 'to_json') and callable(child.to_json):
+                    return child.to_json()
+                elif hasattr(child, 'serialize') and callable(child.serialize):
+                    return child.serialize()
+            except:
+                pass
+            return dict(child.__dict__.items())
+        serialized = json.dumps(o, default=serializer)
         content = serialized.encode(self.charset)
         length_header = f'Content-Length: {len(content)}'.encode(self.encoding)
         if self.with_content_type:

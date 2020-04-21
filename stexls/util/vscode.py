@@ -344,6 +344,8 @@ class Range:
 
 class Location:
     def __init__(self, uri: DocumentUri, positionOrRange: Union[Position, Range]):
+        if urllib.parse.urlparse(uri).scheme != 'file':
+            raise ValueError(f'uri argument is not a file uri ({uri})')
         self.uri = DocumentUri(uri)
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)

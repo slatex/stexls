@@ -243,7 +243,7 @@ class Server(Dispatcher):
     def text_document_did_close(self, textDocument: TextDocumentIdentifier):
         log.info('text document close: %s', textDocument.uri)
         if self._workspace.close_file(textDocument.path):
-            self._compiler.delete_objectfiles(textDocument.path)
+            self._compiler.delete_objectfiles([textDocument.path])
 
     @method
     @alias('textDocument/didSave')

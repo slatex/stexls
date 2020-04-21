@@ -3,17 +3,34 @@ from __future__ import annotations
 from typing import Optional, Union, Any, List, NewType, Generic, T, Tuple, Iterable
 from pathlib import Path
 import urllib
+from enum import Enum
+
+class SerializableEnum(Enum):
+    def to_json(self):
+        return self.value
+    
+    @classmethod
+    def from_json(cls, json):
+        return cls(json)
 
 
 class Undefined:
     def __bool__(self) -> bool:
         return False
 
+    def __repr__(self): return 'undefined'
+
+    def to_json(self): return 'undefined'
+
+    @staticmethod
+    def from_json(json): return undefined
+
 undefined = Undefined()
 
 DocumentUri = NewType('DocumentUri', str)
 
 ProgressToken = NewType('ProgressToken', Union[int, str])
+
 
 class Position:
     ' Representation of a zero indexed line and character inside a file. '''
@@ -398,15 +415,6 @@ class Location:
         return Location(DocumentUri(json['uri']), Range.from_json(json['range']))
 
 
-class ProgressParams(Generic[T]):
-    def __init__(
-        self,
-        token: ProgressToken,
-        value: T):
-        self.token = token
-        self.value = value
-
-
 class LocationLink:
     def __init__(
         self,
@@ -427,7 +435,7 @@ class LocationLink:
         return json
 
     @staticmethod
-    def from_json(json: dict) -> Location:
+    def from_json(json: dict) -> LocationLink:
         return LocationLink(
             DocumentUri(json['targetUri']),
             Range.from_json(json['targetRange']),
@@ -496,104 +504,7 @@ class Diagnostic:
             self.relatedInformation = relatedInformation
 
 
-class Command:
-    def __init__(
-        self,
-        title: str,
-        command: str,
-        arguments: Optional[List[Any]]):
-        self.title = title
-        self.command = command
-        if arguments is not None:
-            self.arguments = arguments
-
-
-class TextEdit:
-    def __init__(
-        self,
-        range: Range,
-        newText: str):
-        self.range = range
-        self.newText = newText
-
-
-class TextDocumentEdit:
-    def __init__(
-        self,
-        textDocument: 'VersionedTextDocumentIdentifier',
-        edits: List[TextEdit]):
-        self.textDocument = textDocument
-        self.edits = edits
-
-
-class CreateFileOptions:
-    def __init__(
-        self,
-        overwrite: bool = undefined,
-        ignoreIfExists: bool = undefined):
-        if overwrite not in (None, undefined):
-            self.overwrite = overwrite
-        if ignoreIfExists not in (None, undefined):
-            self.ignoreIfExists = ignoreIfExists
-
-
-class CreateFile:
-    def __init__(
-        self,
-        uri: str,
-        options: CreateFileOptions = undefined):
-        self.kind = 'create'
-        self.uri = uri
-        if options not in (None, undefined):
-            self.options = options
-
-
-class RenameFileOptions:
-    def __init__(
-        self,
-        overwrite: bool = undefined,
-        ignoreIfExists: bool = undefined):
-        if overwrite not in (None, undefined):
-            self.overwrite = overwrite
-        if ignoreIfExists not in (None, undefined):
-            self.ignoreIfExists = ignoreIfExists
-
-
-class RenameFile:
-    def __init__(
-        self,
-        oldUri: DocumentUri,
-        newUri: DocumentUri,
-        options: RenameFileOptions = undefined):
-        self.kind = 'rename'
-        self.oldUri = oldUri
-        self.newUri = newUri
-        if options not in (None, undefined):
-            self.options = options
-
-
-class DeleteFileOptions:
-    def __init__(
-        self,
-        recursive: Optional[bool],
-        ignoreIfNotExists: Optional[bool]):
-        if recursive is not None:
-            self.recursive = recursive
-        if ignoreIfNotExists is not None:
-            self.ignoreIfExists = ignoreIfNotExists
-
-
-class DeleteFile:
-    def __init__(
-        self,
-        uri: str,
-        options: Optional[DeleteFileOptions]):
-        self.uri = uri
-        if options is not None:
-            self.options = options
-
-
-class MessageType:
+class MessageType(SerializableEnum):
     Error: int = 1
     Warning: int = 2
     Info: int = 3
@@ -631,3 +542,125 @@ class TextDocumentItem:
     @staticmethod
     def from_json(json: dict) -> TextDocumentItem:
         return TextDocumentItem(str(json['uri']), languageId=str(json['languageId']), version=int(json['version']), text=str(json['text']))
+
+
+class CompletionTriggerKind(SerializableEnum):
+    Invoked = 1
+    TriggerCharacter = 2
+    TriggerForIncompleteCompletions = 3
+
+
+class CompletionContext:
+    def __init__(
+        self,
+        triggerKind: CompletionTriggerKind,
+        triggerCharacter: str = undefined):
+        self.triggerKind = triggerKind
+        if triggerCharacter != undefined:
+            self.triggerCharacter = triggerCharacter
+
+    def to_json(self) -> dict:
+        json = { 'triggerKind': self.triggerKind.to_json() }
+        if getattr(self, 'triggerCharacter', undefined) != undefined:
+            json['triggerCharacter'] = self.triggerCharacter
+    
+    @staticmethod
+    def from_json(json) -> CompletionContext:
+        return CompletionContext(
+            CompletionTriggerKind.from_json(json.get('triggerKind')),
+            json.get('triggerCharacter', undefined))
+
+
+class WorkDoneProgressBegin:
+    def __init__(
+        self,
+        title: str,
+        percentage: int = undefined,
+        message: str = undefined,
+        cancellable: bool = undefined):
+        self.kind = 'begin'
+        self.title = title
+        if percentage != undefined:
+            self.percentage = percentage
+        if message != undefined:
+            self.message = message
+        if cancellable != undefined:
+            self.cancellable = cancellable
+
+    def to_json(self) -> dict:
+        json = {
+            'kind': self.kind,
+            'title': self.title,
+        }
+        if getattr(self, 'percentage', undefined) != undefined:
+            json['percentage'] = self.percentage
+        if getattr(self, 'message', undefined) != undefined:
+            json['message'] = self.message
+        if getattr(self, 'cancellable', undefined) != undefined:
+            json['cancellable'] = self.cancellable
+        return json
+
+    @staticmethod
+    def from_json(json) -> WorkDoneProgressBegin:
+        return WorkDoneProgressBegin(
+            json['title'],
+            json.get('percentage', undefined),
+            json.get('message', undefined),
+            json.get('cancellable', undefined))
+
+
+class WorkDoneProgressReport:
+    def __init__(
+        self,
+        percentage: int = undefined,
+        message: str = undefined,
+        cancellable: bool = undefined):
+        self.kind = 'report'
+        if percentage != undefined:
+            self.percentage = percentage
+        if message != undefined:
+            self.message = message
+        if cancellable != undefined:
+            self.cancellable = cancellable
+
+    def __repr__(self): return str(self.to_json())
+
+    def to_json(self) -> dict:
+        json = { 'kind': self.kind }
+        if getattr(self, 'percentage', undefined) != undefined:
+            json['percentage'] = self.percentage
+        if getattr(self, 'message', undefined) != undefined:
+            json['message'] = self.message
+        if getattr(self, 'cancellable', undefined) != undefined:
+            json['cancellable'] = self.cancellable
+        return json
+
+    @staticmethod
+    def from_json(json) -> WorkDoneProgressBegin:
+        return WorkDoneProgressBegin(
+            json.get('percentage', undefined),
+            json.get('message', undefined),
+            json.get('cancellable', undefined))
+
+
+class WorkDoneProgressEnd:
+    def __init__(
+        self,
+        message: str = undefined):
+        self.kind = 'end'
+        if message != undefined:
+            self.message = message
+
+    def to_json(self) -> dict:
+        json = {
+            'kind': self.kind,
+        }
+        if getattr(self, 'message', undefined) != undefined:
+            json['message'] = self.message
+        return json
+
+    @staticmethod
+    def from_json(json) -> WorkDoneProgressBegin:
+        return WorkDoneProgressBegin(
+            json.get('message', undefined))
+

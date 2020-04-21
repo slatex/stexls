@@ -94,7 +94,7 @@ async def linter(
         return wrapper
 
     workspace = Workspace(root)
-    compiler = Compiler(workspace, root, outdir)
+    compiler = Compiler(workspace, outdir)
     objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)
     linker = Linker(root)
     links = linker.link(objects, compiler.modules, progressfn, not no_use_multiprocessing)

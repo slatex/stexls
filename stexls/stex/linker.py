@@ -38,21 +38,29 @@ class Linker:
                 yield self.links[object]
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
+        current_range: Range = None
         definitions = []
         position = Position(line, column)
         origin = Location(file.as_uri(), position)
-        log.debug('Definitions at %s', origin.format_link())
         for object in self.relevant_objects(file, line, column):
             for id, symbols in object.symbol_table.items():
                 for symbol in symbols:
-                    log.debug('Compare to symbol %s at %s. Contained? %s', id, symbol.location.format_link(), symbol.location.contains(origin))
                     if symbol.location.contains(origin):
-                        definitions.append((symbol.location.range, symbol))
+                        range = symbol.location.range
+                        if current_range and current_range.length < range.length:
+                            continue
+                        if not current_range or range.length < current_range.length:
+                            current_range = range
+                            definitions = []
+                        definitions.append((range, symbol))
             for range, id in object.references.get(file, {}).items():
-                target = Location(file.as_uri(), range)
-                log.debug('Compare to reference %s at %s. Contained? %s', id, target.format_link(), target.contains(origin))
-                if target.contains(origin):
+                if range.contains(position):
                     for symbol in object.symbol_table.get(id, ()):
+                        if current_range and current_range.length < range.length:
+                            continue
+                        if not current_range or range.length < current_range.length:
+                            current_range = range
+                            definitions = []
                         definitions.append((range, symbol))
         return definitions
 
@@ -61,8 +69,9 @@ class Linker:
         for path, objects in self.objects.items():
             for object in objects:
                 for range, id in object.references.get(symbol.location.path, {}).items():
-                    if symbol.identifier == id:
-                        references.append(Location(path, range))
+                    if symbol.qualified_identifier == id:
+                        location = Location(path.as_uri(), range)
+                        references.append(location)
         return references
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):

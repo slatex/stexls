@@ -198,10 +198,10 @@ class Server(Dispatcher):
         context = undefined,
         **params):
         symbols: List[Tuple[Range, Symbol]] = self._linker.definitions(textDocument.path, position.line, position.character)
+        log.debug('Searching for references of these symbols: %s', list(s for _, s in symbols))
         references: List[Location] = []
         for _, symbol in symbols:
-            for reference in self._linker.references(symbol):
-                references.append(reference)
+            references.extend(self._linker.references(symbol))
         log.debug('Found %i references at %s', len(references), position)
         return references
 

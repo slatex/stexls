@@ -165,6 +165,11 @@ class Range:
         self.start = start
         self.end = end or start
 
+    @property
+    def length(self) -> Tuple[int, int]:
+        ' Returns a tuple with 1st begin "length" of lines and 2nd being "length" of characters. Allows for easy comparision using builtin operators. '
+        return self.end.line - self.start.line, self.end.character - self.start.character
+
     def is_empty(self) -> bool:
         ''' Checks wether the range is empty or not.
             The range is empty if start and end are equal.

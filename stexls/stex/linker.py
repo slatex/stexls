@@ -27,7 +27,61 @@ class Linker:
         self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = dict()
         self.links: Dict[StexObject, StexObject] = dict()
 
+    def _cleanup(self, files: Dict[Path, List[StexObject]]):
+        """ This is an private method used to clean up old references to objects from files given in the keys() of the files dict.
+
+            This method goes through the list of files and deletes errors, build orders and links
+            related to these files. Also the list of root objects provided in the dict's values()
+            are stored for later use.
+
+        Parameters:
+            files: Dictionary of paths to a list of toplevel objects they export.
+        """
+        for path, objects in files.items():
+            # delete old objects, build orders, errors and links related to
+            # the new file
+            if path in self.objects:
+                for object in self.objects[path]:
+                    if object in self.build_orders:
+                        del self.build_orders[object]
+                    if object in self.errors:
+                        del self.errors[object]
+                    if object in self.links:
+                        del self.links[object]
+            # add the objects from the new file again
+            if objects is None:
+                if path in self.objects:
+                    del self.objects[path]
+            else:
+                self.objects[path] = objects
+
+    def link(
+        self,
+        inputs: Dict[Path, List[StexObject]],
+        modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
+        progressfn: Callable[[str], Callable[[Iterable], Iterable]] = None,
+        use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
+        """ This is the main functionality of the linker. It links all the input files using the provided importable modules dictionary.
+
+        Parameters:
+            inputs: Map of all files with their objects which need to be linked.
+            modules: A dictionary of files to the dictionary of module id's to the module objects they export.
+        
+        Keyword Parameters:
+            progressfn: A progress function.
+            use_multiprocessing: Enables multiprocessing.
+        
+        Returns:
+            A linked object for all objects provided in files.
+        """
+        progressfn = progressfn or (lambda title: lambda it: it)
+        self._cleanup(inputs)
+        build_orders = self._resolve_dependencies(inputs, modules, progressfn('Resolving Dependencies'))
+        links = self._link(build_orders, progressfn('Linking'), use_multiprocessing)
+        return links
+
     def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
+        """ Determines the stex objects at the current coursor position. """
         for object in self.objects.get(file, ()):
             if object.module:
                 for module in object.symbol_table.get(object.module, ()):
@@ -38,6 +92,11 @@ class Linker:
                 yield self.links[object]
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
+        """ Finds definitions at the current cursor position.
+        
+        Returns:
+            List of tuples with (the range used to create the link on mouse hover, The symbol found at the location)
+        """
         definitions: Dict[int, List[Tuple[Range, Symbol]]] = {}
         position = Position(line, column)
         origin = Location(file.as_uri(), position)
@@ -57,8 +116,13 @@ class Linker:
             return []
 
     def references(self, symbol: Symbol) -> List[Location]:
+        """ Finds all references to the specified symbol (only if the symbol is properly imported). """
         references = []
         for _, link in self.links.items():
+            if symbol.location.path not in link.files:
+                # ignore this link if the file of the symbol
+                # is not even imported by the link
+                continue
             for path, ranges in link.references.items():
                 for range, id in ranges.items():
                     if symbol.qualified_identifier == id:
@@ -99,18 +163,32 @@ class Linker:
             for target in targets:
                 G.edge(origin, target)
         G.view(directory='/tmp/stexls')
-    
-    def info(self, path: Path) -> Iterator[str]:
-        path = path if isinstance(path, Path) else Path(path)
-        for object in self.objects.get(path, ()):
-            link: StexObject = self.links.get(object, object)
-            print(link.format())
 
     def _resolve_dependencies(
         self,
         inputs: Dict[Path, List[StexObject]],
         modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        progressfn: Callable[[Iterable], Iterable]) -> Dict[Path, List[StexObject]]:
+        progressfn: Callable[[Iterable], Iterable]) -> Dict[StexObject, List[StexObject]]:
+        """ This is the resolve dependency step during linking.
+
+        This step takes all the new objects and resolves their respective dependencies.
+        Creating the order in which the imported module should be linked together in order
+        to properly create a link for the input objects.
+
+        Parameters:
+            inputs:
+                Map of files to the objects they export.
+                The build orders will be created for each of these exported objects.
+            modules:
+                Map of files to a map of module symbol identifiers to the object containing
+                the module. This map is used to efficiently find the dependencies.
+            progressfn:
+                Optional progress report function.
+
+        Returns:
+            Map of origin stex object to the list of objects their link needs to link against
+            to be build properly.
+        """
         build_orders: Dict[StexObject, List[StexObject]] = dict()
         for _, objects in progressfn(inputs.items()):
             for object in objects:
@@ -125,6 +203,19 @@ class Linker:
         build_orders: Dict[StexObject, List[StexObject]],
         progressfn: Callable[[Iterable], Iterable],
         use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
+        """ This is the final link step.
+
+            Takes map of origin objects and their respective build orders as input in 
+            order to create the linked object.
+        
+        Parameters:
+            build_orders: Map of objects to the build order they need to be linked against.
+            progressfn: Optional progress report function.
+            use_multiprocessing: Enables multiprocessing.
+        
+        Returns:
+            Map of origin objects to the new linked object.
+        """
         linkfn = functools.partial(StexObject.link_list, root=self.root)
         with multiprocessing.Pool() as pool:
             mapfn = pool.map if use_multiprocessing else map
@@ -136,45 +227,58 @@ class Linker:
         self.links.update(links)
         return links
 
-    def _cleanup(self, files: Dict[Path, List[StexObject]]):
-        ' Delete old objects related to the new files. '
-        for path, objects in files.items():
-            # delete old objects, build orders, errors and links related to
-            # the new file
-            if path in self.objects:
-                for object in self.objects[path]:
-                    if object in self.build_orders:
-                        del self.build_orders[object]
-                    if object in self.errors:
-                        del self.errors[object]
-                    if object in self.links:
-                        del self.links[object]
-            # add the objects from the new file again
-            self.objects[path] = objects
-
-    def link(
-        self,
-        inputs: Dict[Path, List[StexObject]],
-        modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        progressfn: Callable[[str], Callable[[Iterable], Iterable]] = None,
-        use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
-        progressfn = progressfn or (lambda title: lambda it: it)
-        self._cleanup(inputs)
-        build_orders = self._resolve_dependencies(inputs, modules, progressfn('Resolving Dependencies'))
-        links = self._link(build_orders, progressfn('Linking'), use_multiprocessing)
-        return links
-
     @staticmethod
     def _make_build_order(
         current: StexObject,
         modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        errors: Dict[Location, List[Exception]]=None,
+        errors: Dict[Location, List[Exception]],
         build_order_cache: Dict[StexObject, List[StexObject]] = None,
         cyclic_stack: OrderedDict[StexObject, Location] = None,
         at_toplevel: bool = True,
         usemodule_on_stack: bool = False,
         root: StexObject = None) -> List[StexObject]:
-        """ Recursively creates the build order for a root object. """
+        """ Recursively creates the build order for a root object.
+
+            It takes a current object, a dictionary of modules that can be imported and
+            a output dictionary for the errors that are relevant to the first "current" object provided.
+            All the keyword arguments are internal and not to be used by the user who wants to create a
+            build order for the current object.
+
+        Parameters:
+            current:
+                The current object for which the build order is being generated.
+            modules:
+                A dictionary of (filepath)->(module identifier)->(object with that module).
+                The Path is the path to the file which contains the module with the SymbolIdentifier.
+                And the object is the object which contains the mdoule with the specified SymbolIdentifier.
+                E.g.: modules[primenumber.tex][primenumber/MODULE] = compile(primenumber.tex)
+            errors:
+                An output dictionary which is used to store exceptions that occured during linking.
+                Only errors which are relevant to the first "current" object will be added.
+
+        Keyword Arguments:
+            build_order_cache:
+                A dictionary which maps source objects to their already computed build lists.
+                Build orders can't be shared because they depend on the path they were imported on.
+                It is used during the current linking processes in cases like
+                A imports B and C, but B and C both import D. Then D only has to be computed once instead of twice.
+            cyclic_stack:
+                A dict of objects and the location they are imported from. Used to diagnose cyclic imports.
+            at_toplevel:
+                This should be used to indicate the "first current" object. This is required because
+                only the toplevel current object can utilize "use" imports. This option must be false
+                for all recursive usages.
+            usemodule_on_stack:
+                A simple flag which tracks whether a "usemodule" or "guse" type of import
+                was used. If this is true, then we can ignore cyclic imports of the root object.
+            root:
+                This must be None for the toplevel. This is used to keep track of what the "first current"
+                object was in recursive calls.
+
+        Returns:
+            Build order of the current object.
+            Furthermore, errors related to the root object are stored in errors.
+        """
 
         # create default values if none are given
         build_order_cache = dict() if build_order_cache is None else build_order_cache

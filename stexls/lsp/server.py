@@ -228,7 +228,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didSave')
     async def text_document_did_save(self, textDocument: TextDocumentIdentifier, text: str = undefined):
-        if self._workspace.open_file(textDocument.path, text):
+        if self._workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
             await self._request_file_update(textDocument.path)
         else:
@@ -267,6 +267,7 @@ class Server(Dispatcher):
                     files,
                     progressfn('Compiling'),
                     True)
+                log.debug('Compiled: %s', set(objects))
                 links = await loop.run_in_executor(
                     None,
                     self._linker.link,

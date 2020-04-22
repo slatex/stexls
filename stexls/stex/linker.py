@@ -38,8 +38,7 @@ class Linker:
                 yield self.links[object]
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
-        current_range: Range = None
-        definitions = []
+        definitions: Dict[int, List[Tuple[Range, Symbol]]] = {}
         position = Position(line, column)
         origin = Location(file.as_uri(), position)
         for object in self.relevant_objects(file, line, column):
@@ -47,31 +46,23 @@ class Linker:
                 for symbol in symbols:
                     if symbol.location.contains(origin):
                         range = symbol.location.range
-                        if current_range and current_range.length < range.length:
-                            continue
-                        if not current_range or range.length < current_range.length:
-                            current_range = range
-                            definitions = []
-                        definitions.append((range, symbol))
+                        definitions.setdefault(range.length, []).append((range, symbol))
             for range, id in object.references.get(file, {}).items():
                 if range.contains(position):
                     for symbol in object.symbol_table.get(id, ()):
-                        if current_range and current_range.length < range.length:
-                            continue
-                        if not current_range or range.length < current_range.length:
-                            current_range = range
-                            definitions = []
-                        definitions.append((range, symbol))
-        return definitions
+                        definitions.setdefault(range.length, []).append((range, symbol))
+        if definitions:
+            return definitions[min(definitions)]
+        else:
+            return []
 
     def references(self, symbol: Symbol) -> List[Location]:
         references = []
-        for path, objects in self.objects.items():
-            for object in objects:
-                for range, id in object.references.get(symbol.location.path, {}).items():
+        for _, link in self.links.items():
+            for path, ranges in link.references.items():
+                for range, id in ranges.items():
                     if symbol.qualified_identifier == id:
-                        location = Location(path.as_uri(), range)
-                        references.append(location)
+                        references.append(Location(path.as_uri(), range))
         return references
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):

@@ -9,7 +9,7 @@ import asyncio
 from pathlib import Path
 import urllib
 import time
-from typing import Callable
+from typing import Callable, Dict, Set
 
 
 from stexls.stex import Linker, Compiler, StexObject, Symbol
@@ -28,7 +28,6 @@ class Server(Dispatcher):
         self._compiler: Compiler = None
         self._linker: Linker = None
         self._root = None
-
         self.progressEnabled = False
 
     @method
@@ -86,42 +85,6 @@ class Server(Dispatcher):
                 'version': str(pkg_resources.require('stexls')[0].version)
             }
         }
-
-    async def _update(self, all: bool = False, specific_files: List[DocumentUri] = None):
-        """ Compiles and links files.
-
-        After the set of files to compile is determined according to the parameters,
-        the linker will link them and diagnostics are published for each of the files.
-        Parameters:
-            all: If true, all files in the workspace are getting linked. If no specific files are provided, then all modified files are linked.
-            specific_files: If given, only those files are linked.
-        """
-        loop = asyncio.get_event_loop()
-        if specific_files:
-            files = [Path(url.path) for url in map(urllib.parse.urlparse, specific_files)]
-        else:
-            files = self._workspace.files
-            if not all:
-                files = self._compiler.modified(files)
-        try:
-            async with ProgressManager(self) as progressfn:
-                objects = await loop.run_in_executor(
-                    None,
-                    self._compiler.compile,
-                    files,
-                    progressfn('Compiling'),
-                    True)
-                links = await loop.run_in_executor(
-                    None,
-                    self._linker.link,
-                    objects,
-                    self._compiler.modules,
-                    progressfn,
-                    False)
-                for obj, link in links.items():
-                    self.publish_diagnostics(uri=obj.path.as_uri(), diagnostics=self._create_diagnostics(link))
-        except:
-            log.exception('Failed to create progress')
 
     @method
     async def initialized(self):
@@ -238,34 +201,119 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: TextDocumentItem):
-        log.info('text document close: %s', textDocument)
-        self._workspace.open_file(textDocument.path, textDocument.text)
-        await self._update(specific_files=[textDocument.uri])
+        if self._workspace.open_file(textDocument.path, textDocument.text):
+            log.info('didOpen: %s', textDocument.uri)
+            await self._request_file_update(textDocument.path)
+        else:
+            log.debug('Received didOpen event for invalid file: %s', textDocument.uri)
 
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[dict]):
-        log.info('text document "%s" changed (%i change(s)).', textDocument.uri, len(contentChanges))
         for change in contentChanges:
             if not self._workspace.open_file(textDocument.path, change['text']):
                 return
-        await self._update(specific_files=[textDocument.uri])
+        log.info('didChange: "%s" (%i change(s)).', textDocument.uri, len(contentChanges))
+        await self._request_file_update(textDocument.path)
 
     @method
     @alias('textDocument/didClose')
     def text_document_did_close(self, textDocument: TextDocumentIdentifier):
-        log.info('text document close: %s', textDocument.uri)
         if self._workspace.close_file(textDocument.path):
+            log.info('didClose: %s', textDocument.uri)
             self._compiler.delete_objectfiles([textDocument.path])
+        else:
+            log.debug('Received didClose event for invalid file: %s', textDocument.uri)
 
     @method
     @alias('textDocument/didSave')
-    def text_document_did_save(self, textDocument: TextDocumentIdentifier, text: str = undefined):
-        log.info('text document saved: "%s"', textDocument.uri)
-        return self._update(specific_files=[textDocument.uri])
+    async def text_document_did_save(self, textDocument: TextDocumentIdentifier, text: str = undefined):
+        if self._workspace.open_file(textDocument.path, text):
+            log.info('didSave: %s', textDocument.uri)
+            await self._request_file_update(textDocument.path)
+        else:
+            log.debug('Received didSave event for invalid file: %s', textDocument.uri)
+
+    async def _request_file_update(self, path: Path):
+        """ Sends off a request that a file path needs to be linked again and returns an awaitable that resolves after the file was linked. """
+        # reset the time the last request was sent
+        self._time_update_requested = time.time()
+        if path not in self._link_requests:
+            # add file to queue
+            log.debug('Requested update for file: %s', path)
+            self._link_requests.add(path)
+        # wait for the next update cycle to finish
+        await self._background_linker_finished_event.wait()
+
+    async def _update(self, all: bool = False, files: List[Path] = None):
+        """ Compiles and links files.
+
+        After the set of files to compile is determined according to the parameters,
+        the linker will link them and diagnostics are published for each of the files.
+        Parameters:
+            all: If true, all files in the workspace are getting linked. If no specific files are provided, then all modified files are linked.
+            files: If given, only those files are linked.
+        """
+        loop = asyncio.get_event_loop()
+        if files is None:
+            files = self._workspace.files
+        if not all:
+            files = self._compiler.modified(files)
+        try:
+            async with WorkDoneProgressManager(self) as progressfn:
+                objects = await loop.run_in_executor(
+                    None,
+                    self._compiler.compile,
+                    files,
+                    progressfn('Compiling'),
+                    True)
+                links = await loop.run_in_executor(
+                    None,
+                    self._linker.link,
+                    objects,
+                    self._compiler.modules,
+                    progressfn,
+                    False)
+                for obj, link in links.items():
+                    self.publish_diagnostics(uri=obj.path.as_uri(), diagnostics=self._create_diagnostics(link))
+        except:
+            log.exception('Failed to create progress')
+
+    async def _background_file_linker(self, freq: float = 1.0):
+        """ An infinite loop that periodically links files. The files to update can be requested using request_file_update(). """
+        while True:
+            # repeat until time since last update is freq seconds old
+            if time.time() - self._time_update_requested > freq:
+                log.debug('%i link requests queued.', len(self._link_requests))
+                if self._link_requests:
+                    # buffer flagged files
+                    files = list(self._link_requests)
+                    # delete the queue
+                    self._link_requests.clear()
+                    # buffer the associated event
+                    event = self._background_linker_finished_event
+                    # reset the event
+                    self._background_linker_finished_event = asyncio.Event()
+                    # update all files added in the meantime
+                    await self._update(files=files)
+                    # signal that files were updated
+                    event.set()
+            # yield to other threads while the time difference is not large enough
+            await asyncio.sleep(freq)
+
+    async def __aenter__(self):
+        log.debug('Server async enter called')
+        self._time_update_requested = 0
+        self._link_requests: Set[str] = set()
+        self._background_linker_finished_event = asyncio.Event()
+        self._background_file_linker_task = asyncio.create_task(self._background_file_linker())
+    
+    async def __aexit__(self, *args):
+        log.debug('Server async exit called')
+        self._background_file_linker_task.cancel()
 
 
-class ProgressManager:
+class WorkDoneProgressManager:
     def __init__(self, server: Server, freq: float = 1.0):
         self.server = server
         self.freq = freq
@@ -275,13 +323,11 @@ class ProgressManager:
         self.index = 0
         self.percentage = undefined
         self.message = undefined
-        self.updater = asyncio.create_task(self._updater())
 
     async def _updater(self):
         if not self.server.progressEnabled:
             log.warning('Client has progress information not enabled: Skipping')
         while self.server.progressEnabled:
-            log.debug('Progress manager update')
             if self.index < len(self.titles):
                 if self.token is not None:
                     log.debug('Ending progress on token %s', self.token)
@@ -320,6 +366,7 @@ class ProgressManager:
         return wrapper
 
     async def __aenter__(self):
+        self.updater = asyncio.create_task(self._updater())
         return self
 
     async def __aexit__(self, *args):

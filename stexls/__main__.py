@@ -129,7 +129,7 @@ async def lsp(
     host: str = 'localhost',
     port: int = 0,
     loglevel: str = 'error',
-    logfile: Path = '.stexls/stexls.log'):
+    logfile: Path = 'stexls.log'):
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:
@@ -137,7 +137,7 @@ async def lsp(
         host: Host for "tcp" transport. Defaults to localhost.
         port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
         loglevel: Loglevel. Choices are critical, error, warning, info and debug.
-        logfile: File to which logs are written. Defaults to /tmp/stexls.log
+        logfile: File to which logs are written.
 
     Returns:
         Awaitable task.

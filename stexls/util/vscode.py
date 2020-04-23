@@ -38,10 +38,10 @@ class Position:
         ''' Initializes the position with a line and character offset.
         Parameters:
             line: Zero indexed line of a file.
-            character: Zero indexed character of the line.
+            character: 1 indexed character of the line.
         '''
-        self.line = line
-        self.character = character
+        self.line = max(0, line)
+        self.character = max(1, character)
 
     def __eq__(self, other: Position):
         return isinstance(other, Position) and self.line == other.line and self.character == other.character

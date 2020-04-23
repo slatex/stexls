@@ -119,7 +119,7 @@ class Linker:
             if ref not in referenced_locations:
                 for symbol, link in symbols.items():
                     link.errors.setdefault(symbol.location, []).append(
-                        LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier}'))
+                        LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
 
     def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         """ Determines the stex objects at the current coursor position. """

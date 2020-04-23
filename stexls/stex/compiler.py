@@ -457,9 +457,9 @@ class StexObject:
             previous_definitions = self.symbol_table.get(symbol.qualified_identifier, ())
 
             # Report errors from this file only if this file does not already contain a symdef
-            if symbol.definition_type != DefinitionType.SYMDEF:
+            if symbol.definition_type not in (DefinitionType.SYMDEF, DefinitionType.DEFI):
                 this_file_contains_symdef_for_id = any(
-                    symbol2.definition_type == DefinitionType.SYMDEF
+                    symbol2.definition_type in (DefinitionType.SYMDEF, DefinitionType.DEFI)
                     for symbol2 in previous_definitions
                     if symbol2.location.uri == symbol.location.uri)
                 if not this_file_contains_symdef_for_id:
@@ -818,7 +818,7 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
             module=module,
             noverb=None,
             noverbs=None,
-            definition_type=DefinitionType.SYMDEF) # TODO: Special definition type required?
+            definition_type=DefinitionType.DEFI) # TODO: Special definition type required?
         obj.add_symbol(symbol, export=True)
     else:
         defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)

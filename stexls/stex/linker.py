@@ -9,7 +9,7 @@ from hashlib import sha1
 from stexls.util.vscode import *
 from stexls.stex.parser import ParsedFile
 from stexls.stex.compiler import StexObject
-from stexls.stex.symbols import Symbol, SymbolIdentifier, VerbSymbol, ModuleSymbol, SymbolType
+from stexls.stex.symbols import Symbol, SymbolIdentifier, VerbSymbol, ModuleSymbol, SymbolType, DefinitionType
 from .exceptions import *
 
 import pkg_resources
@@ -118,8 +118,9 @@ class Linker:
         for ref, symbols in unreferenced.items():
             if ref not in referenced_locations:
                 for symbol, link in symbols.items():
-                    link.errors.setdefault(symbol.location, []).append(
-                        LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
+                    if not (isinstance(symbol, VerbSymbol) and symbol.definition_type == DefinitionType.DEFI):
+                        link.errors.setdefault(symbol.location, []).append(
+                            LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
 
     def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         """ Determines the stex objects at the current coursor position. """

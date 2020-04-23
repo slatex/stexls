@@ -9,6 +9,9 @@ import difflib
 import itertools
 import functools
 import glob
+import logging
+
+log = logging.getLogger(__name__)
 
 from stexls.util.vscode import DocumentUri, Position, Range, Location
 from stexls.util.workspace import Workspace
@@ -235,6 +238,15 @@ class StexObject:
         """
         pass
 
+    @property
+    def language_bindings(self) -> Iterable[str]:
+        """ Yields all language binding languages in this object. This should never yield more than one language. """
+        for id, symbols in self.symbol_table.items():
+            if id.symbol_type == SymbolType.BINDING:
+                for symbol in symbols:
+                    if isinstance(symbol, BindingSymbol):
+                        yield symbol.lang
+
     @staticmethod
     def link_list(others: List[StexObject], root: Path) -> StexObject:
         ' Links new object with a list of other object, where the last object will be the finalized one. '
@@ -244,6 +256,22 @@ class StexObject:
         return link
 
     def link(self, other: StexObject, finalize: bool = False):
+        """ Links self with other object.
+
+            This is the main linking operation needed to properly
+            merge two objects. Finalize should only be true when
+            linking to the object for which this link will be used.
+            Finalizing will make this link include errors and references
+            defined by the finalized object.
+        
+        Parameters:
+            other: Object to link with this accumulator object.
+            finalize: Flag that signalizes that this "other" will be the last object to be linked against.
+        
+        Returns:
+            self, but all symbols are copied from "other" and if finalize
+            is enabled errors and references will as well be copied.
+        """
         self.files.update(other.files)
         if finalize:
             for location, errors in other.errors.items():
@@ -292,6 +320,9 @@ class StexObject:
         if finalize:
             for path, ranges in other.references.items():
                 for range, id in ranges.items():
+                    if id.symbol_type == SymbolType.BINDING:
+                        # do not dereference references to bindings as they will never be located in this link
+                        continue
                     location = Location(path.as_uri(), range)
                     if id not in self.symbol_table:
                         identifiers_of_same_type = (
@@ -551,11 +582,10 @@ class Compiler:
 
     def compile(
         self,
-        files: Iterable[Path],
+        files: List[Path],
         progressfn: Callable[[Iterable], Iterable] = None,
         use_multiprocessing: bool = True) -> Dict[Path, List[StexObject]]:
         progressfn = progressfn or (lambda x: x)
-        files = list(files)
         visited: Set[Path] = set()
         results = None
         with multiprocessing.Pool() as pool:
@@ -633,13 +663,8 @@ class Compiler:
                 if content is not None or not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
                     # if not already compiled or the compiled object is old, create a new object
                     objectdir.mkdir(parents=True, exist_ok=True)
-                    try:
-                        parsed = ParsedFile(file).parse(content)
-                        objects = list(StexObject.compile(root, parsed))
-                    except:
-                        # return empty if file can't be parsed or an error occurs while
-                        # compiling objects
-                        return []
+                    parsed = ParsedFile(file).parse(content)
+                    objects = list(StexObject.compile(root, parsed))
                     try:
                         with open(objectfile, 'wb') as fd:
                             pickle.dump(objects, fd)
@@ -696,12 +721,17 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     name_location = modsig.location.replace(positionOrRange=modsig.name.range)
     if parsed_file.path.name != f'{modsig.name.text}.tex':
         obj.errors[name_location].append(CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
+    # create the exported module symbol
     module = ModuleSymbol(
         location=name_location,
         name=modsig.name.text,
-        full_range=modsig.location,
+        full_range=modsig.location.range,
         definition_type=DefinitionType.MODSIG)
     obj.add_symbol(module, export=True)
+    # make reference to all _binding_ symbols regardless of instance language
+    # language bindings must be named <module>._binding_/BINDING
+    obj.add_reference(name_location, module.identifier.append(SymbolIdentifier('_binding_', SymbolType.BINDING)))
+    # compile other environments
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(_compile_importmodule, parsed_file.importmodules, obj)
     _map_compile(functools.partial(_compile_sym, module), parsed_file.syms, obj)
@@ -755,15 +785,27 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('modnl', parsed_file.syms, obj)
     if parsed_file.path.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
         obj.errors[modnl.location].append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
+    # Get the name of the referenced module
     module_id = SymbolIdentifier(modnl.name.text, SymbolType.MODULE)
+    # Create binding symbol with the specified language as metadata
+    lang_location = modnl.location.replace(positionOrRange=modnl.lang.range)
+    obj.add_symbol(
+        BindingSymbol(
+            location=lang_location,
+            lang=modnl.lang.text,
+            module=module_id,
+            full_range=modnl.location.range))
+    # Add the reference from the module name to the parent module
     name_location = modnl.location.replace(positionOrRange=modnl.name.range)
     obj.add_reference(name_location, module_id)
+    # Add dependency to the file the module definition must be located in
     obj.add_dependency(
         location=name_location,
         file=modnl.path,
         module_name=modnl.name.text,
         module_type_hint=DefinitionType.MODSIG,
         export=True)
+    # Compile other environments
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
@@ -806,7 +848,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
         module = ModuleSymbol(
             location=name_location,
             name=module.id.text,
-            full_range=module.location,
+            full_range=module.location.range,
             definition_type=DefinitionType.MODULE)
         obj.add_symbol(module, export=True)
         _map_compile(_compile_importmodule, parsed_file.importmodules, obj)

@@ -93,6 +93,7 @@ async def linter(
             return it
         return wrapper
 
+    files = list(map(Path.absolute, files))
     workspace = Workspace(root)
     compiler = Compiler(workspace, outdir)
     objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)

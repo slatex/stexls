@@ -9,7 +9,7 @@ from hashlib import sha1
 from stexls.util.vscode import *
 from stexls.stex.parser import ParsedFile
 from stexls.stex.compiler import StexObject
-from stexls.stex.symbols import Symbol, SymbolIdentifier
+from stexls.stex.symbols import Symbol, SymbolIdentifier, VerbSymbol, ModuleSymbol, SymbolType
 from .exceptions import *
 
 import pkg_resources
@@ -22,9 +22,14 @@ log = logging.getLogger(__name__)
 class Linker:
     def __init__(self, root: Path):
         self.root = Path(root).expanduser().resolve().absolute()
+        # Keeps track of all objects currently used to create links
         self.objects: Dict[Path, List[StexObject]] = dict()
+        # Keeps track of errors raised when making build orders
+        # this is needed because these errors need to be added later to the link which currently doesnt exist
         self.errors: Dict[StexObject, Dict[Location, List[Exception]]] = dict()
+        # Build orders for every object
         self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = dict()
+        # The finished linked objects
         self.links: Dict[StexObject, StexObject] = dict()
 
     def _cleanup(self, files: Dict[Path, List[StexObject]]):
@@ -78,7 +83,43 @@ class Linker:
         self._cleanup(inputs)
         build_orders = self._resolve_dependencies(inputs, modules, progressfn('Resolving Dependencies'))
         links = self._link(build_orders, progressfn('Linking'), use_multiprocessing)
+        self._validate_references(links)
         return links
+
+    def _validate_references(self, links: Dict[StexObject, StexObject]):
+        """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """
+        unreferenced: Dict[Location, Dict[Symbol, StexObject]] = dict()
+        referenced_locations: Set[Location] = set()
+        for origin, link in links.items():
+            language: Optional[str] = next(origin.language_bindings, None)
+            for id, symbols in origin.symbol_table.items():
+                if id.symbol_type == SymbolType.BINDING:
+                    continue
+                for symbol in symbols:
+                    unreferenced.setdefault(symbol.location, dict())[symbol] = link
+            for path, ranges in origin.references.items():
+                for range, referenced_id in ranges.items():
+                    if referenced_id.symbol_type == SymbolType.BINDING:
+                        continue
+                    for referenced_symbol in link.symbol_table.get(referenced_id, ()):
+                        referenced_locations.add(referenced_symbol.location)
+                        if isinstance(referenced_symbol, VerbSymbol):
+                            referenced_symbol: VerbSymbol
+                            # additionally if the reference is a verb check also that it is not marked noverb
+                            if referenced_symbol.noverb:
+                                reference_location = Location(path.as_uri(), range)
+                                link.errors.setdefault(reference_location, []).append(
+                                    LinkWarning(f'Referenced "noverb" symbol "{referenced_id.identifier}" defined at "{referenced_symbol.location.format_link()}"'))
+                            # and that the language of the current origin is not listed in the noverb languages
+                            if language in referenced_symbol.noverbs:
+                                reference_location = Location(path.as_uri(), range)
+                                link.errors.setdefault(reference_location, []).append(
+                                    LinkWarning(f'Referenced symbol "{referenced_id.identifier}" is marked "noverb" for the language "{language}" at "{referenced_symbol.location.format_link()}"'))
+        for ref, symbols in unreferenced.items():
+            if ref not in referenced_locations:
+                for symbol, link in symbols.items():
+                    link.errors.setdefault(symbol.location, []).append(
+                        LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier}'))
 
     def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
         """ Determines the stex objects at the current coursor position. """
@@ -192,9 +233,8 @@ class Linker:
         build_orders: Dict[StexObject, List[StexObject]] = dict()
         for _, objects in progressfn(inputs.items()):
             for object in objects:
-                errors = {}
-                build_orders[object] = Linker._make_build_order(object, modules, errors)
-                self.errors[object] = errors
+                self.errors[object] = {}
+                build_orders[object] = Linker._make_build_order(object, modules, self.errors[object])
         self.build_orders.update(build_orders)
         return build_orders
     

@@ -42,6 +42,12 @@ class Position:
         '''
         self.line = line
         self.character = character
+
+    def __eq__(self, other: Position):
+        return isinstance(other, Position) and self.line == other.line and self.character == other.character
+
+    def __hash__(self):
+        return hash(hash(self.line) ^ hash(self.character))
     
     def translate(self, lines: int = 0, characters: int = 0):
         """ Creates a copy of this position with the line and character
@@ -164,6 +170,12 @@ class Range:
         assert isinstance(start, Position)
         self.start = start
         self.end = end or start
+
+    def __eq__(self, other: Range):
+        return isinstance(other, Range) and self.start == other.start and self.end == other.end
+
+    def __hash__(self):
+        return hash(hash(self.start) ^ hash(self.end))
 
     @property
     def length(self) -> Tuple[int, int]:
@@ -357,6 +369,12 @@ class Location:
         else:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
+
+    def __eq__(self, other: Location):
+        return isinstance(other, Location) and self.uri == other.uri and self.range == other.range
+
+    def __hash__(self):
+        return hash(hash(self.uri) ^ hash(self.range))
 
     def read(self, lines: Optional[List[str]] = None) -> str:
         ''' Opens the file and returns the text at the range of the location.

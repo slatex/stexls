@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Set
 from enum import Enum
-from stexls.util.vscode import Location
+from stexls.util.vscode import Location, Range
 
 __all__ = [
     'SymbolType',
@@ -10,6 +10,7 @@ __all__ = [
     'SymbolIdentifier',
     'Symbol',
     'ModuleSymbol',
+    'BindingSymbol',
     'VerbSymbol',
 ]
 
@@ -17,6 +18,7 @@ __all__ = [
 class SymbolType(Enum):
     SYMBOL='symbol'
     MODULE='module'
+    BINDING='binding'
 
 
 class AccessModifier(Enum):
@@ -31,6 +33,7 @@ class DefinitionType(Enum):
     DEFI='defi'
     SYMDEF='symdef'
     SYM='sym'
+    BINDING='binding'
 
 
 class SymbolIdentifier:
@@ -66,7 +69,8 @@ class Symbol:
         location: Location,
         identifier: SymbolIdentifier,
         parent: SymbolIdentifier,
-        definition_type: DefinitionType):
+        definition_type: DefinitionType,
+        full_range: Range = None):
         """ Initializes a symbol.
 
         Parameters:
@@ -74,12 +78,14 @@ class Symbol:
             identifier: Identifier of this symbol relative to it's parent.
             parent: The identifier of the parent symbol this symbol is scoped to.
             definition_type: The way this symbol was defined with.
+            full_range: Range to be revealed when jumping to this symbol.
         """
         self.identifier: SymbolIdentifier = identifier
         self.parent: SymbolIdentifier = parent
         self.location: Location = location
         self.access_modifier: AccessModifier = AccessModifier.PRIVATE
         self.definition_type = definition_type
+        self.full_range = full_range
 
     @property
     def qualified_identifier(self) -> SymbolIdentifier:
@@ -114,10 +120,25 @@ class ModuleSymbol(Symbol):
         self: ModuleSymbol,
         location: Location,
         name: str,
-        full_range: Location,
-        definition_type: DefinitionType):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type)
-        self.full_range = full_range
+        definition_type: DefinitionType,
+        full_range: Range = None):
+        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type, full_range)
+
+
+class BindingSymbol(Symbol):
+    def __init__(
+        self: BindingSymbol,
+        location: Location,
+        lang: str,
+        module: SymbolIdentifier,
+        full_range: Range = None):
+        super().__init__(
+            location=location,
+            identifier=SymbolIdentifier('_binding_', SymbolType.BINDING),
+            parent=module,
+            definition_type=DefinitionType.BINDING,
+            full_range=full_range)
+        self.lang = lang
 
 
 class VerbSymbol(Symbol):
@@ -128,7 +149,13 @@ class VerbSymbol(Symbol):
         module: SymbolIdentifier,
         definition_type: DefinitionType,
         noverb: bool = False,
-        noverbs: Set[str] = None):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.SYMBOL), module, definition_type)
+        noverbs: Set[str] = None,
+        full_range: Range = None):
+        super().__init__(
+            location=location,
+            identifier=SymbolIdentifier(name, SymbolType.SYMBOL),
+            parent=module,
+            definition_type=definition_type,
+            full_range=full_range)
         self.noverb = noverb
         self.noverbs = noverbs or set()

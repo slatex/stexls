@@ -678,9 +678,9 @@ class ImportModule(ParsedEnvironment):
         path: Optional[str],
         dir: Optional[str],
         load: Optional[str],
-        filename: str):
+        module: str):
         if load:
-            return (root / load / filename).expanduser().resolve().absolute()
+            return (root / load / (module + '.tex')).expanduser().resolve().absolute()
         if not mhrepo and not path and not dir:
             return (current_file).expanduser().resolve().absolute()
         if mhrepo:
@@ -689,7 +689,7 @@ class ImportModule(ParsedEnvironment):
             source: Path = root / list(current_file.relative_to(root).parents)[-4]
         assert source.name == 'source', "invalid source directory"
         if dir:
-            result = source / dir / filename
+            result = source / dir / (module + '.tex')
         elif path:
             result = source / (path + '.tex')
         else:
@@ -705,7 +705,7 @@ class ImportModule(ParsedEnvironment):
             self.path.text if self.path else None,
             self.dir.text if self.dir else None,
             self.load.text if self.load else None,
-            self.module.text + '.tex')
+            self.module.text)
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE

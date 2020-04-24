@@ -10,6 +10,7 @@ from stexls.util.vscode import *
 from stexls.stex.parser import ParsedFile
 from stexls.stex.compiler import StexObject
 from stexls.stex.symbols import Symbol, SymbolIdentifier, VerbSymbol, ModuleSymbol, SymbolType, DefinitionType
+from stexls.util.format import format_enumeration
 from .exceptions import *
 
 import pkg_resources
@@ -126,14 +127,9 @@ class Linker:
                             # Noverbs are expected to be never referenced and errors are created above if they are referenced
                             continue
                         if symbol.noverbs:
-                            # special warning if only partial noverb
-                            noverbs = list(symbol.noverbs)
-                            if len(noverbs) > 1:
-                                langs = '" and "'.join(('", "'.join(noverbs[:-1]), noverbs[-1]))
-                            else:
-                                langs = noverbs[0]
+                            langs = format_enumeration(symbol.noverbs)
                             link.errors.setdefault(symbol.location, []).append(
-                                LinkWarning(f'Symbol marked as noverb for the language(s) "{langs}" is never referenced: {symbol.qualified_identifier.identifier}'))
+                                LinkWarning(f'Symbol marked as noverb for the language(s) {langs} is never referenced: {symbol.qualified_identifier.identifier}'))
                             continue
                     if not (isinstance(symbol, VerbSymbol) and symbol.definition_type == DefinitionType.DEFI):
                         link.errors.setdefault(symbol.location, []).append(

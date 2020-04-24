@@ -37,6 +37,16 @@ class Node:
         self.end: int = end
         self.children: List[Node] = []
         self._parent: Node = None
+
+    def get_path(self, filter: Pattern = None) -> List[Environment]:
+        ' Recursively get the list of parent node which pass an optional filter. '
+        if isinstance(self, Environment) and (not filter or filter.match(self.env_name)):
+            parents = [self]
+        else:
+            parents = []
+        if self._parent:
+            return self._parent.get_path(filter) + parents
+        return parents
     
     @property
     def parent(self) -> Optional[Node]:

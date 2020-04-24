@@ -135,9 +135,23 @@ class Linker:
                         link.errors.setdefault(symbol.location, []).append(
                             LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
 
-    def relevant_objects(self, file: Path, line: int, column: int) -> Iterator[StexObject]:
-        """ Determines the stex objects at the current coursor position. """
+    def relevant_objects(self, file: Path, line: int, column: int, unlinked: bool = False) -> Iterator[StexObject]:
+        """ Determines the stex objects at the current coursor position.
+        
+        Parameters:
+            file: Current file.
+            line: 0 indexed line of cursor.
+            column: 0 indexed column of cursor.
+            unlinked: If true, returns the unlinked object instead of the linked one.
+        
+        Returns:
+            Objects at the specified location. If unlinked is set, then the original objects are yielded,
+            if false, then the linked objects will be yielded.
+        """
         for object in self.objects.get(file, ()):
+            if unlinked:
+                yield object
+                continue
             if object.module:
                 for module in object.symbol_table.get(object.module, ()):
                     if module.full_range.contains(Position(line, column)):

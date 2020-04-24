@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 from stexls.util.vscode import DocumentUri, Position, Range, Location
 from stexls.util.workspace import Workspace
+from stexls.util.format import format_enumeration
 
 from .parser import *
 from .symbols import *
@@ -467,6 +468,19 @@ class StexObject:
                         self.errors[symbol.location].append(severity(
                             f'Duplicate symbol definition "{symbol.qualified_identifier}": '
                             f' Previously defined at "{duplicate.location.format_link()}"'))
+
+            if symbol.definition_type == DefinitionType.SYMDEF and severity in (LinkError, LinkWarning):
+                for previous in previous_definitions:
+                    if isinstance(symbol, VerbSymbol):
+                        if (symbol.noverb, symbol.noverbs) != (previous.noverb, previous.noverbs):
+                            a = ('' if symbol.noverb else 'no ') + 'noverb'
+                            if symbol.noverbs:
+                                a += ', ' + format_enumeration(symbol.noverbs)
+                            b = ('' if previous.noverb else 'no ') + 'noverb'
+                            if previous.noverbs:
+                                b += ', ' + format_enumeration(previous.noverbs)
+                            self.errors.setdefault(symbol.location, []).append(
+                                severity(f'Previous definition of symbol {symbol.qualified_identifier.identifier} at "{previous.location.format_link()}" has different noverb metadata: {a} vs. {b}'))
 
             # Report errors for all definitions accross multiple files.
             definitions_in_other_files = (

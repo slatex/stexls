@@ -5,6 +5,7 @@ import multiprocessing
 import difflib
 import pickle
 import functools
+import re
 from hashlib import sha1
 from stexls.util.vscode import *
 from stexls.stex.parser import ParsedFile
@@ -32,6 +33,34 @@ class Linker:
         self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = dict()
         # The finished linked objects
         self.links: Dict[StexObject, StexObject] = dict()
+
+    def completion(self, file: Path, lines: List[str], position: Position) -> List[str]:
+        obj = self.relevant_objects(file, position.line, position.character, unlinked=True)
+        args = re.compile(r'(name|mhrepos|repos|path|load|fromrepos|frompath|dir)=(.*)$')
+        values = re.compile(r'(name|mhrepos|repos|path|load|fromrepos|frompath|dir)=([^,\]]*)')
+        envs = re.compile(r'\\([a-zA-Z_][a-zA-Z_0-9]*)(\[.*\])?({.*)$')
+        try:
+            context = lines[position.line][:position.character]
+        except:
+            return []
+        match = args.search(args, context)
+        results = []
+        if match:
+            argname = match.group(1)
+            value = match.group(2)
+            if 'name' == argname:
+                pass
+            elif argname in ('mhrepos', 'repos'):
+                pass
+            elif 'path' == argname:
+                pass
+            elif 'load' == argname:
+                pass
+            elif 'fromrepos' == argname:
+                pass
+            elif 'frompath' == argname:
+                pass
+        return results
 
     def _cleanup(self, files: Dict[Path, List[StexObject]]):
         """ This is an private method used to clean up old references to objects from files given in the keys() of the files dict.

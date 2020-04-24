@@ -464,10 +464,10 @@ class StexObject:
                     for symbol2 in previous_definitions
                     if symbol2.location.uri == symbol.location.uri)
                 if not this_file_contains_symdef_for_id:
-                    for duplicate in previous_definitions:
+                    for previous in previous_definitions:
                         self.errors[symbol.location].append(severity(
                             f'Duplicate symbol definition "{symbol.qualified_identifier}": '
-                            f' Previously defined at "{duplicate.location.format_link()}"'))
+                            f' Previously defined at "{previous.location.format_link()}"'))
 
             if symbol.definition_type == DefinitionType.SYMDEF and severity in (LinkError, LinkWarning):
                 for previous in previous_definitions:

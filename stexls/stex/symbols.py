@@ -159,3 +159,15 @@ class VerbSymbol(Symbol):
             full_range=full_range)
         self.noverb = noverb
         self.noverbs = noverbs or set()
+
+    def format_noverb(self) -> str:
+        if self.noverb:
+            return '<all>'
+        if self.noverbs:
+            noverbs = list(self.noverbs)
+            if len(self.noverbs) == 1:
+                return noverbs[0]
+            else:
+                return '" and "'.join(('", "'.join(noverbs[:-1]), noverbs[-1]))
+        return '<not marked noverb>'
+

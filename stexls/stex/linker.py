@@ -118,6 +118,23 @@ class Linker:
         for ref, symbols in unreferenced.items():
             if ref not in referenced_locations:
                 for symbol, link in symbols.items():
+                    if isinstance(symbol, VerbSymbol):
+                        if symbol.definition_type == DefinitionType.DEFI:
+                            # Defi definitions are their own reference
+                            continue
+                        if symbol.noverb:
+                            # Noverbs are expected to be never referenced and errors are created above if they are referenced
+                            continue
+                        if symbol.noverbs:
+                            # special warning if only partial noverb
+                            noverbs = list(symbol.noverbs)
+                            if len(noverbs) > 1:
+                                langs = '" and "'.join(('", "'.join(noverbs[:-1]), noverbs[-1]))
+                            else:
+                                langs = noverbs[0]
+                            link.errors.setdefault(symbol.location, []).append(
+                                LinkWarning(f'Symbol marked as noverb for the language(s) "{langs}" is never referenced: {symbol.qualified_identifier.identifier}'))
+                            continue
                     if not (isinstance(symbol, VerbSymbol) and symbol.definition_type == DefinitionType.DEFI):
                         link.errors.setdefault(symbol.location, []).append(
                             LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))

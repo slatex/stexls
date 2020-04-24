@@ -129,7 +129,7 @@ async def lsp(
     host: str = 'localhost',
     port: int = 0,
     loglevel: str = 'error',
-    logfile: Path = 'stexls.log'):
+    logfile: Path = Path('stexls.log')):
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:

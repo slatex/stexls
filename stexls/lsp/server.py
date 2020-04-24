@@ -188,9 +188,12 @@ class Server(Dispatcher):
         diagnostics: List[Diagnostic] = []
         for location, errors in link.errors.items():
             for error in errors:
-                if 0 in (location.range.start.character, location.range.end.character):
-                    log.error('Invalid character in diagnostic: %s', location)
-                    continue
+                range = location.range
+                if 0 == location.range.start.character:
+                    range = range.translate(0, 1)
+                    range.end.character -= 1
+                if 0 == location.range.end.character:
+                    range = range.translate(0, 1)
                 diagnostic = Diagnostic(
                     range=location.range,
                     message=str(error),

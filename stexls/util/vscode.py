@@ -41,7 +41,7 @@ class Position:
             character: 1 indexed character of the line.
         '''
         self.line = max(0, line)
-        self.character = max(1, character)
+        self.character = max(0, character)
 
     def __eq__(self, other: Position):
         return isinstance(other, Position) and self.line == other.line and self.character == other.character

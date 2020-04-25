@@ -1,4 +1,7 @@
-python3 -mstexls --cache /tmp/stex-cache.bin --root ~/localmh/MathHub\
-                              --progress-indicator\
-			      --prune '.*/ODK/.*|.*/pre\.tex|.*pre\..*\.tex|.*/post\.tex|.*/assignments/.*|.*WApersons.tex.*|.*region\.tex.*|.*preamble.*|.*MiKoCourses.*|.*meta-inf.*|.*glossary\.en\.tex.*'\
-      | grep Problems > errors.txt
+#!/bin/bash
+python3 -m stexls linter \
+    --ignore '.*/ODK/.*|.*/pre\.tex|.*pre\..*\.tex|.*/post\.tex|.*/assignments/.*|.*WApersons.tex.*|.*region\.tex.*|.*preamble.*|.*MiKoCourses.*|.*meta-inf.*|.*glossary\.en\.tex.*' \
+    --include '.*\.tex' \
+    --progress-indicator \
+    --root ~/MathHub \
+    $@ > errors.txt

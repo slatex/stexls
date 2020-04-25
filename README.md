@@ -10,10 +10,8 @@ I testet it with 3.7, 3.8 and 3.9-dev.
 # Installation
 
 1. Download this repository: `git clone --depth=1 https://gl.kwarc.info/Marian6814/trefier-backend.git stexls`
-2. Then simply install with pip: `pip install stexls/`
+2. Then simply install with pip: `pip install stexls/` (Note: This is an installation from local files and not from the official pip distribution.)
 3. Verify installation with `python -m stexls --version`
-
-Note: This is an installation from local files and not from the official pip distribution.
 
 # Uninstallation
 
@@ -21,75 +19,56 @@ Note: This is an installation from local files and not from the official pip dis
 
 # Features
 
-Analyzes the whole workspace provided with the `--root` argument for stex symbols and
-modules.
+## Language Server
+
+The main feature of this python module is, that it implements the language server protocol
+and can be used by any edior that implements the language server client protocol.
+
+The command that the client needs to run, in order to start the server is:
+
+`python -m stexls lsp`
 
 
-A list of errors will be printet to stdout, where by default the each line begins with
-{filename}:{line}:{column}. This should be easily parsable by most editors.
+This will run the server using IPC as it's message transport kind.
+If the client requires a tcp server you can also provide the `--transport-kind` argument to change it.
+
+`python -m stexls lsp --transport-kind tcp --host localhost --port <port>`
 
 
-You can additionally enable the `--tagfile [name]` flag to generate a file named `tags` (changeable)
-with the definitions of all symbols and modules.
-Symbols appear at least twice. Once with just the symbol name, and a second time prefixed with
-the name of the module followed by a questionmark (?) and then the symbol name again.
-For example: the symbol "balanced-prime" in the module "balancedprime" can be queried by
-the "balanced-prime" tag, as well as the "balancedprime?balanced-prime" tag.
+This will run it in tcp mode and bind it to localhost at some port.
 
 
-A full report of a single file can be created using the `--file` argument.
-This will output a huge list of all imported files, dependencies, symbols, references and
-errors related to only this file.
-Use this in case you want to know why something doesn't work.
-
-To view the current progress, you can also specify the `--progress-indicator` argument.
-This will display three loading bars. First for parsing, second for compiling and the
-third is for linking.
-
-Use `--view-graph` in junction with `--file` to view the import-graph of that file,
-in case you want to debug something.
+Nothing else is required to use the server as the protocol will do everything else.
 
 
-Use `--continuous` to keep the instance alive, which saves time because the cache
-does not have to be reloaded every time you start the program.
-`--continuous` will promt you to press ENTER after each update to update again.
-
-# Usage
-
-This is a preview build and only has a small portion of commands available:
-
-To use this program use: `python -m stexls`
+## Linter
 
 
-The help dialog can guide you through what you can do if you forget.
-The most common usage is probably the following:
+The extension also supports a lightweight "linter" mode, which takes
+the root path of imports as well as file (or list of files) as input.
+
+`python -m stexls linter --root ~/MathHub ${file}`
 
 
-`python -m stexls --cache /tmp/stexls.bin --root $MATH_HUB_DIR --tagfile`
+If you do not run this in an editor who parses the output to generate
+in-editor error annotations you should always use the `--progress-indicator` or `-p`
+flag to visualize the progress, as linting may take a long time if you input a lot of files.
 
 
-This writes the full error report to stdout and generates the tagfile
-in the root directory.
+Diagnostics are printed only for the files given as arguments.
+You do not need to provide the files imported or otherwise related to the file you are interested in.
+Imports and dependencies are automatically resolved relative to the value of the `--root` argument.
 
-# Tips
 
-Make an alias `alias stexls="python -m stexls"` or create an
-executable script in your path containing the following lines:
+So the basic command from the command line should be something like the following if you want information
+about the whole workspace.
 
-> #!/bin/bash
->
-> python -m stexls $@
+`python -m stexls linter --progress-indicator --root ~/MathHub **/*.tex`
 
-# Quirks and Bugs
 
-1. Calling stexls again after some changes always parses and compiles the files changed from the last call, but files that depend on the changed files
-are only relinked if the set of generated or imported symbols change. This may cause some location data to be messed up, but can be easily fixed by
-writing to the file where the data is wrong.
-2. Nested inline environments are not parsed properly. This causes symbols to not be parsed properly: For example `symbol` in `\\inlinedef{... \\defi{symbol} ...}` will not be added to the exported symbols.
-3. If a module is already imported indirectly by another import it will only display the *module that can be removed beginning at <location>*, follwed by
-where the module is already imported (example: `<location> - LinkWarning - Module "function-properties/MODULE" previously imported at "MathHub/MiKoMH/GenCS/source/dmath/en/cardinality.tex:3:1"`). This makes it difficult to verify the error but the import stack is not tracked properly. Use `--file {file} --view-graph` to
-get an overview of the import graph in case you want to verify the decision to remove the reported location.
-4. Import statements are only local to the module they are in. But there are some imports that should be local to {omdoc} and {definition} environments.
-These environments are not tracked, which is why there are some false positives like: `LinkWarning - Multiple imports of module "peano-axioms/MODULE", first imported in line 28, column 6.`
-5. Noverbs are tracked but not handled yet.
-6. Some argument given over the cli are bound to the cache. To change them you have to delete the cache.
+# Cache
+
+
+Cached data is stored in <root>/.stexls/objects and can be deleted
+at any time.
+

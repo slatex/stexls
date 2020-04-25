@@ -773,7 +773,7 @@ class GImport(ParsedEnvironment):
     def path_to_imported_file(self, root: Path = None) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
         return GImport.build_path_to_imported_module(
-            root=Path(root) if root else Path.cwd(),
+            root=root if root else Path.cwd(),
             source=self.location.path.parents[0],
             repo=self.repository.text.strip() if self.repository else None,
             module=self.module.text.strip() if self.module else None)

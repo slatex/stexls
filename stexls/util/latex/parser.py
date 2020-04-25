@@ -533,7 +533,7 @@ class _LatexParserListener(_LatexParserListener):
         env: Environment = self.stack[-1]
         if not isinstance(env, Environment):
             self.parser.syntax_errors.append((env.location, LatexException(f'Expected stack top to be of type Environment found: {self.stack}')))
-        if not env.name:
+        elif not env.name:
             env.add_name(rarg)
         else:
             env.add_rarg(rarg)

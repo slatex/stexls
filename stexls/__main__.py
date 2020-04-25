@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 @command(
     files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
     root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
+    check_modified=Arg('--check-modified', '-m', action='store_true', help='Only create diagnostics for modified files.'),
     include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
     ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
     verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.'),
@@ -36,6 +37,7 @@ log = logging.getLogger(__name__)
 async def linter(
     files: List[Path],
     root: Path = '.',
+    check_modified: bool = False,
     include: List[Pattern] = None,
     ignore: List[Pattern] = None,
     verbose: bool = False,
@@ -52,6 +54,7 @@ async def linter(
     Parameters:
         root: Root of stex imports.
         files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
+        check_modified: If enabled, only modified files will generate diagnostics.
         include: List of regex patterns. Only files that match ANY of these patterns will be included.
         ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
         progress_indicator: Enables a progress bar being printed to stderr.
@@ -102,6 +105,8 @@ async def linter(
     wsfiles = workspace.files
     files = list(file for file in files if file in wsfiles)
     compiler = Compiler(workspace, outdir)
+    if check_modified:
+        files = compiler.modified(files)
     objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)
     linker = Linker(root)
     links = linker.link(objects, compiler.modules, progressfn, not no_use_multiprocessing)

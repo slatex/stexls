@@ -405,14 +405,16 @@ class Linker:
                     object = modules[path][module]
 
                     # Warning for multiple imports of same module
-                    import_locations = list(locations)
-                    if at_toplevel and len(import_locations) > 1:
-                        first_import = import_locations[0]
-                        for import_location in import_locations[1:]:
-                            # TODO: Does this fix multiple import errors with usemodules in omtext etc environments?
-                            if first_import.contains(import_location):
-                                e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, first imported in {first_import.range.start.translate(1, 1)}.')
-                                errors.setdefault(import_location, []).append(e)
+                    if at_toplevel and len(locations) > 1:
+                        # TODO: Does this fix multiple import errors with usemodules in omtext etc environments?
+                        for loc1, (_, _, scope1) in locations.items():
+                            for loc2, (_, _, scope2) in locations.items():
+                                if loc1 == loc2:
+                                    continue
+                                if scope1.contains(scope2):
+                                    first, second = (loc2, loc1) if scope1.range.length <= scope2.range.length else (loc1, loc2)
+                                    e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, earlier imported in {first.range.start.translate(1, 1).format()}.')
+                                    errors.setdefault(second, []).append(e)
 
                     # For each import location
                     for location, (public, _, _) in locations.items():

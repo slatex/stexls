@@ -30,7 +30,7 @@ class StexObject:
         # Set of files used to compile this object
         self.files: Set[Path] = set()
         # Dependent module <str> from path hint <Path> referenced at a <Location> and an export flag <bool>
-        self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, DefinitionType]]]] = defaultdict(dict)
+        self.dependencies: Dict[SymbolIdentifier, Dict[Path, Dict[Location, Tuple[bool, DefinitionType, Location]]]] = defaultdict(dict)
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
         self.symbol_table: Dict[SymbolIdentifier, List[Symbol]] = defaultdict(list)
         # Referenced symbol <SymbolIdentifier> in file <Path> in range <Range>
@@ -145,16 +145,16 @@ class StexObject:
                                 self.errors[location].append(
                                     LinkError(f'Not a module: "{module.identifier}"'))
                     if module in self.dependencies:
-                        for previous_location, (_, module_type_hint) in self.dependencies[module].get(path, {}).items():
+                        for previous_location, (_, module_type_hint, scope) in self.dependencies[module].get(path, {}).items():
                             for location in locations:
                                 self.errors[location].append(
                                     LinkWarning(f'Module "{module.identifier}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
         for module, paths in other.dependencies.items():
             for path, locations in paths.items():
-                for location, (public, module_type_hint) in locations.items():
+                for location, (public, module_type_hint, scope) in locations.items():
                     # add dependencies only if public, except for the finalize case, then always add
                     if public or finalize:
-                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint)
+                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint, scope)
         for id, symbols in other.symbol_table.items():
             for symbol in symbols:
                 self.add_symbol(symbol, export=None, severity=LinkError if finalize else None)
@@ -230,10 +230,10 @@ class StexObject:
         else:
             for module, files in self.dependencies.items():
                 for filename, locations in files.items():
-                    for location, (public, module_type) in locations.items():
+                    for location, (public, module_type, scope) in locations.items():
                         for location in locations:
                             access = 'public' if public else 'private'
-                            formatted += f'\n\t{location.format_link()}:{access} {module_type.name} {module} from "{filename}"'
+                            formatted += f'\n\t{location.format_link()}:{scope.range} {access} {module_type.name} {module} from "{filename}"'
         
         formatted += '\n\nSymbols:'
         if not self.symbol_table:
@@ -268,7 +268,8 @@ class StexObject:
         file: Path,
         module_name: str,
         module_type_hint: DefinitionType,
-        export: bool = False):
+        export: bool = False,
+        scope: Optional[Location] = None):
         """ Adds a dependency to a imported module in another file.
 
         Parameters:
@@ -277,8 +278,9 @@ class StexObject:
             module_name: Module to import from that file.
             module_type_hint: Hint for the expected type of the dependency.
             export: Export the imported symbols again.
+            scope: Scope of where this dependency is valid.
         """
-        self.dependencies[SymbolIdentifier(module_name, SymbolType.MODULE)].setdefault(file, dict())[location] = (export, module_type_hint)
+        self.dependencies[SymbolIdentifier(module_name, SymbolType.MODULE)].setdefault(file, dict())[location] = (export, module_type_hint, scope)
 
     def add_reference(self, location: Location, referenced_id: SymbolIdentifier):
         """ Adds a reference.
@@ -598,7 +600,8 @@ def _compile_gimport(gimport: GImport, obj: StexObject):
         file=gimport.path_to_imported_file(obj.root),
         module_name=module_name,
         module_type_hint=DefinitionType.MODSIG,
-        export=gimport.export)
+        export=gimport.export,
+        scope=gimport.scope)
     obj.add_reference(gimport.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
 def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
@@ -608,7 +611,8 @@ def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
         file=importmodule.path_to_imported_file(obj.root),
         module_name=module_name,
         module_type_hint=DefinitionType.MODULE,
-        export=importmodule.export)
+        export=importmodule.export,
+        scope=importmodule.scope)
     obj.add_reference(importmodule.location, SymbolIdentifier(module_name, SymbolType.MODULE))
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
@@ -658,7 +662,8 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
         file=modnl.path,
         module_name=modnl.name.text,
         module_type_hint=DefinitionType.MODSIG,
-        export=True)
+        export=True,
+        scope=modnl.location)
     # Compile other environments
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)

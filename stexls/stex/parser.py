@@ -30,6 +30,8 @@ __all__ = (
     'GImport',
 )
 
+_SCOPE_REGEX = re.compile(r'n?omtext|example|omgroup|frame|(mh)?module|(mh)?modnl|modsig')
+
 class ParsedFile:
     " An object contains information about symbols, locations, imports of an stex source file. "
     def __init__(self, path: Path):
@@ -634,6 +636,7 @@ class ImportModule(ParsedEnvironment):
     def __init__(
         self,
         location: Location,
+        scope: Location,
         module: TokenWithLocation,
         mhrepos: Optional[TokenWithLocation],
         dir: Optional[TokenWithLocation],
@@ -643,6 +646,7 @@ class ImportModule(ParsedEnvironment):
         mh_mode: bool,
         asterisk: bool):
         super().__init__(location)
+        self.scope = scope
         self.module = module
         self.mhrepos = mhrepos
         self.dir = dir
@@ -710,7 +714,7 @@ class ImportModule(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} ImportModule "{self.module.text}" from "{self.path_to_imported_file()}"]'
+        return f'[{self.scope.range} {access.value} ImportModule "{self.module.text}" from "{self.path_to_imported_file()}"]'
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ImportModule]:
@@ -723,6 +727,7 @@ class ImportModule(ParsedEnvironment):
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return ImportModule(
             location=e.location,
+            scope=e.get_scope(_SCOPE_REGEX),
             module=module,
             mhrepos=named.get('mhrepos') or named.get('repos'),
             dir=named.get('dir'),
@@ -739,11 +744,13 @@ class GImport(ParsedEnvironment):
     def __init__(
         self,
         location: Location,
+        scope: List[Location],
         module: TokenWithLocation,
         repository: Optional[TokenWithLocation],
         export: bool,
         asterisk: bool):
         super().__init__(location)
+        self.scope = scope
         self.module = module
         self.repository = repository
         self.export = export
@@ -792,6 +799,7 @@ class GImport(ParsedEnvironment):
             raise CompilerError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImport(
             location=e.location,
+            scope=e.get_scope(_SCOPE_REGEX),
             module=module,
             repository=next(iter(unnamed), None),
             export=match.group(1) == 'import',
@@ -800,5 +808,5 @@ class GImport(ParsedEnvironment):
 
     def __repr__(self):
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file()}"]'
+        return f'[{self.scope.range} {access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file()}"]'
 

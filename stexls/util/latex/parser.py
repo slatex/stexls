@@ -38,20 +38,15 @@ class Node:
         self.children: List[Node] = []
         self._parent: Node = None
 
-    def get_scope(self, filter: Pattern = None) -> List[Location]:
-        ' Recursively get the scope of this node. Use "filter" to filter environments out that make up a scope. '
-        if isinstance(self, Environment) and (not filter or filter.match(self.env_name)):
-            parents = [
-                Location(
-                    self.parser.file,
-                    Range(
-                        self.parser.offset_to_position(self.begin),
-                        self.parser.offset_to_position(self.end)))]
-        else:
-            parents = []
-        if self._parent:
-            return self._parent.get_scope(filter) + parents
-        return parents
+    def get_scope(self, filter: Pattern = None) -> Location:
+        ' Returns the largest scope this is contained in. Use the filter to filter out environment names that constitute a scope. '
+        if not self._parent or (isinstance(self, Environment) and (not filter or filter.match(self.env_name))):
+            return Location(
+                Path(self.parser.file).as_uri(),
+                Range(
+                    self.parser.offset_to_position(self.begin),
+                    self.parser.offset_to_position(self.end)))
+        return self._parent.get_scope(filter)
     
     @property
     def parent(self) -> Optional[Node]:

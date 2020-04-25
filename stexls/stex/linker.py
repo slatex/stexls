@@ -251,10 +251,8 @@ class Linker:
                 if display_symbols:
                     for id in o.symbol_table:
                         edges.setdefault(origin, set()).add(id.identifier + '/symbol')
-                for module, paths in o.dependencies.items():
-                    for path, locations in paths.items():
-                        for location, _ in locations.items():
-                            edges.setdefault(origin, set()).add(module.identifier)
+                for module in o.dependencies:
+                    edges.setdefault(origin, set()).add(module.identifier)
         if not found:
             raise ValueError('No object found.')
         for origin, targets in edges.items():
@@ -409,13 +407,15 @@ class Linker:
                     # Warning for multiple imports of same module
                     import_locations = list(locations)
                     if at_toplevel and len(import_locations) > 1:
-                        first_import = import_locations[0].range.start.translate(1, 1).format()
+                        first_import = import_locations[0]
                         for import_location in import_locations[1:]:
-                            e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, first imported in {first_import}.')
-                            errors.setdefault(import_location, []).append(e)
+                            # TODO: Does this fix multiple import errors with usemodules in omtext etc environments?
+                            if first_import.contains(import_location):
+                                e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, first imported in {first_import.range.start.translate(1, 1)}.')
+                                errors.setdefault(import_location, []).append(e)
 
                     # For each import location
-                    for location, (public, _) in locations.items():
+                    for location, (public, _, _) in locations.items():
                         # ignore all private imports that are not done by the toplevel root
                         if not public and not at_toplevel:
                             continue

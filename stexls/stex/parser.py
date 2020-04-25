@@ -748,16 +748,35 @@ class GImport(ParsedEnvironment):
         self.export = export
         self.asterisk = asterisk
 
+    @staticmethod
+    def build_path_to_imported_module(
+        root: Path,
+        source: Path,
+        repo: Optional[Path],
+        module: str):
+        """ A static helper method to get the targeted filepath by a gimport environment.
+
+        Parameters:
+            root: Root of mathhub.
+            source: Source directory of the file in which the gimport statement is located.
+            repo: Optional repository specified in gimport statements: gimport[<repository>]{...}
+            module: The targeted module in gimport statements: gimport{<module>}
+        
+        Returns:
+            Path to the file in which the module <module> is located.
+        """
+        if repo is not None:
+            source = root / repo / 'source'
+        path = source / (module + '.tex')
+        return path.expanduser().resolve().absolute()
+
     def path_to_imported_file(self, root: Path = None) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
-        root = Path.cwd() if root is None else Path(root)
-        filename = self.module.text.strip() + '.tex'
-        if self.repository is None:
-            path = self.location.path.parents[0] / filename
-        else:
-            source = root / self.repository.text.strip() / 'source'
-            path = source / filename
-        return path.expanduser().resolve().absolute()
+        return GImport.build_path_to_imported_module(
+            root=Path(root) if root else Path.cwd(),
+            source=self.location.path.parents[0],
+            repo=self.repository.text.strip() if self.repository else None,
+            module=self.module.text.strip() if self.module else None)
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GImport]:

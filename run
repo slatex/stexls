@@ -3,5 +3,5 @@ python3 -m stexls linter \
     --ignore '.*/ODK/.*|.*/pre\.tex|.*pre\..*\.tex|.*/post\.tex|.*/assignments/.*|.*WApersons.tex.*|.*region\.tex.*|.*preamble.*|.*MiKoCourses.*|.*meta-inf.*|.*glossary\.en\.tex.*' \
     --include '.*\.tex' \
     --progress-indicator \
-    --root ~/MathHub \
+    --root ~/localmh/MathHub \
     $@ > errors.txt

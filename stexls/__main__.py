@@ -23,8 +23,9 @@ log = logging.getLogger(__name__)
 @command(
     files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
     root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
-    include=Arg('--include', '-I', type=re.compile, help='Whitelist regex pattern for which files to include.'),
-    ignore=Arg('--ignore', '-i', type=re.compile, help='Blacklist regex pattern for which files to ignore.'),
+    include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
+    ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
+    verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.'),
     progress_indicator=Arg('--progress-indicator', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
     no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
     format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
@@ -35,8 +36,9 @@ log = logging.getLogger(__name__)
 async def linter(
     files: List[Path],
     root: Path = '.',
-    include: Pattern = None,
-    ignore: Pattern = None,
+    include: List[Pattern] = None,
+    ignore: List[Pattern] = None,
+    verbose: bool = False,
     progress_indicator: bool = False,
     no_use_multiprocessing: bool = False,
     format: str = '{file}:{line}:{column} {severity} - {message}',
@@ -50,9 +52,10 @@ async def linter(
     Parameters:
         root: Root of stex imports.
         files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
-        include: Whitelist regex pattern for which files to include. None to not use this feature. Defaults to None.
-        ignore: Blacklist regex pattern for which files to ignore. None to not use this. Defaults to None.
+        include: List of regex patterns. Only files that match ANY of these patterns will be included.
+        ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
         progress_indicator: Enables a progress bar being printed to stderr.
+        verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         no_use_multiprocessing: Disables multiprocessing.
         format: Format of the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
@@ -62,7 +65,6 @@ async def linter(
     Returns:
         Awaitable task.
     """
-    
     root = root.expanduser().resolve().absolute()
 
     settings_dir = root / '.stexls'
@@ -95,6 +97,10 @@ async def linter(
 
     files = list(map(Path.absolute, files))
     workspace = Workspace(root)
+    workspace.ignore = ignore
+    workspace.include = include
+    wsfiles = workspace.files
+    files = list(file for file in files if file in wsfiles)
     compiler = Compiler(workspace, outdir)
     objects = compiler.compile(files, progressfn('Compiling'), not no_use_multiprocessing)
     linker = Linker(root)
@@ -107,6 +113,9 @@ async def linter(
     log.debug('Dumping diagnostics of %i objects.', len(links))
     for object in links.values():
         if object.errors:
+            if verbose:
+                print(object.format())
+                continue
             for loc, errs in object.errors.items():
                 for err in errs:
                     print(

@@ -1,1 +1,4 @@
-python3 -mstexls --cache /tmp/stex-cache.bin --root ~/localmh/MathHub --progress-indicator --prune ODK > errors.txt
+python3 -mstexls --cache /tmp/stex-cache.bin --root ~/localmh/MathHub\
+                              --progress-indicator\
+			      --prune '.*/ODK/.*|.*/pre\.tex|.*pre\..*\.tex|.*/post\.tex|.*/assignments/.*|.*WApersons.tex.*|.*region\.tex.*|.*preamble.*|.*MiKoCourses.*|.*meta-inf.*|.*glossary\.en\.tex.*'\
+      | grep Problems > errors.txt

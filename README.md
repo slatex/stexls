@@ -69,6 +69,6 @@ about the whole workspace.
 # Cache
 
 
-Cached data is stored in <root>/.stexls/objects and can be deleted
+Cached data is stored in `root`/.stexls/objects and can be deleted
 at any time.
 

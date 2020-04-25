@@ -408,6 +408,7 @@ class Compiler:
         ]
 
     def create_tagfile(self, name: str = 'tags', root: Path = None):
+        # TODO: Some multiline tags: ZFC-with choice??
         trans = str.maketrans({'-': r'\-', ']': r'\]', '\\': r'\\', '^': r'\^', '$': r'\$', '*': r'\*', '.': r'\,', '\t': ''})
         lines = []
         for objects in self.objects.values():

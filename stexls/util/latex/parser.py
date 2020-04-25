@@ -290,6 +290,11 @@ class InlineEnvironment(Environment):
         for arg in self.rargs:
             yield from arg.tokens
 
+    def add_rarg(self, rarg: Node):
+        super().add_rarg(rarg)
+        # TODO: Not sure if adding rargs to the rarg and child array will break something...
+        self.children.append(rarg)
+
 
 class LatexParser:
     def __init__(self, file: str, encoding: str = 'utf-8'):

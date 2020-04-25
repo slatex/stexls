@@ -38,14 +38,14 @@ class Node:
         self.children: List[Node] = []
         self._parent: Node = None
 
-    def get_path(self, filter: Pattern = None) -> List[Environment]:
-        ' Recursively get the list of parent node which pass an optional filter. '
+    def get_scope(self, filter: Pattern = None) -> List[Environment]:
+        ' Recursively get the scope of this node. Use "filter" to specify what a "scope" is. '
         if isinstance(self, Environment) and (not filter or filter.match(self.env_name)):
             parents = [self]
         else:
             parents = []
         if self._parent:
-            return self._parent.get_path(filter) + parents
+            return self._parent.get_scope(filter) + parents
         return parents
     
     @property

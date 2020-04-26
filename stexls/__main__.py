@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
     progress_indicator=Arg('--progress-indicator', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
     no_use_multiprocessing=Arg('--no-use-multiprocessing', '-n', action='store_true', help='If specified, disables multiprocessing completely.'),
     format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
+    view_graph=Arg('--view-graph', '-g', help='Shows the import graph for all specified files.'),
     tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?', help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
     loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
     logfile=Arg('--logfile', '-L', type=Path, help='Optional path to a logfile.')
@@ -44,6 +45,7 @@ async def linter(
     progress_indicator: bool = False,
     no_use_multiprocessing: bool = False,
     format: str = '{file}:{line}:{column} {severity} - {message}',
+    view_graph: bool = False,
     tagfile: str = None,
     loglevel: str = 'error',
     logfile: Path = Path('stexls.log')):
@@ -61,6 +63,7 @@ async def linter(
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         no_use_multiprocessing: Disables multiprocessing.
         format: Format of the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".
+        view_graph: Shows the import graph of the specified files.
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
         logfile: File to which logs will be logged. Defaults to "/tmp/stexls.log"
@@ -116,12 +119,14 @@ async def linter(
         compiler.create_tagfile(tagfile)
 
     log.debug('Dumping diagnostics of %i objects.', len(links))
-    for object in links.values():
-        if object.errors:
+    for object, link in links.items():
+        if view_graph:
+            linker.view_import_graph(object.path)
+        if link.errors:
             if verbose:
-                print(object.format())
+                print(link.format())
                 continue
-            for loc, errs in object.errors.items():
+            for loc, errs in link.errors.items():
                 for err in errs:
                     print(
                         format.format(

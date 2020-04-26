@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 @command(
     files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
     root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
+    diagnosticlevel=Arg('--diagnosticlevel', '-d', choices=('error', 'warning', 'info'), help='Only diagnostics for the specified level and above are printed.'),
     check_modified=Arg('--check-modified', '-m', action='store_true', help='Only create diagnostics for modified files.'),
     include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
     ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
@@ -38,6 +39,7 @@ log = logging.getLogger(__name__)
 async def linter(
     files: List[Path],
     root: Path = '.',
+    diagnosticlevel: str = 'info',
     check_modified: bool = False,
     include: List[Pattern] = None,
     ignore: List[Pattern] = None,
@@ -56,6 +58,7 @@ async def linter(
     Parameters:
         root: Root of stex imports.
         files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
+        diagnosticlevel: Only diagnostics for the specified level and above are printed. Choices are "error", "warning" and "info".
         check_modified: If enabled, only modified files will generate diagnostics.
         include: List of regex patterns. Only files that match ANY of these patterns will be included.
         ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
@@ -128,6 +131,11 @@ async def linter(
                 continue
             for loc, errs in link.errors.items():
                 for err in errs:
+                    severity = type(err).__name__.lower()
+                    if diagnosticlevel == 'error' and ('info' in severity or 'warning' in severity):
+                        continue
+                    if diagnosticlevel == 'warning' and 'info' in severity:
+                        continue
                     print(
                         format.format(
                             file=str(loc.path),

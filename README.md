@@ -9,9 +9,10 @@ I testet it with 3.7, 3.8 and 3.9-dev.
 
 # Installation
 
-1. Download this repository: `git clone --depth=1 https://gl.kwarc.info/Marian6814/trefier-backend.git stexls`
+1. Download this repository: `git clone --depth=1 https://gl.kwarc.info/Marian6814/stexls.git`
 2. Then simply install with pip: `pip install stexls/` (Note: This is an installation from local files and not from the official pip distribution.)
 3. Verify installation with `python -m stexls --version`
+4. Optional: Delete the downloaded repository.
 
 # Uninstallation
 

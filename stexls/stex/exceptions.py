@@ -14,3 +14,7 @@ class LinkError(Exception):
 
 class LinkWarning(LinkError, Warning):
     pass
+
+
+class Info(Exception):
+    pass

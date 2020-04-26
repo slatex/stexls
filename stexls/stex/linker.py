@@ -139,12 +139,12 @@ class Linker:
                             if referenced_symbol.noverb:
                                 reference_location = Location(path.as_uri(), range)
                                 link.errors.setdefault(reference_location, []).append(
-                                    LinkWarning(f'Referenced "noverb" symbol "{referenced_id.identifier}" defined at "{referenced_symbol.location.format_link()}"'))
+                                    LinkError(f'Referenced "noverb" symbol "{referenced_id.identifier}" defined at "{referenced_symbol.location.format_link()}"'))
                             # and that the language of the current origin is not listed in the noverb languages
                             if language in referenced_symbol.noverbs:
                                 reference_location = Location(path.as_uri(), range)
                                 link.errors.setdefault(reference_location, []).append(
-                                    LinkWarning(f'Referenced symbol "{referenced_id.identifier}" is marked "noverb" for the language "{language}" at "{referenced_symbol.location.format_link()}"'))
+                                    LinkError(f'Referenced symbol "{referenced_id.identifier}" is marked "noverb" for the language "{language}" at "{referenced_symbol.location.format_link()}"'))
         for ref, symbols in unreferenced.items():
             if ref not in referenced_locations:
                 for symbol, link in symbols.items():
@@ -158,11 +158,11 @@ class Linker:
                         if symbol.noverbs:
                             langs = format_enumeration(symbol.noverbs)
                             link.errors.setdefault(symbol.location, []).append(
-                                LinkWarning(f'Symbol marked as noverb for the language(s) {langs} is never referenced: {symbol.qualified_identifier.identifier}'))
+                                Info(f'Symbol marked as noverb for the language(s) {langs} is never referenced: {symbol.qualified_identifier.identifier}'))
                             continue
                     if not (isinstance(symbol, VerbSymbol) and symbol.definition_type == DefinitionType.DEFI):
                         link.errors.setdefault(symbol.location, []).append(
-                            LinkWarning(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
+                            Info(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
 
     def relevant_objects(self, file: Path, line: int, column: int, unlinked: bool = False) -> Iterator[StexObject]:
         """ Determines the stex objects at the current coursor position.

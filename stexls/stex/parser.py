@@ -445,7 +445,7 @@ class Trefi(ParsedEnvironment):
         m: bool,
         a: bool,
         capital: bool,
-        defi: bool,
+        drefi: bool,
         i: int,
         s: bool,
         asterisk: bool):
@@ -455,15 +455,15 @@ class Trefi(ParsedEnvironment):
         self.m = m
         self.a = a
         self.capital = capital
-        self.defi = defi
+        self.drefi = drefi
         self.i = i
         self.s = s
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
             raise CompilerError(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
         has_q = self.target_annotation and '?' in self.target_annotation.text
-        # TODO: will adding not self.defi to this fix the ?syntax problem in drefis?
-        if not self.m and has_q:
+        # TODO: will adding not self.drefi to this fix the ?syntax problem in drefis?
+        if not self.drefi and not self.m and has_q:
             raise CompilerError('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
         if self.m and not has_q:
             raise CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
@@ -520,7 +520,7 @@ class Trefi(ParsedEnvironment):
             m='m' in match.group(1),
             a='a' in match.group(1),
             capital=match.group(2) == 'T',
-            defi=match.group(2) in ('d', 'D'),
+            drefi=match.group(2) in ('d', 'D'),
             i=roman_numerals.roman2int(match.group(3)),
             s=match.group(4) is not None,
             asterisk=match.group(5) is not None,

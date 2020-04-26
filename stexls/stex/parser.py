@@ -464,7 +464,7 @@ class Trefi(ParsedEnvironment):
         has_q = self.target_annotation and '?' in self.target_annotation.text
         # TODO: will adding not self.drefi to this fix the ?syntax problem in drefis?
         if not self.drefi and not self.m and has_q:
-            raise CompilerError('Question mark syntax "?<symbol>" syntax not allowed in non-mtrefi environments.')
+            raise CompilerError('Question mark syntax "?<symbol>" not allowed in non-mtrefi environments.')
         if self.m and not has_q:
             raise CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
     

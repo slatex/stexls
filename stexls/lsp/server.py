@@ -177,7 +177,9 @@ class Server(Dispatcher):
         context: CompletionContext = undefined,
         workDoneToken: ProgressToken = undefined):
         log.info('completion invoked: %s', workDoneToken)
-        return []
+        path = textDocument.path
+        lines = self._workspace.read_file(path).split('\n')
+        return self._linker.completion(path, lines, position)
 
     @notification
     @alias('textDocument/publishDiagnostics')

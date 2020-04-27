@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Set
 from enum import Enum
+from pathlib import Path
 from stexls.util.vscode import Location, Range
 
 __all__ = [
@@ -123,6 +124,11 @@ class ModuleSymbol(Symbol):
         definition_type: DefinitionType,
         full_range: Range = None):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type, full_range)
+
+    def get_repository_identifier(self, root: Path) -> str:
+        ' Returns the repository identifier (e.g.: smglom/repo) assuming this symbol is contained in <root>. '
+        # root/<smglom/repo>/source/module.tex
+        return list(self.location.path.relative_to(root).parents)[-3].as_posix()
 
 
 class BindingSymbol(Symbol):

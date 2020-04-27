@@ -71,7 +71,6 @@ class Linker:
         try:
             line = lines[position.line]
             context = line[:position.character]
-            print("CONTEXT", context)
             for match in gimport_path.finditer(context):
                 fragment = match.group('repository')
                 repos = set(module.get_repository_identifier(self.root) for module in self.get_all_modules(DefinitionType.MODSIG))
@@ -89,9 +88,7 @@ class Linker:
                 match.group('name'): match.group('value')
                 for match in named_values.finditer(line)
             }
-            print("NAMED ARGS", named)
             for match in named_arg.finditer(context):
-                print("MATCH NAMED:", match)
                 env = match.group('env')
                 arg = match.group('arg')
                 value = match.group('value')
@@ -138,19 +135,14 @@ class Linker:
                 if env_defi.match(env) or env_symdef.match(env):
                     return matching_symbol_names
             for match in rarg.finditer(context):
-                print("MATCH RARG", match)
                 env = match.group('env')
                 value = match.group('value')
             for match in unnamed_arg.finditer(context):
-                print("MATCH UNNAMED:", match)
                 # env[<unnamed>
                 env = match.group('env')
                 fragment = match.group('arg')
-                print('env', env)
-                print('fragment', fragment)
                 choices: Set[str] = set()
                 if env_trefi.fullmatch(env):
-                    print('match trefi', obj.scope_identifier)
                     # because id.identifier is formatted the same way trefis are, this will match both [<module> and [<module>?<symbol> forms of trefis
                     if '?' in fragment:
                         ids = list(id.identifier for id in link.symbol_table if id.symbol_type == SymbolType.SYMBOL)

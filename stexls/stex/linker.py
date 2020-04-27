@@ -34,33 +34,146 @@ class Linker:
         # The finished linked objects
         self.links: Dict[StexObject, StexObject] = dict()
 
+    def get_all_modules(self, definition_type: DefinitionType = None) -> Set[ModuleSymbol]:
+        ' Gets all modules with the specified definition type, or all definition types if None, registered with this linker. '
+        return set(
+            module
+            for path, objects in self.objects.items()
+            for object in objects
+            for module in object.symbol_table.get(object.module, ())
+            if isinstance(module, ModuleSymbol)
+            and definition_type is None or module.definition_type == definition_type)
+
     def completion(self, file: Path, lines: List[str], position: Position) -> List[str]:
-        obj = self.relevant_objects(file, position.line, position.character, unlinked=True)
-        args = re.compile(r'(name|mhrepos|repos|path|load|fromrepos|frompath|dir)=(.*)$')
-        values = re.compile(r'(name|mhrepos|repos|path|load|fromrepos|frompath|dir)=([^,\]]*)')
-        envs = re.compile(r'\\([a-zA-Z_][a-zA-Z_0-9]*)(\[.*\])?({.*)$')
-        try:
-            context = lines[position.line][:position.character]
-        except:
+        obj: StexObject = next(self.relevant_objects(file, position.line, position.character, unlinked=True), None)
+        if not obj:
             return []
-        match = args.search(args, context)
-        results = []
-        if match:
-            argname = match.group(1)
-            value = match.group(2)
-            if 'name' == argname:
-                pass
-            elif argname in ('mhrepos', 'repos'):
-                pass
-            elif 'path' == argname:
-                pass
-            elif 'load' == argname:
-                pass
-            elif 'fromrepos' == argname:
-                pass
-            elif 'frompath' == argname:
-                pass
-        return results
+        link: StexObject = next(self.relevant_objects(file, position.line, position.character, unlinked=False), None)
+        if not link:
+            return []
+        if lines is None:
+            lines = file.read_text().split('\n')
+        # gimport
+        gimport_path = re.compile(r'\\g(use|import)\[(?P<repository>.*)$')
+        gimport_module = re.compile(r'\\g(use|import)(\[(?P<repository>.*)\])?\{(?P<module>.*)$')
+
+        named_values = re.compile(r'(?P<name>\w+)=(?P<value>[^,\]]*)') # extracts all named arguments with their values
+        unnamed_arg = re.compile(r'\\(?P<env>\w+)\*?[\[,](?P<arg>[^\],=]*)$') # matches \\<env>[<arg> or \\<env>[a=b,<arg>
+        named_arg = re.compile(r'\\(?P<env>\w+)\*?.*?[\[,](?P<arg>\w+)=(?P<value>[^\],]*)$') # matches \\<env>*[aihaih,<arg>=<value>
+        rarg = re.compile(r'\\(?P<env>\w+)\*?.*?(\[.*\])?{(?P<value>.*)$')
+
+        env_importmodule = re.compile(r'(use|import)(?P<mh>mh)?module')
+        env_trefi = re.compile(r'(?P<flags>[ma]*)(t|T|d|D)ref(?P<argcount>[ivx]+)s?')
+        env_defi = re.compile(r'[ma]*(d|D)ef(?P<argcount>[ivx]+)s?')
+        env_symi = re.compile(r'sym(?P<argcount>[ivx]+)s?')
+        env_symdef = re.compile(r'symdef')
+
+        try:
+            line = lines[position.line]
+            context = line[:position.character]
+            print("CONTEXT", context)
+            for match in gimport_path.finditer(context):
+                fragment = match.group('repository')
+                repos = set(module.get_repository_identifier(self.root) for module in self.get_all_modules(DefinitionType.MODSIG))
+                return list(map(lambda x: x.startswith(fragment), repos))
+            for match in gimport_module.finditer(context):
+                repo = match.group('repository')
+                module = match.group('module')
+                return [
+                    module.identifier.identifier
+                    for module in self.get_all_modules(DefinitionType.MODSIG)
+                    if module.get_repository_identifier(self.root) == repo
+                    and module.identifier.identifier.startswith(module)
+                ]
+            named = {
+                match.group('name'): match.group('value')
+                for match in named_values.finditer(line)
+            }
+            print("NAMED ARGS", named)
+            for match in named_arg.finditer(context):
+                print("MATCH NAMED:", match)
+                env = match.group('env')
+                arg = match.group('arg')
+                value = match.group('value')
+                if env_importmodule.match(env):
+                    if arg == 'mhrepos':
+                        mapop = lambda x: x.get_repository_identifier(self.root)
+                        modules = map(mapop, self.get_all_modules(DefinitionType.MODULE))
+                        return list(modules)
+                    elif arg == 'dir':
+                        mhrepos = named.get('mhrepos', named.get('repos'))
+                        return list(
+                            module.get_directory(self.root, get_path=False)
+                            for module in self.get_all_modules(DefinitionType.MODULE) 
+                            if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
+                        )
+                    elif arg == 'path':
+                        mhrepos = named.get('mhrepos', named.get('repos'))
+                        return list(
+                            module.get_directory(self.root, get_path=True)
+                            for module in self.get_all_modules(DefinitionType.MODULE) 
+                            if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
+                        )
+                    elif arg == 'load':
+                        return list({
+                            module.location.path.relative_to(self.root)
+                            for module in self.get_all_modules(DefinitionType.MODULE)
+                        })
+                    return []
+                if env_trefi.match(env):
+                    return [] # trefi does not have named argument
+                if env_symi.match(env):
+                    return [] # symi does not have named argument completions
+                if arg != 'name':
+                    # defi and symdef completions only available for 'name'
+                    continue
+                matching_symbol_names = list({
+                    symbol.identifier.identifier
+                    for id, symbols in link.symbol_table.items()
+                    if id.symbol_type == SymbolType.SYMBOL
+                    for symbol in symbols
+                    if (not obj.scope_identifier or symbol.parent == obj.scope_identifier)
+                    and symbol.identifier.identifier.startswith(value)
+                })
+                if env_defi.match(env) or env_symdef.match(env):
+                    return matching_symbol_names
+            for match in rarg.finditer(context):
+                print("MATCH RARG", match)
+                env = match.group('env')
+                value = match.group('value')
+            for match in unnamed_arg.finditer(context):
+                print("MATCH UNNAMED:", match)
+                # env[<unnamed>
+                env = match.group('env')
+                fragment = match.group('arg')
+                print('env', env)
+                print('fragment', fragment)
+                choices: Set[str] = set()
+                if env_trefi.fullmatch(env):
+                    print('match trefi', obj.scope_identifier)
+                    # because id.identifier is formatted the same way trefis are, this will match both [<module> and [<module>?<symbol> forms of trefis
+                    if '?' in fragment:
+                        ids = list(id.identifier for id in link.symbol_table if id.symbol_type == SymbolType.SYMBOL)
+                        if not fragment.split('?')[0]:
+                            scope = obj.scope_identifier
+                            if scope:
+                                ids = map(lambda id: id[id.index('?'):], filter(lambda id: id.split('?')[0] == scope.identifier, ids))
+                    else:
+                        ids = (id.identifier for id in link.symbol_table if id.symbol_type == SymbolType.MODULE)
+                    choices.update(ids)
+                if env_importmodule.fullmatch(env):
+                    # importmodule[path=, dir=, mhrepos=, load=]
+                    choices.update(('mhrepos=', 'dir=', 'path=', 'load='))
+                if env_defi.fullmatch(env):
+                    choices.add('name=')
+                if env_symi.fullmatch(env):
+                    choices.update(('noverb=', 'gfc=', 'align=', 'noalign'))
+                if env_symdef.fullmatch(env):
+                    choices.update(('name=', 'assocarg=', 'noverb='))
+                return list(filter(lambda choice: choice.startswith(fragment), choices))
+        except:
+            log.exception('Failed to retrieve completions for file "%s" at %s', file, position.format())
+        return []
 
     def _cleanup(self, files: Dict[Path, List[StexObject]]):
         """ This is an private method used to clean up old references to objects from files given in the keys() of the files dict.

@@ -100,7 +100,7 @@ class StexObject:
             if id.symbol_type == SymbolType.BINDING:
                 for symbol in symbols:
                     if isinstance(symbol, BindingSymbol):
-                        yield symbol.lang
+                        yield symbol
 
     @staticmethod
     def link_list(others: List[StexObject], root: Path) -> StexObject:

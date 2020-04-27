@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Set
 from enum import Enum
 from pathlib import Path
@@ -129,6 +130,14 @@ class ModuleSymbol(Symbol):
         ' Returns the repository identifier (e.g.: smglom/repo) assuming this symbol is contained in <root>. '
         # root/<smglom/repo>/source/module.tex
         return list(self.location.path.relative_to(root).parents)[-3].as_posix()
+
+    def get_directory(self, root: Path, get_path: bool) -> str:
+        ' Returns the dir= argument for importmodules, or if get_path is True, returns the path= argument. '
+        rel = self.location.path.relative_to(root)
+        dir = rel.relative_to(list(rel.parents)[-4]).parent.as_posix()
+        if get_path:
+            return os.path.join(dir, self.identifier.identifier)
+        return dir
 
 
 class BindingSymbol(Symbol):

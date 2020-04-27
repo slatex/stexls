@@ -80,6 +80,20 @@ class StexObject:
         return symbols
 
     @property
+    def scope_identifier(self) -> Optional[SymbolIdentifier]:
+        ' Returns the identifier which will be added as the scope of new definitions and is the default scope in cases where the scope is not explicitly written. '
+        if self.module:
+            # If this contains a single module, return it's identifier
+            return self.module
+        bindings = list(self.bindings)
+        if len(bindings) > 1:
+            return None
+        binding: BindingSymbol = next(iter(bindings), None)
+        if binding:
+            # if this contains a single binding, return the module the binding is binding to
+            return binding.parent
+
+    @property
     def bindings(self) -> Iterable[BindingSymbol]:
         """ Yields all language binding languages in this object. This should never yield more than one language. """
         for id, symbols in self.symbol_table.items():

@@ -208,12 +208,11 @@ class StexObject:
     @property
     def module(self) -> Optional[SymbolIdentifier]:
         ' Returns an identifier for the module this object contains, if it is the only one. Else returns None. '
-        modules = [
+        modules = set(
             id
             for id, symbols in self.symbol_table.items()
             for symbol in symbols
-            if symbol.identifier.symbol_type == SymbolType.MODULE
-        ]
+            if symbol.identifier.symbol_type == SymbolType.MODULE)
         if len(modules) > 1:
             return None
         return next(iter(modules), None)

@@ -10,7 +10,7 @@ from hashlib import sha1
 from stexls.util.vscode import *
 from stexls.stex.parser import ParsedFile
 from stexls.stex.compiler import StexObject
-from stexls.stex.symbols import Symbol, SymbolIdentifier, VerbSymbol, ModuleSymbol, SymbolType, DefinitionType
+from stexls.stex.symbols import *
 from stexls.util.format import format_enumeration
 from .exceptions import *
 
@@ -121,7 +121,8 @@ class Linker:
         unreferenced: Dict[Location, Dict[Symbol, StexObject]] = dict()
         referenced_locations: Set[Location] = set()
         for origin, link in links.items():
-            language: Optional[str] = next(origin.language_bindings, None)
+            binding: BindingSymbol = next(origin.bindings, None)
+            language: str = binding.lang if binding else None
             for id, symbols in origin.symbol_table.items():
                 if id.symbol_type == SymbolType.BINDING:
                     continue

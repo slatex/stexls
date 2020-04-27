@@ -80,7 +80,7 @@ class StexObject:
         return symbols
 
     @property
-    def language_bindings(self) -> Iterable[str]:
+    def bindings(self) -> Iterable[BindingSymbol]:
         """ Yields all language binding languages in this object. This should never yield more than one language. """
         for id, symbols in self.symbol_table.items():
             if id.symbol_type == SymbolType.BINDING:

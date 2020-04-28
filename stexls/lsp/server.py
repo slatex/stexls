@@ -16,6 +16,7 @@ from stexls.stex import Linker, Compiler, StexObject, Symbol
 from stexls.util.workspace import Workspace
 from stexls.util.jsonrpc import *
 from stexls.util.vscode import *
+from .completions import CompletionEngine
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class Server(Dispatcher):
         self._compiler: Compiler = None
         self._linker: Linker = None
         self._root = None
+        self._completion_engine: CompletionEngine = None
         self.progressEnabled = False
 
     @method
@@ -88,6 +90,7 @@ class Server(Dispatcher):
         self._workspace = Workspace(self._root)
         self._compiler = Compiler(self._workspace, outdir)
         self._linker = Linker(self._root)
+        self._completion_engine = CompletionEngine(self._linker)
         await self._update(all=True)
         log.info('Initialized')
         self._initialized = True
@@ -173,7 +176,7 @@ class Server(Dispatcher):
         log.info('completion invoked: %s', workDoneToken)
         path = textDocument.path
         lines = self._workspace.read_file(path).split('\n')
-        completions = self._linker.completion(path, lines, position)
+        completions = self._completion_engine.completion(path, lines , position)
         return completions
 
     @notification

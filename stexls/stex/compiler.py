@@ -80,7 +80,7 @@ class StexObject:
         return symbols
 
     @property
-    def scope_identifier(self) -> Optional[SymbolIdentifier]:
+    def scope_identifier(self) -> Optional[SymbolIdentifier]: #TODO: Property name not final
         ' Returns the identifier which will be added as the scope of new definitions and is the default scope in cases where the scope is not explicitly written. '
         if self.module:
             # If this contains a single module, return it's identifier

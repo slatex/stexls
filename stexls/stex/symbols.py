@@ -131,13 +131,11 @@ class ModuleSymbol(Symbol):
         # root/<smglom/repo>/source/module.tex
         return list(self.location.path.relative_to(root).parents)[-3].as_posix()
 
-    def get_directory(self, root: Path, get_path: bool = False) -> str:
-        ' Returns the dir= argument for importmodules, or if get_path is True, returns the path= argument. '
+    def get_path(self, root: Path) -> Path:
+        ' Returns the path= argument for importmodules. '
         rel = self.location.path.relative_to(root)
-        dir = rel.relative_to(list(rel.parents)[-4]).parent.as_posix()
-        if get_path:
-            return os.path.join(dir, self.identifier.identifier)
-        return dir
+        file = rel.relative_to(list(rel.parents)[-4])
+        return file.parent / file.stem
 
 
 class BindingSymbol(Symbol):

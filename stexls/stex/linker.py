@@ -103,14 +103,14 @@ class Linker:
                     elif arg == 'dir':
                         mhrepos = named.get('mhrepos', named.get('repos'))
                         return list(
-                            CompletionItem(module.get_directory(self.root, get_path=False), kind=CompletionItemKind.Folder)
+                            CompletionItem(module.get_path(self.root).parent.as_posix(), kind=CompletionItemKind.Folder)
                             for module in self.get_all_modules(DefinitionType.MODULE) 
                             if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
                         )
                     elif arg == 'path':
                         mhrepos = named.get('mhrepos', named.get('repos'))
                         return list(
-                            CompletionItem(module.get_directory(self.root, get_path=True), kind=CompletionItemKind.File)
+                            CompletionItem(module.get_path(self.root).as_posix(), kind=CompletionItemKind.File)
                             for module in self.get_all_modules(DefinitionType.MODULE) 
                             if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
                         )

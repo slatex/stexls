@@ -606,6 +606,164 @@ class CompletionContext:
             json.get('triggerCharacter', undefined))
 
 
+class InsertTextFormat(SerializableEnum):
+    PlainText = 1
+    Snippet = 2
+
+
+class CompletionItemTag(SerializableEnum):
+    Deprecated = 1
+
+
+class TextEdit:
+    def __init__(self, range: Range, newText: str):
+        self.range = range
+        self.newText = newText
+
+    def to_json(self) -> dict:
+        return { 'range': self.range.to_json(), 'newText': self.newText }
+
+    @staticmethod
+    def from_json(dict) -> TextEdit:
+        return TextEdit(Range.from_json(dict['range']), str(dict['newText']))
+
+
+class CompletionItemKind(SerializableEnum):
+	Text = 1
+	Method = 2
+	Function = 3
+	Constructor = 4
+	Field = 5
+	Variable = 6
+	Class = 7
+	Interface = 8
+	Module = 9
+	Property = 10
+	Unit = 11
+	Value = 12
+	Enum = 13
+	Keyword = 14
+	Snippet = 15
+	Color = 16
+	File = 17
+	Reference = 18
+	Folder = 19
+	EnumMember = 20
+	Constant = 21
+	Struct = 22
+	Event = 23
+	Operator = 24
+	TypeParameter = 25
+
+
+class CompletionItem:
+    def __init__(
+        self,
+        label: str,
+        kind: CompletionItemKind = undefined,
+        tags: List[CompletionItemTag] = undefined,
+        detail: str = undefined,
+        documentation: str = undefined,
+        deprecated: bool = undefined,
+        preselect: bool = undefined,
+        sortText: bool = undefined,
+        filterText: str = undefined,
+        insertText: str = undefined,
+        insertTextFormat: InsertTextFormat = undefined,
+        textEdit: TextEdit = undefined,
+        additionalTextEdtits: List[TextEdit] = undefined,
+        commitCharacters: List[str] = undefined,
+        command = undefined,
+        data = undefined):
+        self.label = label
+        if kind != undefined:
+            self.kind = kind
+        if tags != undefined:
+            self.tags = tags
+        if detail != undefined:
+            self.detail = detail
+        if documentation != undefined:
+            self.documentation = documentation
+        if deprecated != undefined:
+            self.deprecated = deprecated
+        if preselect != undefined:
+            self.preselect = preselect
+        if sortText != undefined:
+            self.sortText = sortText
+        if filterText != undefined:
+            self.filterText = filterText
+        if insertText != undefined:
+            self.insertText = insertText
+        if insertTextFormat != undefined:
+            self.insertTextFormat = insertTextFormat
+        if textEdit != undefined:
+            self.textEdit = textEdit
+        if additionalTextEdtits != undefined:
+            self.additionalTextEdtits = additionalTextEdtits
+        if commitCharacters != undefined:
+            self.commitCharacters = commitCharacters
+        if command != undefined:
+            self.command  = command
+        if data != undefined:
+            self.data  = data
+
+    def to_json(self) -> dict:
+        json = { 'label': self.label }
+        if self.kind != undefined:
+            json['kind'] = self.kind
+        if self.tags != undefined:
+            json['tags'] = self.tags
+        if self.detail != undefined:
+            json['detail'] = self.detail
+        if self.documentation != undefined:
+            json['documentation'] = self.documentation
+        if self.deprecated != undefined:
+            json['deprecated'] = self.deprecated
+        if self.preselect != undefined:
+            json['preselect'] = self.preselect
+        if self.sortText != undefined:
+            json['sortText'] = self.sortText
+        if self.filterText != undefined:
+            json['filterText'] = self.filterText
+        if self.insertText != undefined:
+            json['insertText'] = self.insertText
+        if self.insertTextFormat != undefined:
+            json['insertTextFormat'] = self.insertTextFormat
+        if self.textEdit != undefined:
+            json['textEdit'] = self.textEdit
+        if self.additionalTextEdtits != undefined:
+            json['additionalTextEdtits'] = self.additionalTextEdtits
+        if self.commitCharacters != undefined:
+            json['commitCharacters'] = self.commitCharacters
+        if self.command != undefined:
+            json['command'] = self.command 
+        if self.data != undefined:
+            json['data'] = self.data 
+        return json
+
+    @staticmethod
+    def from_json(json) -> CompletionItem:
+        raise ValueError('CompletionItem cannot be deserialized.')
+
+    def __repr__(self):
+        return f'[CompletionItem {self.label}]'
+
+
+class CompletionList:
+    def __init__(self, isComplete: bool, items: List[CompletionItem]):
+        self.isComplete = isComplete
+        self.items = items
+
+    def to_json(self) -> dict:
+        return {
+            'isComplete': self.isComplete,
+            'items': [ item.to_json() for item in self.items ]}
+
+    @staticmethod
+    def from_json(json):
+        raise ValueError('CompletionList cannot be deserialized.')
+
+
 class WorkDoneProgressBegin:
     def __init__(
         self,

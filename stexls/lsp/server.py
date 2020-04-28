@@ -64,15 +64,9 @@ class Server(Dispatcher):
                 'completionProvider': {
                     'triggerCharacters': ['?', '[', '{', ',', '='],
                     'allCommitCharacters': [']', '}', ','],
-                    'resolveProvider': True,
-                    'workDoneProgress': True
                 },
-                'definitionProvider': {
-                    'workDoneProgress': True
-                },
-                'referencesProvider': {
-                    'workDoneProgress': True
-                },
+                'definitionProvider': True,
+                'referencesProvider': True,
                 'workspace': {
                     'workspaceFolders': {
                         'supported': True,
@@ -179,7 +173,8 @@ class Server(Dispatcher):
         log.info('completion invoked: %s', workDoneToken)
         path = textDocument.path
         lines = self._workspace.read_file(path).split('\n')
-        return self._linker.completion(path, lines, position)
+        completions = self._linker.completion(path, lines, position)
+        return completions
 
     @notification
     @alias('textDocument/publishDiagnostics')

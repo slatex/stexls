@@ -45,6 +45,7 @@ class Linker:
             and definition_type is None or module.definition_type == definition_type)
 
     def completion(self, file: Path, lines: List[str], position: Position) -> List[str]:
+        log.debug('Completion for file: %s at %s', file, position.format())
         obj: StexObject = next(self.relevant_objects(file, position.line, position.character, unlinked=True), None)
         if not obj:
             return []
@@ -71,6 +72,8 @@ class Linker:
         try:
             line = lines[position.line]
             context = line[:position.character]
+            log.debug('Completion line: %s', line)
+            log.debug('Completion context: %s', context)
             for match in gimport_path.finditer(context):
                 fragment = match.group('repository')
                 repos = set(module.get_repository_identifier(self.root) for module in self.get_all_modules(DefinitionType.MODSIG))
@@ -79,7 +82,7 @@ class Linker:
                 repo = match.group('repository')
                 module = match.group('module')
                 return [
-                    module.identifier.identifier
+                    CompletionItem(module.identifier.identifier, kind=CompletionItemKind.Field)
                     for module in self.get_all_modules(DefinitionType.MODSIG)
                     if module.get_repository_identifier(self.root) == repo
                     and module.identifier.identifier.startswith(module)
@@ -94,26 +97,26 @@ class Linker:
                 value = match.group('value')
                 if env_importmodule.match(env):
                     if arg == 'mhrepos':
-                        mapop = lambda x: x.get_repository_identifier(self.root)
+                        mapop = lambda x: CompletionItem(x.get_repository_identifier(self.root), kind=CompletionItemKind.Module)
                         modules = map(mapop, self.get_all_modules(DefinitionType.MODULE))
                         return list(modules)
                     elif arg == 'dir':
                         mhrepos = named.get('mhrepos', named.get('repos'))
                         return list(
-                            module.get_directory(self.root, get_path=False)
+                            CompletionItem(module.get_directory(self.root, get_path=False), kind=CompletionItemKind.Folder)
                             for module in self.get_all_modules(DefinitionType.MODULE) 
                             if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
                         )
                     elif arg == 'path':
                         mhrepos = named.get('mhrepos', named.get('repos'))
                         return list(
-                            module.get_directory(self.root, get_path=True)
+                            CompletionItem(module.get_directory(self.root, get_path=True), kind=CompletionItemKind.File)
                             for module in self.get_all_modules(DefinitionType.MODULE) 
                             if not mhrepos or module.get_repository_identifier(self.root) == mhrepos
                         )
                     elif arg == 'load':
                         return list({
-                            module.location.path.relative_to(self.root)
+                            CompletionItem(module.location.path.relative_to(self.root), kind=CompletionItemKind.File)
                             for module in self.get_all_modules(DefinitionType.MODULE)
                         })
                     return []
@@ -125,7 +128,7 @@ class Linker:
                     # defi and symdef completions only available for 'name'
                     continue
                 matching_symbol_names = list({
-                    symbol.identifier.identifier
+                    CompletionItem(symbol.identifier.identifier, kind=CompletionItemKind.Method)
                     for id, symbols in link.symbol_table.items()
                     if id.symbol_type == SymbolType.SYMBOL
                     for symbol in symbols
@@ -146,13 +149,24 @@ class Linker:
                     # because id.identifier is formatted the same way trefis are, this will match both [<module> and [<module>?<symbol> forms of trefis
                     if '?' in fragment:
                         ids = list(id.identifier for id in link.symbol_table if id.symbol_type == SymbolType.SYMBOL)
+                        kind = CompletionItemKind.Field
                         if not fragment.split('?')[0]:
+                            kind = CompletionItemKind.Module
                             scope = obj.scope_identifier
                             if scope:
                                 ids = map(lambda id: id[id.index('?'):], filter(lambda id: id.split('?')[0] == scope.identifier, ids))
+                        return [
+                            CompletionItem(id, kind=kind)
+                            for id in ids
+                            if id.startswith(fragment)
+                        ]
                     else:
-                        ids = (id.identifier for id in link.symbol_table if id.symbol_type == SymbolType.MODULE)
-                    choices.update(ids)
+                        return [
+                            CompletionItem(id.identifier, kind=CompletionItemKind.Module)
+                            for id
+                            in link.symbol_table
+                            if id.symbol_type == SymbolType.MODULE
+                        ]
                 if env_importmodule.fullmatch(env):
                     # importmodule[path=, dir=, mhrepos=, load=]
                     choices.update(('mhrepos=', 'dir=', 'path=', 'load='))
@@ -162,7 +176,7 @@ class Linker:
                     choices.update(('noverb=', 'gfc=', 'align=', 'noalign'))
                 if env_symdef.fullmatch(env):
                     choices.update(('name=', 'assocarg=', 'noverb='))
-                return list(filter(lambda choice: choice.startswith(fragment), choices))
+                return list(map(lambda x: CompletionItem(x, kind=CompletionItemKind.Keyword), filter(lambda choice: choice.startswith(fragment), choices)))
         except:
             log.exception('Failed to retrieve completions for file "%s" at %s', file, position.format())
         return []

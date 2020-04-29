@@ -97,7 +97,7 @@ class Linker:
         """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """
         unreferenced: Dict[Location, Dict[Symbol, StexObject]] = dict()
         referenced_locations: Set[Location] = set()
-        for origin, link in links.items():
+        for origin, link in self.links.items():
             binding: BindingSymbol = next(origin.bindings, None)
             language: str = binding.lang if binding else None
             for id, symbols in origin.symbol_table.items():
@@ -111,6 +111,8 @@ class Linker:
                         continue
                     for referenced_symbol in link.symbol_table.get(referenced_id, ()):
                         referenced_locations.add(referenced_symbol.location)
+                        if origin not in links:
+                            continue
                         if isinstance(referenced_symbol, VerbSymbol):
                             referenced_symbol: VerbSymbol
                             # additionally if the reference is a verb check also that it is not marked noverb
@@ -126,6 +128,8 @@ class Linker:
         for ref, symbols in unreferenced.items():
             if ref not in referenced_locations:
                 for symbol, link in symbols.items():
+                    if link not in links.values():
+                        continue
                     if isinstance(symbol, VerbSymbol):
                         if symbol.definition_type == DefinitionType.DEFI:
                             # Defi definitions are their own reference

@@ -227,8 +227,6 @@ class CompletionEngine:
                 # complete module?symbol
                 kind = CompletionItemKind.Field
                 target_module = fragment.split('?')[0] or object.scope_identifier.identifier # default to scope of object
-                log.debug('ELIGABLE: %s', list(id for id, symbols in link.symbol_table.items() if id.symbol_type == SymbolType.SYMBOL))
-                log.debug("COMPLETE TREFI target: %s", target_module)
                 choices = (
                     symbol.identifier.identifier
                     for id, symbols in link.symbol_table.items()

@@ -194,10 +194,17 @@ class Server(Dispatcher):
                     range.end.character -= 1
                 if 0 == location.range.end.character:
                     range = range.translate(0, 1)
+                errname = type(error).__name__.lower()
+                if 'info' in errname:
+                    severity = DiagnosticSeverity.Information
+                elif 'warning' in errname:
+                    severity = DiagnosticSeverity.Warning
+                else:
+                    severity = DiagnosticSeverity.Error
                 diagnostic = Diagnostic(
                     range=location.range,
                     message=str(error),
-                    severity=DiagnosticSeverity.Warning if 'Warning' in type(error).__name__ else DiagnosticSeverity.Error)
+                    severity=severity)
                 diagnostics.append(diagnostic)
         return diagnostics
 

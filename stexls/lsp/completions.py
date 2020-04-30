@@ -100,7 +100,7 @@ class CompletionEngine:
         ' Gets importmodule path= arguments of all reachable modules realtive to the given object. If mhrepos is None then all modules of the same directory will be considered. '
         return set(
             module.get_path(self.linker.root).as_posix()
-            for module in self.linker.get_all_modules(DefinitionType.MODSIG)
+            for module in self.linker.get_all_modules(DefinitionType.MODULE)
             if (mhrepos and module.get_repository_identifier(self.linker.root) == mhrepos)
             or (not mhrepos and module.location.path.parent == object.path.parent))
 
@@ -113,7 +113,7 @@ class CompletionEngine:
             if not _regex_env_importmodule.fullmatch(match.group('env')):
                 continue
             fragment = match.group('arg')
-            choices = ('mhrepos=', 'dir=', 'path=', 'load=')
+            choices = ('mhrepos', 'dir', 'path', 'load')
             return self._completions_from_choices(fragment, choices, CompletionItemKind.Keyword, position)
         for match in _regex_named_arg.finditer(context):
             if not _regex_env_importmodule.fullmatch(match.group('env')):
@@ -151,17 +151,23 @@ class CompletionEngine:
                 continue
             fragment = match.group('value')
             named = self.get_named_arguments(line)
+            for current_module in object.symbol_table.get(object.module, []):
+                current_module: Symbol # simply extract the last module symbol, ignore the rest (no others should exist anyway)
             mhrepos = named.get('mhrepos', named.get('repos'))
+            if not mhrepos and current_module:
+                mhrepos = current_module.get_repository_identifier(self.linker.root)
             dir = named.get('dir')
             path = named.get('path')
             load = named.get('load')
+            if not (dir or path or load) and current_module:
+                path = current_module.get_path(self.linker.root).as_posix()
             return [
-                self._make_completion_item(fragment, module.identifier.identifier.replace('-', '}{'), CompletionItemKind.Module, position)
+                self._make_completion_item(fragment, module.identifier.identifier, CompletionItemKind.Module, position)
                 for module in self.linker.get_all_modules(DefinitionType.MODULE)
-                if module.identifier.identifier.replace('-', '}{').startswith(fragment)
+                if module.identifier.identifier.startswith(fragment)
                 and (not mhrepos or mhrepos == module.get_repository_identifier(self.linker.root))
                 and (not dir or dir == module.get_path(self.linker.root).parent.as_posix())
-                and (not path or path == module.get_path(self.linker.root))
+                and (not path or path == module.get_path(self.linker.root).as_posix())
                 and (not load or self.linker.root / load == module.location.path.parent / module.location.path.stem)
             ]
         return []
@@ -186,7 +192,7 @@ class CompletionEngine:
             if match.group('env') != 'symdef':
                 continue
             fragment = match.group('arg')
-            choices = ('name=', 'gfc=', 'assocarg=', 'bvars=', 'bargs=', 'noverb')
+            choices = ('name', 'gfc=', 'assocarg=', 'bvars=', 'bargs=', 'noverb')
             return self._completions_from_choices(fragment, choices, CompletionItemKind.Keyword, position)
         for match in _regex_named_arg.finditer(context):
             if match.group('env') != 'symdef':
@@ -260,7 +266,7 @@ class CompletionEngine:
             if not _regex_env_defi.fullmatch(match.group('env')):
                 continue
             fragment = match.group('arg')
-            return self._completions_from_choices(fragment, ('name=',), CompletionItemKind.Keyword, position)
+            return self._completions_from_choices(fragment, ('name',), CompletionItemKind.Keyword, position)
         for match in _regex_named_arg.finditer(context):
             if not _regex_env_defi.fullmatch(match.group('env')):
                 continue

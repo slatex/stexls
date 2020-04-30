@@ -105,6 +105,17 @@ class Symbol:
             return self.identifier
         return self.parent.append(self.identifier)
 
+    def get_repository_identifier(self, root: Path) -> str:
+        ' Returns the repository identifier (e.g.: smglom/repo) assuming this symbol is contained in <root>. '
+        # root/<smglom/repo>/source/module.tex
+        return list(self.location.path.relative_to(root).parents)[-3].as_posix()
+
+    def get_path(self, root: Path) -> Path:
+        ' Returns the path= argument for importmodules. '
+        rel = self.location.path.relative_to(root)
+        file = rel.relative_to(list(rel.parents)[-4])
+        return file.parent / file.stem
+
     def __hash__(self):
         return hash(self.qualified_identifier.typed_identifier)
     
@@ -125,17 +136,6 @@ class ModuleSymbol(Symbol):
         definition_type: DefinitionType,
         full_range: Range = None):
         super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type, full_range)
-
-    def get_repository_identifier(self, root: Path) -> str:
-        ' Returns the repository identifier (e.g.: smglom/repo) assuming this symbol is contained in <root>. '
-        # root/<smglom/repo>/source/module.tex
-        return list(self.location.path.relative_to(root).parents)[-3].as_posix()
-
-    def get_path(self, root: Path) -> Path:
-        ' Returns the path= argument for importmodules. '
-        rel = self.location.path.relative_to(root)
-        file = rel.relative_to(list(rel.parents)[-4])
-        return file.parent / file.stem
 
 
 class BindingSymbol(Symbol):

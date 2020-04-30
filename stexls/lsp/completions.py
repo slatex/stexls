@@ -11,12 +11,12 @@ __all__ = ['CompletionEngine']
 
 log = logging.getLogger(__name__)
 
-_regex_gimport_repo = re.compile(r'\\g(use|import)\[(?P<repository>[^\]]*)$')
-_regex_gimport_module = re.compile(r'\\g(use|import)(\[(?P<repository>.*)\])?\{(?P<module>\S*)$')
+_regex_gimport_repo = re.compile(r'\\g(use|import)\*?\[(?P<repository>[^\]]*)$')
+_regex_gimport_module = re.compile(r'\\g(use|import)\*?(\[(?P<repository>.*)\])?\{(?P<module>[^\}]*)$')
 _regex_named_values = re.compile(r'(?P<name>\w+)=(?P<value>[^,\]]*)') # extracts all named arguments with their values
-_regex_unnamed_arg = re.compile(r'\\(?P<env>\w+)\*?[\[,](?P<arg>[^\],=]*)$') # matches \\<env>[<arg> or \\<env>[a=b,<arg>
-_regex_named_arg = re.compile(r'\\(?P<env>\w+)\*?.*?[\[,](?P<arg>\w+)=(?P<value>[^\],]*)$') # matches \\<env>*[aihaih,<arg>=<value>
-_regex_rarg = re.compile(r'\\(?P<env>\w+)\*?.*?(\[.*\])?{(?P<value>.*)$')
+_regex_unnamed_arg = re.compile(r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>[^\],=]*)$') # matches \\<env>[<arg> or \\<env>[a=b,<arg>
+_regex_named_arg = re.compile(r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>\w+)=(?P<value>[^\],]*)$') # matches \\<env>*[aihaih,<arg>=<value>
+_regex_rarg = re.compile(r'\\(?P<env>\w+)\*?(\[[^\]]*\])?{(?P<value>[^}]*)$')
 _regex_env_importmodule = re.compile(r'(use|import)(?P<mh>mh)?module')
 _regex_env_trefi = re.compile(r'(?P<flags>[ma]*)(?P<type>t|T|d|D)ref(?P<argcount>[ivx]+)s?')
 _regex_env_defi = re.compile(r'[ma]*(d|D)ef(?P<argcount>[ivx]+)s?')

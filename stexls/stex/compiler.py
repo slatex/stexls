@@ -713,6 +713,14 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
         raise CompilerError('Invalid trefi configuration: Missing parent module name')
     target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
     obj.add_reference(trefi.location, target_symbol_id)
+    has_q = trefi.target_annotation and '?' in trefi.target_annotation.text
+    if trefi.m:
+        obj.errors.setdefault(trefi.location, []).append(
+            DeprecationWarning('mtref environments are deprecated.'))
+        if not has_q:
+            obj.errors.setdefault(trefi.location, []).append(
+                CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
+
 
 def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)

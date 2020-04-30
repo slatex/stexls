@@ -201,9 +201,13 @@ class Server(Dispatcher):
                     severity = DiagnosticSeverity.Warning
                 else:
                     severity = DiagnosticSeverity.Error
+                tags = undefined
+                if 'deprecat' in errname:
+                    tags = [ DiagnosticTag.Deprecated ]
                 diagnostic = Diagnostic(
                     range=location.range,
                     message=str(error),
+                    tags=tags,
                     severity=severity)
                 diagnostics.append(diagnostic)
         return diagnostics

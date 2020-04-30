@@ -521,22 +521,29 @@ class Diagnostic:
         tags: List[DiagnosticTag] = undefined,
         relatedInformation: List[DiagnosticRelatedInformation] = undefined):
         self.range = range
-        if severity is not None:
-            self.severity = severity
-        if code is not None:
-            self.code = code
-        if source is not None:
-            self.source = source
         self.message = message
-        if relatedInformation is not None:
+        if severity is not undefined:
+            self.severity = severity
+        if code is not undefined:
+            self.code = code
+        if source is not undefined:
+            self.source = source
+        if tags is not undefined:
+            self.tags = tags
+        if relatedInformation is not undefined:
             self.relatedInformation = relatedInformation
 
     def to_json(self) -> dict:
-        return {
+        json = {
             'range': self.range.to_json(),
             'message': self.message,
             'severity': self.severity.to_json(),
         }
+        if getattr(self, 'tags', undefined) is not undefined:
+            json['tags'] = [ tag.to_json() for tag in self.tags ]
+        if getattr(self, 'relatedInformation', undefined) is not undefined:
+            json['relatedInformation'] = [ info.to_json() for info in self.relatedInformation ]
+        return json
 
 
 class MessageType(SerializableEnum):

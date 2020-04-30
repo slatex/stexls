@@ -461,13 +461,7 @@ class Trefi(ParsedEnvironment):
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
             raise CompilerError(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
-        has_q = self.target_annotation and '?' in self.target_annotation.text
-        # TODO: will adding not self.drefi to this fix the ?syntax problem in drefis?
-        if not self.drefi and not self.m and has_q:
-            raise CompilerError('Question mark syntax "?<symbol>" not allowed in non-mtrefi environments.')
-        if self.m and not has_q:
-            raise CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.')
-    
+
     @property
     def name(self) -> str:
         ''' Parses the targeted symbol's name.

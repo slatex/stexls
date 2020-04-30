@@ -633,6 +633,7 @@ class ImportModule(ParsedEnvironment):
         scope: Location,
         module: TokenWithLocation,
         mhrepos: Optional[TokenWithLocation],
+        repos: Optional[TokenWithLocation],
         dir: Optional[TokenWithLocation],
         load: Optional[TokenWithLocation],
         path: Optional[TokenWithLocation],
@@ -643,6 +644,7 @@ class ImportModule(ParsedEnvironment):
         self.scope = scope
         self.module = module
         self.mhrepos = mhrepos
+        self.repos = repos
         self.dir = dir
         self.load = load
         self.path = path
@@ -724,6 +726,7 @@ class ImportModule(ParsedEnvironment):
             scope=e.get_scope(_SCOPE_REGEX),
             module=module,
             mhrepos=named.get('mhrepos') or named.get('repos'),
+            repos=named.get('repos'),
             dir=named.get('dir'),
             path=named.get('path'),
             load=named.get('load'),

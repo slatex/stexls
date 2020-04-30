@@ -617,6 +617,10 @@ def _compile_gimport(gimport: GImport, obj: StexObject):
         export=gimport.export,
         scope=gimport.scope)
     obj.add_reference(gimport.location, SymbolIdentifier(module_name, SymbolType.MODULE))
+    dummy = Symbol(gimport.location, None, None, None, None)
+    if gimport.repository and gimport.repository.text == dummy.get_repository_identifier(obj.root):
+        obj.errors.setdefault(gimport.location.replace(positionOrRange=gimport.repository.range), []).append(
+            Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
 def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
     module_name = importmodule.module.text.strip()
@@ -628,6 +632,19 @@ def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
         export=importmodule.export,
         scope=importmodule.scope)
     obj.add_reference(importmodule.location, SymbolIdentifier(module_name, SymbolType.MODULE))
+    dummy = Symbol(importmodule.location, None, None, None, None)
+    if importmodule.repos:
+        obj.errors.setdefault(importmodule.location.replace(positionOrRange=importmodule.repos.range), []).append(
+            DeprecationWarning('Argument "repos" is deprecated and should be replaced with "mhrepos".'))
+    if importmodule.mhrepos and importmodule.mhrepos.text == dummy.get_repository_identifier(obj.root):
+        obj.errors.setdefault(importmodule.location.replace(positionOrRange=importmodule.mhrepos.range), []).append(
+            Warning(f'Redundant mhrepos key: "{importmodule.mhrepos.text}" is the current repository.'))
+    if importmodule.path and importmodule.path.text == dummy.get_path(obj.root).as_posix():
+        obj.errors.setdefault(importmodule.location.replace(positionOrRange=importmodule.path.range), []).append(
+            Warning(f'Redundant path key: "{importmodule.path.text}" is the current path.'))
+    # if importmodule.dir and importmodule.dir.text == dummy.get_path(obj.root).as_posix():
+    #     obj.errors.setdefault(importmodule.location, []).append(
+    #         Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
 def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
     symbol = VerbSymbol(

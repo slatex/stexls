@@ -31,6 +31,8 @@ class Server(Dispatcher):
         self._root = None
         self._completion_engine: CompletionEngine = None
         self.progressEnabled = False
+        self._compile_lock = asyncio.Lock()
+        self._link_lock = asyncio.Lock()
 
     @method
     @alias('$/progress')
@@ -215,8 +217,12 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: TextDocumentItem):
-        if self._workspace.open_file(textDocument.path, textDocument.text):
-            log.info('didOpen: %s', textDocument.uri)
+        flag = False
+        async with self._compile_lock:
+            if self._workspace.open_file(textDocument.path, textDocument.text):
+                log.info('didOpen: %s', textDocument.uri)
+                flag = True
+        if flag:
             await self._request_file_update(textDocument.path)
         else:
             log.debug('Received didOpen event for invalid file: %s', textDocument.uri)
@@ -224,20 +230,22 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[dict]):
-        for change in contentChanges:
-            if not self._workspace.open_file(textDocument.path, change['text']):
-                return
+        async with self._compile_lock:
+            for change in contentChanges:
+                if not self._workspace.open_file(textDocument.path, change['text']):
+                    return
         log.info('didChange: "%s" (%i change(s)).', textDocument.uri, len(contentChanges))
         await self._request_file_update(textDocument.path)
 
     @method
     @alias('textDocument/didClose')
-    def text_document_did_close(self, textDocument: TextDocumentIdentifier):
-        if self._workspace.close_file(textDocument.path):
-            log.info('didClose: %s', textDocument.uri)
-            self._compiler.delete_objectfiles([textDocument.path])
-        else:
-            log.debug('Received didClose event for invalid file: %s', textDocument.uri)
+    async def text_document_did_close(self, textDocument: TextDocumentIdentifier):
+        async with self._compile_lock:
+            if self._workspace.close_file(textDocument.path):
+                log.info('didClose: %s', textDocument.uri)
+                self._compiler.delete_objectfiles([textDocument.path])
+            else:
+                log.debug('Received didClose event for invalid file: %s', textDocument.uri)
 
     @method
     @alias('textDocument/didSave')
@@ -269,28 +277,31 @@ class Server(Dispatcher):
             files: If given, only those files are linked.
         """
         loop = asyncio.get_event_loop()
-        if files is None:
-            files = self._workspace.files
-        if not all:
-            files = self._compiler.modified(files)
         try:
-            async with WorkDoneProgressManager(self) as progressfn:
-                objects = await loop.run_in_executor(
-                    None,
-                    self._compiler.compile,
-                    files,
-                    progressfn('Compiling'),
-                    True)
-                log.debug('Compiled: %s', set(objects))
-                links = await loop.run_in_executor(
-                    None,
-                    self._linker.link,
-                    objects,
-                    self._compiler.modules,
-                    progressfn,
+            async with self._link_lock:
+                if files is None:
+                    files = self._workspace.files
+                # check file state only after the last the last update() finished
+                if not all:
+                    files = self._compiler.modified(files)
+                async with WorkDoneProgressManager(self) as progressfn:
+                    async with self._compile_lock:
+                        objects = await loop.run_in_executor(
+                            None,
+                            self._compiler.compile,
+                            files,
+                            progressfn('Compiling'),
+                            True)
+                        log.debug('Compiled: %s', set(objects))
+                    links = await loop.run_in_executor(
+                        None,
+                        self._linker.link,
+                        objects,
+                        self._compiler.modules,
+                        progressfn,
                     False)
-                for obj, link in links.items():
-                    self.publish_diagnostics(uri=obj.path.as_uri(), diagnostics=self._create_diagnostics(link))
+            for obj, link in links.items():
+                self.publish_diagnostics(uri=obj.path.as_uri(), diagnostics=self._create_diagnostics(link))
         except:
             log.exception('Failed to create progress')
 

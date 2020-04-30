@@ -50,7 +50,7 @@ async def linter(
     view_graph: bool = False,
     tagfile: str = None,
     loglevel: str = 'error',
-    logfile: Path = Path('stexls.log')):
+    logfile: Path = Path('/tmp/stexls.log')):
     """ Run the language server in linter mode.
     
         In this mode only diagnostics and progress are printed to stdout.
@@ -65,11 +65,11 @@ async def linter(
         progress_indicator: Enables a progress bar being printed to stderr.
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         no_use_multiprocessing: Disables multiprocessing.
-        format: Format of the diagnostics. Defaults to "{file}:{line}:{column} {severity} - {message}".
+        format: Format of the diagnostics.
         view_graph: Shows the import graph of the specified files.
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
-        logfile: File to which logs will be logged. Defaults to "/tmp/stexls.log"
+        logfile: File to which logs will be logged.
 
     Returns:
         Awaitable task.
@@ -156,7 +156,7 @@ async def lsp(
     host: str = 'localhost',
     port: int = 0,
     loglevel: str = 'error',
-    logfile: Path = Path('.stexls/stexls.log')):
+    logfile: Path = Path('/tmp/stexls.log')):
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:

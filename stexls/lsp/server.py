@@ -328,6 +328,8 @@ class Server(Dispatcher):
             await asyncio.sleep(freq)
 
     async def __aenter__(self):
+        # TODO: No need for the background linker
+        # TODO: Do this with a call_later and stuff?
         log.debug('Server async enter called')
         self._time_update_requested = 0
         self._link_requests: Set[str] = set()
@@ -340,6 +342,8 @@ class Server(Dispatcher):
 
 
 class WorkDoneProgressManager:
+    # TODO: Implemented to handle creation and deletion of progress bars
+    # TODO: But this probably can be done better with a function containing the iterator and updater
     def __init__(self, server: Server, freq: float = 1.0):
         self.server = server
         self.freq = freq

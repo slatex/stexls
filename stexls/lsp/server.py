@@ -305,7 +305,7 @@ class Server(Dispatcher):
         except:
             log.exception('Failed to create progress')
 
-    async def _background_file_linker(self, freq: float = 2.0):
+    async def _background_file_linker(self, freq: float = 1.0):
         """ An infinite loop that periodically links files. The files to update can be requested using request_file_update(). """
         while True:
             # repeat until time since last update is freq seconds old

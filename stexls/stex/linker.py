@@ -271,7 +271,10 @@ class Linker:
         for _, objects in progressfn(inputs.items()):
             for object in objects:
                 self.errors[object] = {}
-                build_orders[object] = Linker._make_build_order(object, modules, self.errors[object])
+                build_orders[object] = Linker._make_build_order(
+                    object,
+                    modules,
+                    self.errors[object])
         self.build_orders.update(build_orders)
         return build_orders
     
@@ -405,7 +408,7 @@ class Linker:
                             continue
 
                         # If a importmodule of the root is done while the stack is marked as "usemodule used", ignore the import
-                        if usemodule_on_stack and object == root:
+                        if usemodule_on_stack and object.path == root.path:
                             continue
 
                         # Check if cycle created 
@@ -430,7 +433,7 @@ class Linker:
                             cyclic_stack=cyclic_stack, # inherit
                             # only the toplevel call _make_build_order can do certain things
                             at_toplevel=False,
-                            root=root, # inherit
+                            root=current if at_toplevel else root, # use toplevel if current is toplevel, else inherit
                             # mark child as used if any import in the stack is imported via "usemodule"
                             usemodule_on_stack=usemodule_on_stack or not public)
                         del cyclic_stack[object]

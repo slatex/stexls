@@ -420,6 +420,10 @@ class Defi(ParsedEnvironment):
         if not e.rargs:
             raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
+        try:
+            i = roman_numerals.roman2int(match.group(3))
+        except:
+            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return Defi(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
@@ -427,7 +431,7 @@ class Defi(ParsedEnvironment):
             m='m' in match.group(1),
             a='a' in match.group(1),
             capital=match.group(2) == 'D',
-            i=roman_numerals.roman2int(match.group(3)),
+            i=i,
             s=match.group(4) is not None,
             asterisk=match.group(5) is not None)
 
@@ -507,6 +511,10 @@ class Trefi(ParsedEnvironment):
             else None
         )
         tokens = list(map(TokenWithLocation.from_node, e.rargs))
+        try:
+            i = roman_numerals.roman2int(match.group(3))
+        except:
+            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return Trefi(
             location=e.location,
             tokens=tokens,
@@ -515,7 +523,7 @@ class Trefi(ParsedEnvironment):
             a='a' in match.group(1),
             capital=match.group(2) == 'T',
             drefi=match.group(2) in ('d', 'D'),
-            i=roman_numerals.roman2int(match.group(3)),
+            i=i,
             s=match.group(4) is not None,
             asterisk=match.group(5) is not None,
         )
@@ -577,12 +585,16 @@ class Symi(ParsedEnvironment):
         if not e.rargs:
             raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
+        try:
+            i = roman_numerals.roman2int(match.group(1))
+        except:
+            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return Symi(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
             unnamed_args=unnamed,
             named_args=named,
-            i=roman_numerals.roman2int(match.group(1)),
+            i=i,
             asterisk=match.group(2) is not None,
         )
 

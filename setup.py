@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="stexls",
-    version="3.1.0",
+    version="3.1.1",
     author="Marian Plivelic",
     author_email="MarianPlivelic@gmail.com",
     description="Language server and other utilities for STex.",

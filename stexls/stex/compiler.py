@@ -13,7 +13,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-from stexls.util.vscode import DocumentUri, Position, Range, Location
+from stexls.vscode import DocumentUri, Position, Range, Location
 from stexls.util.workspace import Workspace
 from stexls.util.format import format_enumeration
 
@@ -71,7 +71,7 @@ class StexObject:
             Length of >= 1 if must_resolve is True.
             Always length 1 if unique and must_resolve are both True.
         """
-        symbols = set(self.symbol_table.get(SymbolIdentifier(id, SymbolType.SYMBOL), ())) | set(self.symbol_table.get(SymbolIdentifier, SymbolType.MODULE), ())
+        symbols = set(self.symbol_table.get(SymbolIdentifier(id, SymbolType.DEFI), ())) | set(self.symbol_table.get(SymbolIdentifier, SymbolType.MODULE), ())
         if unique and len(symbols) > 1:
             str_locations = '", "'.join(symbol.location.format_link() for symbol in symbols)
             raise CompilerError(f'Multiple symbols with id "{id}" found: {str_locations}')
@@ -711,7 +711,7 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
             definition_type=DefinitionType.DEFI)
         obj.add_symbol(symbol, export=True)
     else:
-        defi_id = SymbolIdentifier(defi.name, SymbolType.SYMBOL)
+        defi_id = SymbolIdentifier(defi.name, SymbolType.DEFI)
         symbol_id = module.append(defi_id)
         obj.add_reference(defi.location, symbol_id)
 
@@ -719,7 +719,7 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
     if trefi.drefi:
         if module_id is None:
             raise CompilerError('Invalid drefi configuration: Missing parent module name')
-        id = SymbolIdentifier(trefi.name, SymbolType.SYMBOL)
+        id = SymbolIdentifier(trefi.name, SymbolType.DEFI)
         symbol = Symbol(trefi.location, id, module_id, DefinitionType.DEFI) # TODO: DefinitionType.DREFI required?
         obj.add_symbol(symbol, export=True)
     if trefi.module:
@@ -728,7 +728,7 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
         obj.add_reference(reference_location, module_id)
     elif module_id is None:
         raise CompilerError('Invalid trefi configuration: Missing parent module name')
-    target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.SYMBOL))
+    target_symbol_id = module_id.append(SymbolIdentifier(trefi.name, SymbolType.DEFI))
     obj.add_reference(trefi.location, target_symbol_id)
     has_q = trefi.target_annotation and '?' in trefi.target_annotation.text
     if trefi.m:

@@ -7,7 +7,7 @@ import itertools
 import multiprocessing
 
 from stexls.util import roman_numerals
-from stexls.util.vscode import *
+from stexls.vscode import *
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
 from stexls.util.latex.exceptions import LatexException
 

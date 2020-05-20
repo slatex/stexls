@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict, Patt
 from pathlib import Path
 import functools
 import multiprocessing
-from stexls.util.vscode import *
+from stexls.vscode import *
 from stexls.stex.parser import ParsedFile
 from stexls.stex.compiler import StexObject
 from stexls.stex.symbols import *

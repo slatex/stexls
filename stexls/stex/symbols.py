@@ -3,7 +3,7 @@ import os
 from typing import Set
 from enum import Enum
 from pathlib import Path
-from stexls.util.vscode import Location, Range
+from stexls.vscode import Location, Range, DocumentSymbol
 
 __all__ = [
     'SymbolType',
@@ -18,7 +18,7 @@ __all__ = [
 
 
 class SymbolType(Enum):
-    SYMBOL='symbol'
+    DEFI='defi'
     MODULE='module'
     BINDING='binding'
 
@@ -93,7 +93,7 @@ class Symbol:
     def qualified_identifier(self) -> SymbolIdentifier:
         """ The fully qualified identifier for this symbol.
         
-        >>> symbol = Symbol(None, SymbolIdentifier('child', SymbolType.SYMBOL), SymbolIdentifier('parent', SymbolType.MODULE))
+        >>> symbol = Symbol(None, SymbolIdentifier('child', SymbolType.DEFI), SymbolIdentifier('parent', SymbolType.MODULE))
         >>> symbol.parent
         'parent/MODULE'
         >>> symbol.identifier'
@@ -166,7 +166,7 @@ class VerbSymbol(Symbol):
         full_range: Range = None):
         super().__init__(
             location=location,
-            identifier=SymbolIdentifier(name, SymbolType.SYMBOL),
+            identifier=SymbolIdentifier(name, SymbolType.DEFI),
             parent=module,
             definition_type=definition_type,
             full_range=full_range)

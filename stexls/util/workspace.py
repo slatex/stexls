@@ -8,7 +8,7 @@ from hashlib import sha1
 from pathlib import Path
 from typing import List, Iterator, Pattern, Callable, Iterable, Set, Dict
 
-from stexls.util.vscode import *
+from stexls.vscode import *
 
 log = logging.getLogger(__name__)
 

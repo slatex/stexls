@@ -877,3 +877,80 @@ class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
     def from_json(json) -> VersionedTextDocumentIdentifier:
         return VersionedTextDocumentIdentifier(json['uri'], json['version'])
 
+
+class SymbolKind(SerializableEnum):
+    Array=17
+    Boolean=16
+    Class=4
+    Constant=13
+    Constructor=8
+    Enum=9
+    EnumMember=21
+    Event=23
+    Field=7
+    File=0
+    Function=11
+    Interface=10
+    Key=19
+    Method=5
+    Module=1
+    Namespace=2
+    Null=20
+    Number=15
+    Object=18
+    Operator=24
+    Package=3
+    Property=6
+    String=14
+    Struct=22
+    TypeParameter=25
+    Variable=12
+
+
+class SymbolTag(SerializableEnum):
+    Deprecated=1
+
+
+class DocumentSymbol:
+    def __init__(self, name: str, detail: str, kind: SymbolKind, range: Range, selectionRange: Range):
+        self.children: List[DocumentSymbol] = []
+        self.detail: str = detail
+        self.kind: SymbolKind = kind
+        self.range: Range = range
+        self.selectionRange: Range = selectionRange
+        self.tags: List[SymbolTag] = []
+
+    def to_json(self) -> dict:
+        j = {
+            'name': self.name,
+            'detail': self.detail,
+            'kind': self.kind.to_json(),
+            'range': self.range.to_json(),
+            'selectionRange': self.selectionRange.to_json(),
+            'children': [ child.to_json() for child in self.children ]
+        }
+        if self.tags:
+            j['tags'] = [ tag.to_json() for tag in self.tags ]
+        return j
+
+    def __repr__(self):
+        return f'[DocumentSymbol {self.name} of {self.kind} at {self.range}]'
+
+
+class SymbolInformation:
+    def __init__(self, name: str, kind: SymbolKind, location: Location, containerName: str = undefined):
+        self.name = name
+        self.kind = kind
+        self.location = location
+        if containerName:
+            self.containerName = containerName
+
+    def to_json(self) -> dict:
+        j = {
+            'name': self.name,
+            'kind': self.kind.to_json(),
+            'location': self.location.to_json()
+        }
+        if getattr(self, 'containerName', undefined):
+            j['containerName'] = self.containerName
+        return j

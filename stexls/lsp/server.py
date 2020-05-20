@@ -15,7 +15,7 @@ from typing import Callable, Dict, Set
 from stexls.stex import Linker, Compiler, StexObject, Symbol
 from stexls.util.workspace import Workspace
 from stexls.util.jsonrpc import *
-from stexls.util.vscode import *
+from stexls.vscode import *
 from .completions import CompletionEngine
 
 log = logging.getLogger(__name__)

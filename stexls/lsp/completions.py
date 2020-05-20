@@ -5,7 +5,7 @@ from pathlib import Path
 from stexls.stex import Linker
 from stexls.stex.compiler import *
 from stexls.stex.symbols import *
-from stexls.util.vscode import *
+from stexls.vscode import *
 
 __all__ = ['CompletionEngine']
 
@@ -204,7 +204,7 @@ class CompletionEngine:
             choices = [
                 symbol.identifier.identifier
                 for id, symbols in object.symbol_table.items()
-                if id.symbol_type == SymbolType.SYMBOL
+                if id.symbol_type == SymbolType.DEFI
                 and id.identifier.startswith(fragment)
                 and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, VerbSymbol))
                 for symbol in symbols[:1]
@@ -217,7 +217,7 @@ class CompletionEngine:
             choices = set(
                 symbol.identifier.identifier
                 for id, symbols in object.symbol_table.items()
-                if id.symbol_type == SymbolType.SYMBOL
+                if id.symbol_type == SymbolType.DEFI
                 and id.identifier.startswith(fragment)
                 and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, VerbSymbol))
                 for symbol in symbols[:1])
@@ -236,7 +236,7 @@ class CompletionEngine:
                 choices = (
                     symbol.identifier.identifier
                     for id, symbols in link.symbol_table.items()
-                    if id.symbol_type == SymbolType.SYMBOL
+                    if id.symbol_type == SymbolType.DEFI
                     for symbol in symbols
                     if symbol.parent.identifier == target_module
                     and (not isinstance(symbol, VerbSymbol) or not symbol.noverb)
@@ -277,7 +277,7 @@ class CompletionEngine:
             choices = set(
                 symbol.identifier.identifier
                 for id, symbols in link.symbol_table.items()
-                if id.symbol_type == SymbolType.SYMBOL
+                if id.symbol_type == SymbolType.DEFI
                 for symbol in symbols
                 if symbol.parent == scope)
             return self._completions_from_choices(fragment, choices, CompletionItemKind.Unit, position)

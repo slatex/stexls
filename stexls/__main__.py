@@ -12,7 +12,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from stexls.util.cli import Cli, command, Arg
-from stexls.util.vscode import *
+from stexls.vscode import *
 from stexls.util.workspace import Workspace
 from stexls.stex import Compiler, Linker
 from stexls.lsp import Server

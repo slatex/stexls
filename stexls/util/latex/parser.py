@@ -6,7 +6,7 @@ import tempfile
 
 from antlr4.error.ErrorListener import ErrorListener
 
-from stexls.util.vscode import Location, Range, Position
+from stexls.vscode import Location, Range, Position
 
 from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
 from .grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener

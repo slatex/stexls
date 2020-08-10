@@ -316,7 +316,7 @@ class Range:
         return self.replace(end=split), self.replace(start=split)
 
     def translate(self, lines: int = 0, characters: int = 0) -> Range:
-        ' Translates start and end positions by the given line and character offsets. '
+        ' Translates start and end positions by the given line and character offsets and returns a new range. '
         return Range(self.start.translate(lines, characters), self.end.translate(lines, characters))
 
     @staticmethod
@@ -324,6 +324,7 @@ class Range:
         ''' Creates the big union of all ranges and positions given.
             The big union is given by the range formed by the smallest
             and largest position in the list.
+            If the big union can't be created None is returned.
         '''
         if not rangesOrPositions:
             return None
@@ -400,14 +401,24 @@ class Location:
 
     @property
     def path(self) -> Path:
+        ' Returns the uri property as a posix path. '
         return Path(urllib.parse.urlparse(self.uri).path)
 
     def contains(self, loc: Union[Location, Range, Position]) -> bool:
+        ' Returns True if the loc argument is contained within this location\'s range and the file is corrent if given. '
         if isinstance(loc, (Range, Position)):
             return self.range.contains(loc)
         return self.uri == loc.uri and self.range.contains(loc.range)
 
     def format_link(self, relative: bool = False, relative_to: Path = None) -> str:
+        """ Formats this location object as a clickable link. E.g.: "/path/to/file:<line>"
+
+        Parameters:
+            relative: If True, then the path is formated relative to current working dir.
+        
+        Returns:
+            String formatted as a clickable link.
+        """
         range = self.range.translate(1, 1)
         path = self.path
         if relative:
@@ -416,7 +427,7 @@ class Location:
         return f'{path}:{range.start.line}:{range.start.character}'
 
     def replace(self, uri: DocumentUri = None, positionOrRange: Union[Position, Range] = None):
-        ''' Creates a copy of this location and replaces uri and/or range if given.
+        ''' Creates a copy of this location object and replaces uri and/or range properties if given.
 
         Parameters:
             uri: Optional uri replacement.

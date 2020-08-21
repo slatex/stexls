@@ -23,6 +23,33 @@ from .exceptions import *
 
 __all__ = ['Compiler', 'StexObject']
 
+class ModuleDependency:
+    def __init__(
+        self,
+        module_name: str,
+        module_type_hint: ModuleType,
+        file_hint: Path,
+        export: bool,
+        scope: Optional[Location] = None):
+        """ Container for data required to resolve module dependencies / imports.
+
+        Parameters:
+            module_name: The name of the module that is required.
+            module_type_hint: The expected type of module signature. After resolving the module_name,
+                the module_type of the resolved symbol should be the same as the dependency requires.
+                The module type hint depends on for example the used import statement (gimport or usemodule)
+            file_hint: Path to the file in which the dependent module is supposed to be defined inside or
+                exported by.
+            export: Flag that if True means, that this dependency should be exported.
+            scope: To be removed?
+        """
+        self.module_name = module_name
+        self.module_type_hint = module_type_hint
+        self.file_hint = file_hint
+        self.export = export
+        self.scope = scope
+
+
 class StexObject:
     def __init__(self, root: Path):
         # Root directory of resolution
@@ -351,7 +378,7 @@ class StexObject:
         self.symbol_table[symbol.qualified_identifier].append(symbol)
 
     @staticmethod
-    def compile(root: Path, parsed: ParsedFile) -> Iterable[StexObject]:
+    def compile(root: Path, parsed: IntermediateParser) -> Iterable[StexObject]:
         def _create(errors):
             obj = StexObject(root)
             obj.files.add(parsed.path)
@@ -533,7 +560,7 @@ class Compiler:
                 if content is not None or not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
                     # if not already compiled or the compiled object is old, create a new object
                     objectdir.mkdir(parents=True, exist_ok=True)
-                    parsed = ParsedFile(file).parse(content)
+                    parsed = IntermediateParser(file).parse(content)
                     objects = list(StexObject.compile(root, parsed))
                     try:
                         with open(objectfile, 'wb') as fd:
@@ -572,7 +599,7 @@ def _map_compile(compile_fun, arr: List, obj: StexObject):
         except CompilerError as e:
             obj.errors[item.location].append(e)
 
-def _compile_free(obj: StexObject, parsed_file: ParsedFile):
+def _compile_free(obj: StexObject, parsed_file: IntermediateParser):
     _report_invalid_environments('file', parsed_file.modnls, obj)
     _report_invalid_environments('file', parsed_file.modules, obj)
     _report_invalid_environments('file', parsed_file.modsigs, obj)
@@ -583,7 +610,7 @@ def _compile_free(obj: StexObject, parsed_file: ParsedFile):
     _map_compile(_compile_gimport, parsed_file.gimports, obj)
     _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
-def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
+def _compile_modsig(modsig: ModsigIntermediateParseTree, obj: StexObject, parsed_file: IntermediateParser):
     _report_invalid_environments('modsig', parsed_file.modnls, obj)
     _report_invalid_environments('modsig', parsed_file.modules, obj)
     _report_invalid_environments('modsig', parsed_file.defis, obj)
@@ -607,7 +634,7 @@ def _compile_modsig(modsig: Modsig, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_sym, module), parsed_file.syms, obj)
     _map_compile(functools.partial(_compile_symdef, module), parsed_file.symdefs, obj)
 
-def _compile_gimport(gimport: GImport, obj: StexObject):
+def _compile_gimport(gimport: GImportIntermediateParseTree, obj: StexObject):
     module_name = gimport.module.text.strip()
     obj.add_dependency(
         location=gimport.location,
@@ -622,7 +649,7 @@ def _compile_gimport(gimport: GImport, obj: StexObject):
         obj.errors.setdefault(gimport.location.replace(positionOrRange=gimport.repository.range), []).append(
             Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
-def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
+def _compile_importmodule(importmodule: ImportModuleIntermediateParseTree, obj: StexObject):
     module_name = importmodule.module.text.strip()
     obj.add_dependency(
         location=importmodule.location,
@@ -646,7 +673,7 @@ def _compile_importmodule(importmodule: ImportModule, obj: StexObject):
     #     obj.errors.setdefault(importmodule.location, []).append(
     #         Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
-def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
+def _compile_sym(module: ModuleSymbol, sym: SymiIntermediateParseTree, obj: StexObject):
     symbol = VerbSymbol(
         location=sym.location,
         name=sym.name,
@@ -656,7 +683,7 @@ def _compile_sym(module: ModuleSymbol, sym: Symi, obj: StexObject):
         definition_type=DefinitionType.SYM)
     obj.add_symbol(symbol, export=True)
 
-def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
+def _compile_symdef(module: ModuleSymbol, symdef: SymdefIntermediateParseTree, obj: StexObject):
     symbol = VerbSymbol(
         location=symdef.location,
         name=symdef.name.text,
@@ -666,7 +693,7 @@ def _compile_symdef(module: ModuleSymbol, symdef: Symdef, obj: StexObject):
         definition_type=DefinitionType.SYMDEF)
     obj.add_symbol(symbol, export=True)
 
-def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
+def _compile_modnl(modnl: ModnlIntermediateParseTree, obj: StexObject, parsed_file: IntermediateParser):
     _report_invalid_environments('modnl', parsed_file.modsigs, obj)
     _report_invalid_environments('modnl', parsed_file.modules, obj)
     _report_invalid_environments('modnl', parsed_file.importmodules, obj)
@@ -700,7 +727,7 @@ def _compile_modnl(modnl: Modnl, obj: StexObject, parsed_file: ParsedFile):
     _map_compile(functools.partial(_compile_defi, module_id), parsed_file.defis, obj)
     _map_compile(functools.partial(_compile_trefi, module_id), parsed_file.trefis, obj)
 
-def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create: bool = False):
+def _compile_defi(module: SymbolIdentifier, defi: DefiIntermediateParseTree, obj: StexObject, create: bool = False):
     if create:
         symbol = VerbSymbol(
             location=defi.location,
@@ -715,7 +742,7 @@ def _compile_defi(module: SymbolIdentifier, defi: Defi, obj: StexObject, create:
         symbol_id = module.append(defi_id)
         obj.add_reference(defi.location, symbol_id)
 
-def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
+def _compile_trefi(module_id: SymbolIdentifier, trefi: TrefiIntermediateParseTree, obj: StexObject):
     if trefi.drefi:
         if module_id is None:
             raise CompilerError('Invalid drefi configuration: Missing parent module name')
@@ -739,7 +766,7 @@ def _compile_trefi(module_id: SymbolIdentifier, trefi: Trefi, obj: StexObject):
                 CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
 
 
-def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
+def _compile_module(module: ModuleIntermediateParseTree, obj: StexObject, parsed_file: IntermediateParser):
     _report_invalid_environments('module', itertools.chain(parsed_file.modsigs, parsed_file.modnls, parsed_file.syms), obj)
     if module.id:
         name_location = module.location.replace(positionOrRange=module.id.range)
@@ -760,7 +787,7 @@ def _compile_module(module: Module, obj: StexObject, parsed_file: ParsedFile):
         _map_compile(_compile_gimport, parsed_file.gimports, obj)
         _map_compile(functools.partial(_compile_trefi, None), parsed_file.trefis, obj)
 
-def _report_invalid_environments(env_name: str, lst: List[ParsedEnvironment], obj: StexObject):
+def _report_invalid_environments(env_name: str, lst: List[IntermediateParseTree], obj: StexObject):
     for invalid_environment in lst:
         obj.errors[invalid_environment.location].append(
             CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in {env_name}.'))

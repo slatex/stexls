@@ -1,10 +1,7 @@
 from __future__ import annotations
-from typing import Optional, Tuple, List, Dict, Set, Iterator, Union
-from collections import defaultdict
+from typing import Callable, Optional, Tuple, List, Dict, Set
 from pathlib import Path
 import re
-import itertools
-import multiprocessing
 
 from stexls.util import roman_numerals
 from stexls.vscode import *
@@ -15,91 +12,119 @@ from .exceptions import *
 from .symbols import *
 
 __all__ = (
-    'ParsedFile',
-    'ParsedEnvironment',
+    'IntermediateParser',
+    'IntermediateParseTree',
     'TokenWithLocation',
-    'Location',
-    'Modsig',
-    'Modnl',
-    'Module',
-    'Trefi',
-    'Defi',
-    'Symi',
-    'Symdef',
-    'ImportModule',
-    'GImport',
+    'ScopeIntermediateParseTree',
+    'ModsigIntermediateParseTree',
+    'ModnlIntermediateParseTree',
+    'ModuleIntermediateParseTree',
+    'TrefiIntermediateParseTree',
+    'DefiIntermediateParseTree',
+    'SymiIntermediateParseTree',
+    'SymdefIntermediateParseTree',
+    'ImportModuleIntermediateParseTree',
+    'GImportIntermediateParseTree',
+    'GStructureIntermediateParseTree',
+    'ViewIntermediateParseTree',
+    'ViewSigIntermediateParseTree',
 )
 
-_SCOPE_REGEX = re.compile(r'n?omtext|example|omgroup|frame|(mh)?module|(mh)?modnl|modsig')
 
-class ParsedFile:
+class IntermediateParseTree:
+    def __init__(self, location: Location):
+        self.location = location
+        self.children: List[IntermediateParseTree] = []
+        self.parent: IntermediateParseTree = None
+
+    def add_child(self, child: IntermediateParseTree):
+        assert child.parent is None
+        self.children.append(child)
+        child.parent = self
+
+    @property
+    def scope(self) -> Optional[IntermediateParseTree]:
+        if isinstance(self, (
+            ScopeIntermediateParseTree,
+            ModsigIntermediateParseTree,
+            ModnlIntermediateParseTree,
+            ViewIntermediateParseTree,
+            ViewSigIntermediateParseTree,
+            ModuleIntermediateParseTree)):
+            return self
+        if self.parent:
+            return self.parent.scope
+        return None
+
+    @property
+    def depth(self) -> int:
+        if self.parent:
+            return self.parent.depth + 1
+        return 0
+
+    def traverse(self, enter, exit=None):
+        if enter:
+            enter(self)
+        for c in self.children:
+            c.traverse(enter, exit)
+        if exit:
+            exit(self)
+
+
+class IntermediateParser:
     " An object contains information about symbols, locations, imports of an stex source file. "
     def __init__(self, path: Path):
         ' Creates an empty container without actually parsing the file. '
         self.path = Path(path)
-        self.modsigs: List[Modsig] = []
-        self.modnls: List[Modnl] = []
-        self.modules: List[Module] = []
-        self.trefis: List[Trefi] = []
-        self.defis: List[Defi] = []
-        self.syms: List[Symi] = []
-        self.symdefs: List[Symdef] = []
-        self.importmodules: List[ImportModule] = []
-        self.gimports: List[GImport] = []
-        self.errors: Dict[Location, List[Exception]] = defaultdict(list)
-        self.parsed = False
+        self.roots: List[IntermediateParseTree] = []
+        self.errors: Dict[Location, List[Exception]] = {}
 
-    def parse(self, content: str = None) -> ParsedFile:
+    def parse(self, content: str = None) -> IntermediateParser:
         ' Parse the file from the in the constructor given path. '
-        if self.parsed:
+        if self.roots:
             raise ValueError('File already parsed.')
-        self.parsed = True
-        exceptions: List[Tuple[Location, Exception]] = []
         try:
             parser = LatexParser(self.path)
             parser.parse(content)
-            exceptions = parser.syntax_errors or []
-            parser.walk(lambda env: _visitor(env, self, exceptions))
+            stack: List[Tuple[Environment, Callable]] = [(None, self.roots.append)]
+            parser.walk(
+                lambda env: self._enter(env, stack),
+                lambda env: self._exit(env, stack))
         except (CompilerError, LatexException, UnicodeError) as ex:
-            exceptions.append((self.default_location, ex))
-        for loc, e in exceptions:
-            self.errors[loc].append(e)
+            self.errors.setdefault(self.default_location, []).append(ex)
         return self
 
-    @property
-    def toplevels(self) -> Iterator[ParsedFile]:
-        """ Splits this file into it's toplevel modules and bindings.
-        
-        Returns:
-            Generator of parsed files which at most contain a single toplevel (module, modsig, modnl)
-            and the environments contained in that toplevel environment.
-            If no toplevel environment can be found, this file
-            is returned instead.
-        """
-        toplevels = list(itertools.chain(self.modnls, self.modsigs, self.modules))
-        if not toplevels:
-            yield self
-        else:
-            for toplevel in toplevels:
-                range = toplevel.location.range
-                module_file = ParsedFile(self.path)
-                module_file.parsed = True
-                if isinstance(toplevel, Modsig):
-                    module_file.modsigs.append(toplevel)
-                elif isinstance(toplevel, Module):
-                    module_file.modules.append(toplevel)
-                elif isinstance(toplevel, Modnl):
-                    module_file.modnls.append(toplevel)
-                module_file.trefis = [item for item in self.trefis if range.contains(item.location.range)]
-                module_file.defis = [item for item in self.defis if range.contains(item.location.range)]
-                module_file.syms = [item for item in self.syms if range.contains(item.location.range)]
-                module_file.symdefs = [item for item in self.symdefs if range.contains(item.location.range)]
-                module_file.importmodules = [item for item in self.importmodules if range.contains(item.location.range)]
-                module_file.gimports = [item for item in self.gimports if range.contains(item.location.range)]
-                for loc, item in self.errors.items():
-                    if range.contains(loc.range):
-                        module_file.errors[loc].extend(item)
-                yield module_file
+    def _enter(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+        try:
+            tree = next(filter(None, map(
+                lambda cls_: cls_.from_environment(env),
+                [
+                    ScopeIntermediateParseTree,
+                    ModsigIntermediateParseTree,
+                    ModnlIntermediateParseTree,
+                    ModuleIntermediateParseTree,
+                    TrefiIntermediateParseTree,
+                    DefiIntermediateParseTree,
+                    SymiIntermediateParseTree,
+                    SymdefIntermediateParseTree,
+                    ImportModuleIntermediateParseTree,
+                    GImportIntermediateParseTree,
+                    GStructureIntermediateParseTree,
+                    ViewIntermediateParseTree,
+                    ViewSigIntermediateParseTree,
+                ]
+            )), None)
+            if tree:
+                if stack_of_add_child_operations[-1]:
+                    stack_of_add_child_operations[-1][1](tree)
+                stack_of_add_child_operations.append((env, tree.add_child))
+                return
+        except CompilerError as e:
+            self.errors.setdefault(env.location, []).append(e)
+
+    def _exit(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+        if stack_of_add_child_operations[-1][0] == env:
+            stack_of_add_child_operations.pop()
 
     @property
     def default_location(self) -> Location:
@@ -115,48 +140,6 @@ class ParsedFile:
             return Location(self.path.as_uri(), Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
         except:
             return Location(self.path.as_uri(), Position(0, 0))
-
-def _visitor(env: Environment, parsed_file: ParsedFile, exceptions: List[Tuple[Location, Exception]]):
-    try:
-        module = Modsig.from_environment(env)
-        if module:
-            parsed_file.modsigs.append(module)
-            return
-        binding = Modnl.from_environment(env)
-        if binding:
-            parsed_file.modnls.append(binding)
-            return
-        module = Module.from_environment(env)
-        if module:
-            parsed_file.modules.append(module)
-            return
-        trefi = Trefi.from_environment(env)
-        if trefi:
-            parsed_file.trefis.append(trefi)
-            return
-        defi = Defi.from_environment(env)
-        if defi:
-            parsed_file.defis.append(defi)
-            return
-        sym = Symi.from_environment(env)
-        if sym:
-            parsed_file.syms.append(sym)
-            return
-        symdef = Symdef.from_environment(env)
-        if symdef:
-            parsed_file.symdefs.append(symdef)
-            return
-        importmodule = ImportModule.from_environment(env)
-        if importmodule:
-            parsed_file.importmodules.append(importmodule)
-            return
-        gimport = GImport.from_environment(env)
-        if gimport:
-            parsed_file.gimports.append(gimport)
-            return
-    except CompilerError as e:
-        exceptions.append((env.location, e))
-        return
 
 
 class TokenWithLocation:
@@ -223,25 +206,37 @@ class TokenWithLocation:
         return TokenWithLocation(separator.join(values), Range.big_union(ranges))
 
 
-class ParsedEnvironment:
-    def __init__(self, location: Location):
-        self.location = location
+class ScopeIntermediateParseTree(IntermediateParseTree):
+    PATTERN = re.compile(r'n?omtext|example|omgroup|frame')
+    def __init__(self, location: Location, scope_name: TokenWithLocation):
+        super().__init__(location)
+        self.scope_name = scope_name
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[ScopeIntermediateParseTree]:
+        match = ScopeIntermediateParseTree.PATTERN.fullmatch(e.env_name)
+        if not match:
+            return
+        return ScopeIntermediateParseTree(e.location, TokenWithLocation.from_node(e.name))
+
+    def __repr__(self) -> str:
+        return f'[Scope "{self.scope_name.text}"]'
 
 
-class Modsig(ParsedEnvironment):
+class ModsigIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?modsig')
     def __init__(self, location: Location, name: TokenWithLocation):
         super().__init__(location)
         self.name = name
     
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Modsig]:
-        match = Modsig.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[ModsigIntermediateParseTree]:
+        match = ModsigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return
         if not e.rargs:
             raise CompilerError('Modsig environment missing required argument: {<module name>}')
-        return Modsig(
+        return ModsigIntermediateParseTree(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]))
 
@@ -249,7 +244,7 @@ class Modsig(ParsedEnvironment):
         return f'[Modsig name={self.name.text}]'
 
 
-class Modnl(ParsedEnvironment):
+class ModnlIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?(mh)?modnl')
     def __init__(
         self,
@@ -284,13 +279,13 @@ class Modnl(ParsedEnvironment):
         return (self.location.path.parents[0] / (self.name.text + '.tex'))
     
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Modnl]:
-        match = Modnl.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[ModnlIntermediateParseTree]:
+        match = ModnlIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return
         if len(e.rargs) != 2:
             raise CompilerError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
-        return Modnl(
+        return ModnlIntermediateParseTree(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
             TokenWithLocation.from_node(e.rargs[1]),
@@ -302,7 +297,7 @@ class Modnl(ParsedEnvironment):
         return f'[{mh}Modnl {self.name.text} lang={self.lang.text}]'
 
 
-class View(ParsedEnvironment):
+class ViewIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'mhview|gviewnl')
     def __init__(
         self,
@@ -322,7 +317,7 @@ class View(ParsedEnvironment):
         self.frompath = frompath
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[View]:
+    def from_environment(cls, e: Environment) -> Optional[ViewIntermediateParseTree]:
         match = cls.PATTERN.match(e.env_name)
         if not match:
             return None
@@ -344,7 +339,7 @@ class View(ParsedEnvironment):
         else:
             raise CompilerError(f'Invalid environment name "{e.env_name}"')
         module = e.rargs[0]
-        return View(
+        return ViewIntermediateParseTree(
             location=e.location,
             env=e.env_name,
             module=module,
@@ -354,7 +349,39 @@ class View(ParsedEnvironment):
             frompath=named.get('frompath'))
 
 
-class Module(ParsedEnvironment):
+class ViewSigIntermediateParseTree(IntermediateParseTree):
+    PATTERN = re.compile('gviewsig')
+    def __init__(
+        self,
+        location: Location,
+        fromrepos: Optional[TokenWithLocation],
+        module_name: TokenWithLocation,
+        imports: List[TokenWithLocation]):
+        super().__init__(location)
+        self.fromrepos = fromrepos
+        self.module_name = module_name
+        self.imports = imports
+    
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[ViewSigIntermediateParseTree]:
+        match = ViewSigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
+        if not match:
+            return None
+        if len(e.rargs) < 1:
+            raise CompilerError('viewsig requires at least one argument, found 0.')
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        return ViewSigIntermediateParseTree(
+            location=e.location,
+            fromrepos=named.get('fromrepos', None),
+            module_name=TokenWithLocation.from_node(e.rargs[0]),
+            imports=list(map(TokenWithLocation.from_node, e.rargs[1:]))
+        )
+
+    def __repr__(self) -> str:
+        return f'[ViewSig "{self.module_name}" from "{self.fromrepos}" imports {self.imports}]'
+
+
+class ModuleIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?module(\*)?')
     def __init__(
         self,
@@ -368,18 +395,43 @@ class Module(ParsedEnvironment):
         return f'[Module {module}]'
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Module]:
+    def from_environment(cls, e: Environment) -> Optional[ModuleIntermediateParseTree]:
         match = cls.PATTERN.match(e.env_name)
         if match is None:
             return None
         _, named = TokenWithLocation.parse_oargs(e.oargs)
-        return Module(
+        return ModuleIntermediateParseTree(
             location=e.location,
             id=named.get('id'),
         )
 
 
-class Defi(ParsedEnvironment):
+class GStructureIntermediateParseTree(IntermediateParseTree):
+    PATTERN = re.compile(r'\\?gstructure(\*)?')
+    def __init__(self, location: Location, mhrepos: TokenWithLocation, module: TokenWithLocation):
+        super().__init__(location)
+        self.mhrepos = mhrepos
+        self.module = module
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[GStructureIntermediateParseTree]:
+        match = cls.PATTERN.match(e.env_name)
+        if match is None:
+            return None
+        if len(e.rargs) != 2:
+            raise CompilerError(f'gstructure environment requires at least 2 Arguments but {len(e.rargs)} found.')
+        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        return GStructureIntermediateParseTree(
+            location=e.location,
+            mhrepos=named.get('mhrepos'),
+            module=TokenWithLocation.from_node(e.rargs[1])
+        )
+
+    def __repr__(self) -> str:
+        return f'[GStructure "{self.module}"]'
+
+
+class DefiIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
     def __init__(
         self,
@@ -413,8 +465,8 @@ class Defi(ParsedEnvironment):
         return '-'.join(t.text for t in self.tokens)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Defi]:
-        match = Defi.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[DefiIntermediateParseTree]:
+        match = DefiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
@@ -424,7 +476,7 @@ class Defi(ParsedEnvironment):
             i = roman_numerals.roman2int(match.group(3))
         except:
             raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
-        return Defi(
+        return DefiIntermediateParseTree(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
             name_annotation=named.get('name'),
@@ -436,10 +488,10 @@ class Defi(ParsedEnvironment):
             asterisk=match.group(5) is not None)
 
     def __repr__(self):
-        return f'[Defi "{self.name}"]'
+        return f'[Def{"i"*self.i} "{self.name}"]'
 
 
-class Trefi(ParsedEnvironment):
+class TrefiIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?([ma]*)(d|D|t|T)ref([ivx]+)(s)?(\*)?')
     def __init__(
         self,
@@ -497,8 +549,8 @@ class Trefi(ParsedEnvironment):
         return None # return None if no oargs are given
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Trefi]:
-        match = Trefi.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[TrefiIntermediateParseTree]:
+        match = TrefiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
@@ -515,7 +567,7 @@ class Trefi(ParsedEnvironment):
             i = roman_numerals.roman2int(match.group(3))
         except:
             raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
-        return Trefi(
+        return TrefiIntermediateParseTree(
             location=e.location,
             tokens=tokens,
             target_annotation=annotations,
@@ -529,8 +581,8 @@ class Trefi(ParsedEnvironment):
         )
 
     def __repr__(self):
-        module = f' "{self.module}" ' if self.module else " "
-        return f'[Trefi{module}"{self.name}"]'
+        module = f' from "{self.module}"' if self.module else ""
+        return f'[Tref{"i"*self.i} "{self.name}"{module}]'
 
 
 class _NoverbHandler:
@@ -555,7 +607,7 @@ class _NoverbHandler:
         return set([noverb.text])
 
 
-class Symi(ParsedEnvironment):
+class SymiIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?sym([ivx]+)(\*)?')
     def __init__(
         self,
@@ -578,8 +630,8 @@ class Symi(ParsedEnvironment):
         return '-'.join(token.text for token in self.tokens)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Symi]:
-        match = Symi.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[SymiIntermediateParseTree]:
+        match = SymiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
@@ -589,7 +641,7 @@ class Symi(ParsedEnvironment):
             i = roman_numerals.roman2int(match.group(1))
         except:
             raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
-        return Symi(
+        return SymiIntermediateParseTree(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
             unnamed_args=unnamed,
@@ -599,10 +651,10 @@ class Symi(ParsedEnvironment):
         )
 
     def __repr__(self):
-        return f'[Sym{"*"*self.asterisk} "{self.name}"]'
+        return f'[Sym{"i"*self.i}{"*"*self.asterisk} "{self.name}"]'
 
 
-class Symdef(ParsedEnvironment):
+class SymdefIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?symdef(\*)?')
     def __init__(
         self,
@@ -617,15 +669,15 @@ class Symdef(ParsedEnvironment):
         self.asterisk: bool = asterisk
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[Symdef]:
-        match = Symdef.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[SymdefIntermediateParseTree]:
+        match = SymdefIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
             raise CompilerError('Argument count mismatch: At least one argument required.')
         name = TokenWithLocation.from_node(e.rargs[0])
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
-        return Symdef(
+        return SymdefIntermediateParseTree(
             location=e.location,
             name=named.get('name', name),
             unnamed_oargs=unnamed,
@@ -637,12 +689,11 @@ class Symdef(ParsedEnvironment):
         return f'[Symdef{"*"*self.asterisk} "{self.name.text}"]'
 
 
-class ImportModule(ParsedEnvironment):
+class ImportModuleIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?(import|use)(mh)?module(\*)?')
     def __init__(
         self,
         location: Location,
-        scope: Location,
         module: TokenWithLocation,
         mhrepos: Optional[TokenWithLocation],
         repos: Optional[TokenWithLocation],
@@ -653,7 +704,6 @@ class ImportModule(ParsedEnvironment):
         mh_mode: bool,
         asterisk: bool):
         super().__init__(location)
-        self.scope = scope
         self.module = module
         self.mhrepos = mhrepos
         self.repos = repos
@@ -711,7 +761,7 @@ class ImportModule(ParsedEnvironment):
 
     def path_to_imported_file(self, root: Path = None) -> Path:
         root = Path.cwd() if root is None else Path(root)
-        return ImportModule.build_path_to_imported_module(
+        return ImportModuleIntermediateParseTree.build_path_to_imported_module(
             root or Path.cwd(),
             self.location.path,
             self.mhrepos.text if self.mhrepos else None,
@@ -721,21 +771,24 @@ class ImportModule(ParsedEnvironment):
             self.module.text)
 
     def __repr__(self):
+        try:
+            from_ = f' from "{self.path_to_imported_file()}"'
+        except:
+            from_ = ''
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{self.scope.range} {access.value} ImportModule "{self.module.text}" from "{self.path_to_imported_file()}"]'
+        return f'[{access.value} ImportModule "{self.module.text}"{from_}]'
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ImportModule]:
-        match = ImportModule.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[ImportModuleIntermediateParseTree]:
+        match = ImportModuleIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 1:
             raise CompilerError(f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
         module = TokenWithLocation.from_node(e.rargs[0])
         _, named = TokenWithLocation.parse_oargs(e.oargs)
-        return ImportModule(
+        return ImportModuleIntermediateParseTree(
             location=e.location,
-            scope=e.get_scope(_SCOPE_REGEX),
             module=module,
             mhrepos=named.get('mhrepos') or named.get('repos'),
             repos=named.get('repos'),
@@ -748,18 +801,16 @@ class ImportModule(ParsedEnvironment):
         )
 
 
-class GImport(ParsedEnvironment):
+class GImportIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'\\?g(import|use)(\*)?')
     def __init__(
         self,
         location: Location,
-        scope: List[Location],
         module: TokenWithLocation,
         repository: Optional[TokenWithLocation],
         export: bool,
         asterisk: bool):
         super().__init__(location)
-        self.scope = scope
         self.module = module
         self.repository = repository
         self.export = export
@@ -789,15 +840,15 @@ class GImport(ParsedEnvironment):
 
     def path_to_imported_file(self, root: Path = None) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
-        return GImport.build_path_to_imported_module(
+        return GImportIntermediateParseTree.build_path_to_imported_module(
             root=root if root else Path.cwd(),
             source=self.location.path.parents[0],
             repo=self.repository.text.strip() if self.repository else None,
             module=self.module.text.strip() if self.module else None)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[GImport]:
-        match = GImport.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[GImportIntermediateParseTree]:
+        match = GImportIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 1:
@@ -806,9 +857,8 @@ class GImport(ParsedEnvironment):
         unnamed, _ = TokenWithLocation.parse_oargs(e.oargs)
         if len(unnamed) > 1:
             raise CompilerError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
-        return GImport(
+        return GImportIntermediateParseTree(
             location=e.location,
-            scope=e.get_scope(_SCOPE_REGEX),
             module=module,
             repository=next(iter(unnamed), None),
             export=match.group(1) == 'import',
@@ -816,6 +866,9 @@ class GImport(ParsedEnvironment):
         )
 
     def __repr__(self):
+        try:
+            from_ = f' from "{self.path_to_imported_file()}"'
+        except:
+            from_ = ''
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
-        return f'[{self.scope.range} {access.value} gimport{"*"*self.asterisk} "{self.module.text}" from "{self.path_to_imported_file()}"]'
-
+        return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}"{from_}]'

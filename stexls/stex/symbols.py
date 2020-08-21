@@ -1,26 +1,19 @@
 from __future__ import annotations
 import os
-from typing import Set
+from typing import Set, List, Optional, Tuple
 from enum import Enum
 from pathlib import Path
 from stexls.vscode import Location, Range, DocumentSymbol
 
+
 __all__ = [
-    'SymbolType',
     'AccessModifier',
-    'DefinitionType',
-    'SymbolIdentifier',
+    'ModuleType',
+    'VerbType',
     'Symbol',
     'ModuleSymbol',
-    'BindingSymbol',
     'VerbSymbol',
 ]
-
-
-class SymbolType(Enum):
-    DEFI='defi'
-    MODULE='module'
-    BINDING='binding'
 
 
 class AccessModifier(Enum):
@@ -29,81 +22,48 @@ class AccessModifier(Enum):
     PROTECTED='protected'
 
 
-class DefinitionType(Enum):
+class ModuleType(Enum):
     MODSIG='modsig'
     MODULE='module'
-    DEFI='defi'
+
+
+class VerbType(Enum):
+    DEF='def'
+    DREF='dref'
     SYMDEF='symdef'
     SYM='sym'
-    BINDING='binding'
-
-
-class SymbolIdentifier:
-    def __init__(self, identifier: str, symbol_type: SymbolType):
-        self.identifier = identifier
-        self.symbol_type = symbol_type
-    
-    @property
-    def typed_identifier(self):
-        return self.identifier + '/' + self.symbol_type.name
-    
-    def prepend(self, identifier: str, delim: str = '?'):
-        return SymbolIdentifier(identifier + delim + self.identifier, self.symbol_type)
-    
-    def append(self, identifier: SymbolIdentifier):
-        return identifier.prepend(self.identifier)
-
-    def __hash__(self):
-        return hash(self.typed_identifier)
-
-    def __eq__(self, other: SymbolIdentifier):
-        if not isinstance(other, SymbolIdentifier):
-            return False
-        return self.identifier == other.identifier and self.symbol_type == other.symbol_type
-    
-    def __repr__(self):
-        return self.typed_identifier
 
 
 class Symbol:
     def __init__(
         self,
         location: Location,
-        identifier: SymbolIdentifier,
-        parent: SymbolIdentifier,
-        definition_type: DefinitionType,
-        full_range: Range = None):
+        name: str,
+        range: Range = None):
         """ Initializes a symbol.
 
         Parameters:
             location: Location of where this symbol is defined.
-            identifier: Identifier of this symbol relative to it's parent.
-            parent: The identifier of the parent symbol this symbol is scoped to.
-            definition_type: The way this symbol was defined with.
-            full_range: Range to be revealed when jumping to this symbol.
+                The range of this location should only contain the text, which is selected
+                when revealing this symbol.
+            name: Identifier of this symbol relative to it's parent.
+            range: The range enclosing this symbol not including leading/trailing whitespace but everything else
+                like comments. This information is typically used to determine if the clients cursor is
+                inside the symbol to reveal in the symbol in the UI.
         """
-        self.identifier: SymbolIdentifier = identifier
-        self.parent: SymbolIdentifier = parent
+        self.name: str = name
+        self.parent: Symbol = None
+        self.children: List[Symbol] = []
         self.location: Location = location
         self.access_modifier: AccessModifier = AccessModifier.PRIVATE
-        self.definition_type = definition_type
-        self.full_range = full_range
+        self.range = range
 
-    @property
-    def qualified_identifier(self) -> SymbolIdentifier:
-        """ The fully qualified identifier for this symbol.
-        
-        >>> symbol = Symbol(None, SymbolIdentifier('child', SymbolType.DEFI), SymbolIdentifier('parent', SymbolType.MODULE))
-        >>> symbol.parent
-        'parent/MODULE'
-        >>> symbol.identifier'
-        'child/SYMBOL'
-        >>> symbol.qualified_identifier
-        'parent?child/SYMBOL'
-        """
-        if self.parent is None:
-            return self.identifier
-        return self.parent.append(self.identifier)
+    def add_child(self, child: Symbol):
+        ' Adds a child symbol. Raises if the child already has a parent. '
+        if child.parent:
+            raise ValueError('Attempting to add child symbol which already has a parent.')
+        child.parent = self
+        self.children.append(child)
 
     def get_repository_identifier(self, root: Path) -> str:
         ' Returns the repository identifier (e.g.: smglom/repo) assuming this symbol is contained in <root>. '
@@ -116,60 +76,47 @@ class Symbol:
         file = rel.relative_to(list(rel.parents)[-4])
         return file.parent / file.stem
 
-    def __hash__(self):
-        return hash(self.qualified_identifier.typed_identifier)
-    
-    def __eq__(self, other: Symbol):
-        if not isinstance(other, Symbol):
-            return False
-        return self.qualified_identifier == other.qualified_identifier
-    
     def __repr__(self):
-        return f'[{self.access_modifier.value} {self.definition_type.value} Symbol {self.qualified_identifier}]'
+        return f'[{self.access_modifier.value} Symbol {self.name}]'
 
 
 class ModuleSymbol(Symbol):
     def __init__(
-        self: ModuleSymbol,
+        self,
+        module_type: ModuleType,
         location: Location,
         name: str,
-        definition_type: DefinitionType,
-        full_range: Range = None):
-        super().__init__(location, SymbolIdentifier(name, SymbolType.MODULE), None, definition_type, full_range)
+        range: Range = None):
+        """ New module signature symbol.
 
-
-class BindingSymbol(Symbol):
-    def __init__(
-        self: BindingSymbol,
-        location: Location,
-        lang: str,
-        module: SymbolIdentifier,
-        full_range: Range = None):
-        super().__init__(
-            location=location,
-            identifier=SymbolIdentifier('_binding_', SymbolType.BINDING),
-            parent=module,
-            definition_type=DefinitionType.BINDING,
-            full_range=full_range)
-        self.lang = lang
+        Parameters:
+            module_type: The latex environment type used to define this symbol.
+        """
+        super().__init__(location, name, range)
+        self.module_type = module_type
 
 
 class VerbSymbol(Symbol):
     def __init__(
-        self: VerbSymbol,
+        self,
+        module: str,
+        verb_type: VerbType,
         location: Location,
         name: str,
-        module: SymbolIdentifier,
-        definition_type: DefinitionType,
+        range: Range = None,
         noverb: bool = False,
-        noverbs: Set[str] = None,
-        full_range: Range = None):
-        super().__init__(
-            location=location,
-            identifier=SymbolIdentifier(name, SymbolType.DEFI),
-            parent=module,
-            definition_type=definition_type,
-            full_range=full_range)
+        noverbs: Set[str] = None):
+        """ New Verb symbol.
+
+        Parameters:
+            module:
+            verb_type: Latex environment used to define this symbol.
+            noverb: If True, then this verb symbol should not have any references in any language.
+            noverbs: Set of languages this symbol should not be referenced from.
+        """
+        super().__init__(location, name, range)
+        self.module = module
+        self.verb_type = verb_type
         self.noverb = noverb
         self.noverbs = noverbs or set()
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import functools
 import multiprocessing
 from stexls.vscode import *
-from stexls.stex.parser import ParsedFile
+from stexls.stex.parser import IntermediateParser
 from stexls.stex.compiler import StexObject
 from stexls.stex.symbols import *
 from stexls.util.format import format_enumeration

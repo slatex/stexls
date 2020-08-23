@@ -10,6 +10,7 @@ from stexls.util.latex.exceptions import LatexException
 
 from .exceptions import *
 from .symbols import *
+from . import util
 
 __all__ = (
     'IntermediateParser',
@@ -749,8 +750,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         if mhrepo:
             source: Path = root / mhrepo / 'source'
         else:
-            source: Path = root / list(current_file.relative_to(root).parents)[-4]
-        assert source.name == 'source', "invalid source directory"
+            source: Path = util.find_source_dir(root, current_file)
         if dir:
             result = source / dir / (module + '.tex')
         elif path:
@@ -819,14 +819,14 @@ class GImportIntermediateParseTree(IntermediateParseTree):
     @staticmethod
     def build_path_to_imported_module(
         root: Path,
-        source: Path,
+        current_file: Path,
         repo: Optional[Path],
         module: str):
         """ A static helper method to get the targeted filepath by a gimport environment.
 
         Parameters:
             root: Root of mathhub.
-            source: Source directory of the file in which the gimport statement is located.
+            current_file: File which uses the gimport statement.
             repo: Optional repository specified in gimport statements: gimport[<repository>]{...}
             module: The targeted module in gimport statements: gimport{<module>}
 
@@ -834,7 +834,10 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             Path to the file in which the module <module> is located.
         """
         if repo is not None:
+            assert current_file.relative_to(root)
             source = root / repo / 'source'
+        else:
+            source = util.find_source_dir(root, current_file)
         path = source / (module + '.tex')
         return path.expanduser().resolve().absolute()
 
@@ -842,7 +845,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
         ''' Returns the path to the module file this gimport points to. '''
         return GImportIntermediateParseTree.build_path_to_imported_module(
             root=root if root else Path.cwd(),
-            source=self.location.path.parents[0],
+            current_file=self.location.path,
             repo=self.repository.text.strip() if self.repository else None,
             module=self.module.text.strip() if self.module else None)
 

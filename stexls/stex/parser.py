@@ -149,7 +149,7 @@ class TokenWithLocation:
 
     def __repr__(self):
         return self.text
-    
+
     @staticmethod
     def parse_oargs(oargs: List[OArgument]) -> Tuple[List[TokenWithLocation], Dict[str, TokenWithLocation]]:
         unnamed = [
@@ -170,7 +170,7 @@ class TokenWithLocation:
         Arguments:
             index: The index on where to split the token.
             offset: Optional character offset of second split.
-        
+
         Examples:
             >>> range = Range(Position(1, 5), Position(1, 18))
             >>> text = 'module?symbol'
@@ -224,11 +224,11 @@ class ScopeIntermediateParseTree(IntermediateParseTree):
 
 
 class ModsigIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?modsig')
+    PATTERN = re.compile(r'modsig')
     def __init__(self, location: Location, name: TokenWithLocation):
         super().__init__(location)
         self.name = name
-    
+
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ModsigIntermediateParseTree]:
         match = ModsigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
@@ -245,7 +245,7 @@ class ModsigIntermediateParseTree(IntermediateParseTree):
 
 
 class ModnlIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?(mh)?modnl')
+    PATTERN = re.compile(r'(mh)?modnl')
     def __init__(
         self,
         location: Location,
@@ -266,7 +266,7 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
 
         Returns:
             Path: Path to module file.
-        
+
         Examples:
             >>> binding_path = Path('path/to/glossary/repo/source/module/module.lang.tex')
             >>> binding_location = Location(binding_path, None)
@@ -277,7 +277,7 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
             'path/to/glossary/repo/source/module/module.tex'
         '''
         return (self.location.path.parents[0] / (self.name.text + '.tex'))
-    
+
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ModnlIntermediateParseTree]:
         match = ModnlIntermediateParseTree.PATTERN.fullmatch(e.env_name)
@@ -361,7 +361,7 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         self.fromrepos = fromrepos
         self.module_name = module_name
         self.imports = imports
-    
+
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ViewSigIntermediateParseTree]:
         match = ViewSigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
@@ -382,7 +382,7 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
 
 
 class ModuleIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?module(\*)?')
+    PATTERN = re.compile(r'module(\*)?')
     def __init__(
         self,
         location: Location,
@@ -407,7 +407,7 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 
 
 class GStructureIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?gstructure(\*)?')
+    PATTERN = re.compile(r'gstructure(\*)?')
     def __init__(self, location: Location, mhrepos: TokenWithLocation, module: TokenWithLocation):
         super().__init__(location)
         self.mhrepos = mhrepos
@@ -432,7 +432,7 @@ class GStructureIntermediateParseTree(IntermediateParseTree):
 
 
 class DefiIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
     def __init__(
         self,
         location: Location,
@@ -492,7 +492,7 @@ class DefiIntermediateParseTree(IntermediateParseTree):
 
 
 class TrefiIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?([ma]*)(d|D|t|T)ref([ivx]+)(s)?(\*)?')
+    PATTERN = re.compile(r'([ma]*)(d|D|t|T)ref([ivx]+)(s)?(\*)?')
     def __init__(
         self,
         location: Location,
@@ -535,7 +535,7 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
     @property
     def module(self) -> Optional[TokenWithLocation]:
         ''' Parses the targeted module's name if specified in oargs.
-        
+
         Returns None if no module is explicitly named.
         '''
         if self.target_annotation:
@@ -608,7 +608,7 @@ class _NoverbHandler:
 
 
 class SymiIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?sym([ivx]+)(\*)?')
+    PATTERN = re.compile(r'sym([ivx]+)(\*)?')
     def __init__(
         self,
         location: Location,
@@ -624,7 +624,7 @@ class SymiIntermediateParseTree(IntermediateParseTree):
         self.asterisk = asterisk
         if i != len(tokens):
             raise CompilerError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
-    
+
     @property
     def name(self) -> str:
         return '-'.join(token.text for token in self.tokens)
@@ -655,7 +655,7 @@ class SymiIntermediateParseTree(IntermediateParseTree):
 
 
 class SymdefIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?symdef(\*)?')
+    PATTERN = re.compile(r'symdef(\*)?')
     def __init__(
         self,
         location: Location,
@@ -690,7 +690,7 @@ class SymdefIntermediateParseTree(IntermediateParseTree):
 
 
 class ImportModuleIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?(import|use)(mh)?module(\*)?')
+    PATTERN = re.compile(r'(import|use)(mh)?module(\*)?')
     def __init__(
         self,
         location: Location,
@@ -732,7 +732,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         elif not load:
             # import[load=..]{}
             raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
-    
+
     @staticmethod
     def build_path_to_imported_module(
         root: Path,
@@ -802,7 +802,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
 
 
 class GImportIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'\\?g(import|use)(\*)?')
+    PATTERN = re.compile(r'g(import|use)(\*)?')
     def __init__(
         self,
         location: Location,
@@ -829,7 +829,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             source: Source directory of the file in which the gimport statement is located.
             repo: Optional repository specified in gimport statements: gimport[<repository>]{...}
             module: The targeted module in gimport statements: gimport{<module>}
-        
+
         Returns:
             Path to the file in which the module <module> is located.
         """

@@ -153,10 +153,10 @@ def serializedATN():
         buf.write("\u0548\n&\f&\16&\u054b\13&\3&\3&\3&\3&\3\'\3\'\3\'\3\'")
         buf.write("\3\'\24\u00a3\u00d9\u0116\u015a\u0198\u01d0\u020a\u0246")
         buf.write("\u0281\u02bb\u02f7\u0335\u0373\u03b1\u03f1\u0433\u053c")
-        buf.write("\u0549\2(\n\3\f\4\16\5\20\6\22\7\24\b\26\t\30\n\32\26")
-        buf.write("\34\27\36\30 \31\"\13$\32&\f(\2*\2,\2.\2\60\33\62\2\64")
-        buf.write("\34\66\28\r:\16<\17>\20@\2B\2D\2F\2H\21J\2L\22N\23P\2")
-        buf.write("R\24T\25\n\2\3\4\5\6\7\b\t\f\5\2\13\f\17\17\"\"\3\2\f")
+        buf.write("\u0549\2(\n\3\f\4\16\5\20\6\22\7\24\b\26\t\30\n\32\27")
+        buf.write("\34\30\36\31 \32\"\13$\f&\r(\2*\2,\2.\2\60\33\62\2\64")
+        buf.write("\34\66\28\16:\17<\20>\21@\2B\2D\2F\2H\22J\2L\23N\24P\2")
+        buf.write("R\25T\26\n\2\3\4\5\6\7\b\t\f\5\2\13\f\17\17\"\"\3\2\f")
         buf.write("\f\b\2&\'..??]_}}\177\177\5\2C\\aac|\3\2##\3\2//\3\2~")
         buf.write("~\3\2@@\3\2--\6\2\62;C\\aac|\2\u05f7\2\n\3\2\2\2\2\f\3")
         buf.write("\2\2\2\2\16\3\2\2\2\2\20\3\2\2\2\2\22\3\2\2\2\2\24\3\2")
@@ -589,7 +589,7 @@ def serializedATN():
         buf.write("\u0313\3\2\2\2\u0455\u0355\3\2\2\2\u0455\u038f\3\2\2\2")
         buf.write("\u0455\u03d1\3\2\2\2\u0455\u040f\3\2\2\2\u0456#\3\2\2")
         buf.write("\2\u0457\u0458\7^\2\2\u0458\u0459\3\2\2\2\u0459\u045a")
-        buf.write("\b\17\3\2\u045a\u045b\b\17\b\2\u045b%\3\2\2\2\u045c\u045e")
+        buf.write("\b\17\2\2\u045a\u045b\b\17\b\2\u045b%\3\2\2\2\u045c\u045e")
         buf.write("\n\4\2\2\u045d\u045c\3\2\2\2\u045e\u045f\3\2\2\2\u045f")
         buf.write("\u045d\3\2\2\2\u045f\u0460\3\2\2\2\u0460\'\3\2\2\2\u0461")
         buf.write("\u0462\7&\2\2\u0462\u0463\3\2\2\2\u0463\u0464\b\21\t\2")
@@ -704,7 +704,7 @@ def serializedATN():
         buf.write("\u0481\u048e\u04c8\u04cb\u04e1\u04e4\u04f1\u04fd\u0509")
         buf.write("\u0515\u0521\u0532\u053a\u053c\u0547\u0549\16\b\2\2\5")
         buf.write("\2\2\7\3\2\7\4\2\7\5\2\7\6\2\7\7\2\6\2\2\t\13\2\4\b\2")
-        buf.write("\t\f\2\4\t\2")
+        buf.write("\t\r\2\4\t\2")
         return buf.getvalue()
 
 
@@ -731,21 +731,21 @@ class LatexLexer(Lexer):
     EQUALS = 7
     COMMA = 8
     MATH_ENV = 9
-    TEXT = 10
-    VERBATIM = 11
-    BEGIN = 12
-    END = 13
-    INLINE_ENV_NAME = 14
-    INLINE_SPECIAL4 = 15
-    NO_SPECIAL_VERBATIM_FOUND = 16
-    INLINE_VERBATIM_ENV = 17
-    INLINE_VERBATIM_OARG = 18
-    INLINE_VERBATIM_END = 19
-    MATH_OPEN_1 = 20
-    MATH_OPEN_2 = 21
-    MATH_OPEN_3 = 22
-    MATH_OPEN_4 = 23
-    ESCAPE = 24
+    ESCAPE = 10
+    TEXT = 11
+    VERBATIM = 12
+    BEGIN = 13
+    END = 14
+    INLINE_ENV_NAME = 15
+    INLINE_SPECIAL4 = 16
+    NO_SPECIAL_VERBATIM_FOUND = 17
+    INLINE_VERBATIM_ENV = 18
+    INLINE_VERBATIM_OARG = 19
+    INLINE_VERBATIM_END = 20
+    MATH_OPEN_1 = 21
+    MATH_OPEN_2 = 22
+    MATH_OPEN_3 = 23
+    MATH_OPEN_4 = 24
     MATH_ESCAPE_3 = 25
     MATH_ESCAPE_4 = 26
 
@@ -755,16 +755,16 @@ class LatexLexer(Lexer):
                   "INLINE_VERBATIM_MODE_WITH_SPECIAL", "INLINE_VERBATIM_MODE" ]
 
     literalNames = [ "<INVALID>",
-            "'{'", "'}'", "'['", "']'", "'='", "','", "'begin'", "'end'", 
-            "'\\('", "'\\['", "'\\'", "'\\)'", "'\\]'" ]
+            "'{'", "'}'", "'['", "']'", "'='", "','", "'\\'", "'begin'", 
+            "'end'", "'\\('", "'\\['", "'\\)'", "'\\]'" ]
 
     symbolicNames = [ "<INVALID>",
             "WS", "COMMENT", "OPEN_BRACE", "CLOSED_BRACE", "OPEN_BRACKET", 
-            "CLOSED_BRACKET", "EQUALS", "COMMA", "MATH_ENV", "TEXT", "VERBATIM", 
-            "BEGIN", "END", "INLINE_ENV_NAME", "INLINE_SPECIAL4", "NO_SPECIAL_VERBATIM_FOUND", 
-            "INLINE_VERBATIM_ENV", "INLINE_VERBATIM_OARG", "INLINE_VERBATIM_END", 
-            "MATH_OPEN_1", "MATH_OPEN_2", "MATH_OPEN_3", "MATH_OPEN_4", 
-            "ESCAPE", "MATH_ESCAPE_3", "MATH_ESCAPE_4" ]
+            "CLOSED_BRACKET", "EQUALS", "COMMA", "MATH_ENV", "ESCAPE", "TEXT", 
+            "VERBATIM", "BEGIN", "END", "INLINE_ENV_NAME", "INLINE_SPECIAL4", 
+            "NO_SPECIAL_VERBATIM_FOUND", "INLINE_VERBATIM_ENV", "INLINE_VERBATIM_OARG", 
+            "INLINE_VERBATIM_END", "MATH_OPEN_1", "MATH_OPEN_2", "MATH_OPEN_3", 
+            "MATH_OPEN_4", "MATH_ESCAPE_3", "MATH_ESCAPE_4" ]
 
     ruleNames = [ "WS", "COMMENT", "OPEN_BRACE", "CLOSED_BRACE", "OPEN_BRACKET", 
                   "CLOSED_BRACKET", "EQUALS", "COMMA", "MATH_OPEN_1", "MATH_OPEN_2", 

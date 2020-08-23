@@ -33,7 +33,7 @@ MATH_ENV
     | '\\begin' WS? '{' WS? 'lstlisting' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '*' WS? '}'
     ;
 
-ESCAPE: '\\' -> more, pushMode(ESCAPE_MODE);
+ESCAPE: '\\' -> skip, pushMode(ESCAPE_MODE);
 
 TEXT: ~('$'|'['|'{'|'%'|'}'|']'|'\\'|','|'=')+;
 

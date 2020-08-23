@@ -759,10 +759,9 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
             raise ValueError('Invalid arguments: "path" or "dir" must be specified if "mhrepo" is.')
         return result.expanduser().resolve().absolute()
 
-    def path_to_imported_file(self, root: Path = None) -> Path:
-        root = Path.cwd() if root is None else Path(root)
+    def path_to_imported_file(self, root: Path) -> Path:
         return ImportModuleIntermediateParseTree.build_path_to_imported_module(
-            root or Path.cwd(),
+            root,
             self.location.path,
             self.mhrepos.text if self.mhrepos else None,
             self.path.text if self.path else None,
@@ -772,7 +771,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
 
     def __repr__(self):
         try:
-            from_ = f' from "{self.path_to_imported_file()}"'
+            from_ = f' from "{self.path_to_imported_file(Path.cwd())}"'
         except:
             from_ = ''
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
@@ -841,10 +840,10 @@ class GImportIntermediateParseTree(IntermediateParseTree):
         path = source / (module + '.tex')
         return path.expanduser().resolve().absolute()
 
-    def path_to_imported_file(self, root: Path = None) -> Path:
+    def path_to_imported_file(self, root: Path) -> Path:
         ''' Returns the path to the module file this gimport points to. '''
         return GImportIntermediateParseTree.build_path_to_imported_module(
-            root=root if root else Path.cwd(),
+            root=root,
             current_file=self.location.path,
             repo=self.repository.text.strip() if self.repository else None,
             module=self.module.text.strip() if self.module else None)
@@ -870,7 +869,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
 
     def __repr__(self):
         try:
-            from_ = f' from "{self.path_to_imported_file()}"'
+            from_ = f' from "{self.path_to_imported_file(Path.cwd())}"'
         except:
             from_ = ''
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE

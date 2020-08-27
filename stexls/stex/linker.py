@@ -39,6 +39,92 @@ class Linker:
             if isinstance(module, ModuleSymbol)
             and definition_type is None or module.definition_type == definition_type)
 
+    def link(self, other: StexObject, finalize: bool = False):
+        # TODO: Copied from StexObject.link --> Should not be done by StexObject --> Implement here
+        """ Links self with other object.
+
+            This is the main linking operation needed to properly
+            merge two objects. Finalize should only be true when
+            linking to the object for which this link will be used.
+            Finalizing will make this link include errors and references
+            defined by the finalized object.
+
+        Parameters:
+            other: Object to link with this accumulator object.
+            finalize: Flag that signalizes that this "other" will be the last object to be linked against.
+
+        Returns:
+            self, but all symbols are copied from "other" and if finalize
+            is enabled errors and references will as well be copied.
+        """
+        self.files.update(other.files)
+        if finalize:
+            for location, errors in other.errors.items():
+                self.errors[location].extend(errors)
+            for module, paths in other.dependencies.items():
+                for path, locations in paths.items():
+                    if not path.is_file():
+                        for location in locations:
+                            self.errors[location].append(
+                                LinkError(f'File targeted by import does not exist: "{path}"'))
+                    if module not in self.symbol_table:
+                        modules_set = set(
+                            id.identifier
+                            for id, symbols in self.symbol_table.items()
+                            for symbol in symbols
+                            if symbol.location.uri == path
+                            and symbol.identifier.symbol_type == SymbolType.MODULE)
+                        available_modules = '", "'.join(modules_set)
+                        close_matches = difflib.get_close_matches(module.identifier, modules_set)
+                        if close_matches:
+                            close_matches = '", "'.join(close_matches)
+                        for location in locations:
+                            if close_matches:
+                                self.errors[location].append(
+                                    LinkError(f'Not a module: "{module.identifier}", did you maybe mean "{available_modules}"?'))
+                            elif modules_set:
+                                self.errors[location].append(
+                                    LinkError(f'Not a module: "{module.identifier}", available modules are "{available_modules}"'))
+                            else:
+                                self.errors[location].append(
+                                    LinkError(f'Not a module: "{module.identifier}"'))
+                    if module in self.dependencies:
+                        for previous_location, (_, module_type_hint, scope) in self.dependencies[module].get(path, {}).items():
+                            for location in locations:
+                                self.errors[location].append(
+                                    LinkWarning(f'Module "{module.identifier}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
+        for module, paths in other.dependencies.items():
+            for path, locations in paths.items():
+                for location, (public, module_type_hint, scope) in locations.items():
+                    # add dependencies only if public, except for the finalize case, then always add
+                    if public or finalize:
+                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint, scope)
+        for id, symbols in other.symbol_table.items():
+            for symbol in symbols:
+                self.add_symbol(symbol, export=None, severity=LinkError if finalize else None)
+        if finalize:
+            for path, ranges in other.references.items():
+                for range, id in ranges.items():
+                    if id.symbol_type == SymbolType.BINDING:
+                        # do not dereference references to bindings as they will never be located in this link
+                        continue
+                    location = Location(path.as_uri(), range)
+                    if id not in self.symbol_table:
+                        identifiers_of_same_type = (
+                            symbol.qualified_identifier.identifier
+                            for symbols in self.symbol_table.values()
+                            for symbol in symbols
+                            if symbol.identifier.symbol_type == id.symbol_type)
+                        close_matches = set(difflib.get_close_matches(id.identifier, identifiers_of_same_type))
+                        if close_matches:
+                            close_matches_str = '", "'.join(close_matches)
+                            self.errors[location].append(
+                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))
+                        else:
+                            self.errors[location].append(
+                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}"'))
+                self.references[path].update(ranges)
+
     def _cleanup(self, files: Dict[Path, List[StexObject]]):
         """ This is an private method used to clean up old references to objects from files given in the keys() of the files dict.
 
@@ -78,11 +164,11 @@ class Linker:
         Parameters:
             inputs: Map of all files with their objects which need to be linked.
             modules: A dictionary of files to the dictionary of module id's to the module objects they export.
-        
+
         Keyword Parameters:
             progressfn: A progress function.
             use_multiprocessing: Enables multiprocessing.
-        
+
         Returns:
             A linked object for all objects provided in files.
         """
@@ -148,13 +234,13 @@ class Linker:
 
     def relevant_objects(self, file: Path, line: int, column: int, unlinked: bool = False) -> Iterator[StexObject]:
         """ Determines the stex objects at the current coursor position.
-        
+
         Parameters:
             file: Current file.
             line: 0 indexed line of cursor.
             column: 0 indexed column of cursor.
             unlinked: If true, returns the unlinked object instead of the linked one.
-        
+
         Returns:
             Objects at the specified location. If unlinked is set, then the original objects are yielded,
             if false, then the linked objects will be yielded.
@@ -173,7 +259,7 @@ class Linker:
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
         """ Finds definitions at the current cursor position.
-        
+
         Returns:
             List of tuples with (the range used to create the link on mouse hover, The symbol found at the location)
         """
@@ -277,7 +363,7 @@ class Linker:
                     self.errors[object])
         self.build_orders.update(build_orders)
         return build_orders
-    
+
     def _link(
         self,
         build_orders: Dict[StexObject, List[StexObject]],
@@ -285,14 +371,14 @@ class Linker:
         use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
         """ This is the final link step.
 
-            Takes map of origin objects and their respective build orders as input in 
+            Takes map of origin objects and their respective build orders as input in
             order to create the linked object.
-        
+
         Parameters:
             build_orders: Map of objects to the build order they need to be linked against.
             progressfn: Optional progress report function.
             use_multiprocessing: Enables multiprocessing.
-        
+
         Returns:
             Map of origin objects to the new linked object.
         """
@@ -411,7 +497,7 @@ class Linker:
                         if usemodule_on_stack and object.path == root.path:
                             continue
 
-                        # Check if cycle created 
+                        # Check if cycle created
                         if object in cyclic_stack:
                             cycle = list(cyclic_stack.items())
                             cycle_end_module, cycle_end = cycle[-1]

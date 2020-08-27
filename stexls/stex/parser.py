@@ -22,7 +22,7 @@ __all__ = (
     'ModuleIntermediateParseTree',
     'TrefiIntermediateParseTree',
     'DefiIntermediateParseTree',
-    'SymiIntermediateParseTree',
+    'SymIntermediateParserTree',
     'SymdefIntermediateParseTree',
     'ImportModuleIntermediateParseTree',
     'GImportIntermediateParseTree',
@@ -43,19 +43,24 @@ class IntermediateParseTree:
         self.children.append(child)
         child.parent = self
 
-    @property
-    def scope(self) -> Optional[IntermediateParseTree]:
-        if isinstance(self, (
-            ScopeIntermediateParseTree,
-            ModsigIntermediateParseTree,
-            ModnlIntermediateParseTree,
-            ViewIntermediateParseTree,
-            ViewSigIntermediateParseTree,
-            ModuleIntermediateParseTree)):
-            return self
+    def find_parent_module_name(self) -> Optional[str]:
         if self.parent:
-            return self.parent.scope
+            return self.parent.find_parent_module_name()
         return None
+
+    def find_parent_module_parse_tree(self) -> Optional[IntermediateParseTree]:
+        if self.parent:
+            return self.parent.find_parent_module_parse_tree()
+        return None
+
+    def gather_imports(self) -> List:
+        """ Returns list of information about imported modules.
+        Modules specified by gimport and importmodule statements as well as the imported modules
+        in view environments.
+        """
+        if self.parent:
+            return self.parent.gather_imports()
+        return []
 
     @property
     def depth(self) -> int:
@@ -106,7 +111,7 @@ class IntermediateParser:
                     ModuleIntermediateParseTree,
                     TrefiIntermediateParseTree,
                     DefiIntermediateParseTree,
-                    SymiIntermediateParseTree,
+                    SymIntermediateParserTree,
                     SymdefIntermediateParseTree,
                     ImportModuleIntermediateParseTree,
                     GImportIntermediateParseTree,
@@ -230,6 +235,12 @@ class ModsigIntermediateParseTree(IntermediateParseTree):
         super().__init__(location)
         self.name = name
 
+    def find_parent_module_name(self) -> Optional[str]:
+        return self.name.text
+
+    def find_parent_module_parse_tree(self):
+        return self
+
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ModsigIntermediateParseTree]:
         match = ModsigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
@@ -257,6 +268,12 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
         self.name = name
         self.lang = lang
         self.mh_mode = mh_mode
+
+    def find_parent_module_name(self) -> str:
+        return self.name.text
+
+    def find_parent_module_parse_tree(self):
+        return self
 
     @property
     def path(self) -> Path:
@@ -317,6 +334,9 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         self.fromrepos = fromrepos
         self.frompath = frompath
 
+    def find_parent_module_name(self):
+        return self.module.text
+
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ViewIntermediateParseTree]:
         match = cls.PATTERN.match(e.env_name)
@@ -356,12 +376,15 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         self,
         location: Location,
         fromrepos: Optional[TokenWithLocation],
-        module_name: TokenWithLocation,
+        module: TokenWithLocation,
         imports: List[TokenWithLocation]):
         super().__init__(location)
         self.fromrepos = fromrepos
-        self.module_name = module_name
+        self.module = module
         self.imports = imports
+
+    def find_parent_module_name(self):
+        return self.module.text
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ViewSigIntermediateParseTree]:
@@ -374,12 +397,12 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         return ViewSigIntermediateParseTree(
             location=e.location,
             fromrepos=named.get('fromrepos', None),
-            module_name=TokenWithLocation.from_node(e.rargs[0]),
+            module=TokenWithLocation.from_node(e.rargs[0]),
             imports=list(map(TokenWithLocation.from_node, e.rargs[1:]))
         )
 
     def __repr__(self) -> str:
-        return f'[ViewSig "{self.module_name}" from "{self.fromrepos}" imports {self.imports}]'
+        return f'[ViewSig "{self.module}" from "{self.fromrepos}" imports {self.imports}]'
 
 
 class ModuleIntermediateParseTree(IntermediateParseTree):
@@ -390,6 +413,12 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
         id: Optional[TokenWithLocation]):
         super().__init__(location)
         self.id = id
+
+    def find_parent_module_name(self):
+        return self.id.text
+
+    def find_parent_module_parse_tree(self):
+        return self
 
     def __repr__(self):
         module = f'id="{self.id.text}"' if self.id else '<anonymous>'
@@ -608,7 +637,7 @@ class _NoverbHandler:
         return set([noverb.text])
 
 
-class SymiIntermediateParseTree(IntermediateParseTree):
+class SymIntermediateParserTree(IntermediateParseTree):
     PATTERN = re.compile(r'sym([ivx]+)(\*)?')
     def __init__(
         self,
@@ -631,8 +660,8 @@ class SymiIntermediateParseTree(IntermediateParseTree):
         return '-'.join(token.text for token in self.tokens)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[SymiIntermediateParseTree]:
-        match = SymiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
+    def from_environment(cls, e: Environment) -> Optional[SymIntermediateParserTree]:
+        match = SymIntermediateParserTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
@@ -642,7 +671,7 @@ class SymiIntermediateParseTree(IntermediateParseTree):
             i = roman_numerals.roman2int(match.group(1))
         except:
             raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
-        return SymiIntermediateParseTree(
+        return SymIntermediateParserTree(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
             unnamed_args=unnamed,
@@ -836,7 +865,8 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             assert current_file.relative_to(root)
             source = root / repo / 'source'
         else:
-            source = util.find_source_dir(root, current_file)
+            # TODO: What is the path to imported module if repo in gimport[repo] is not given?
+            source = current_file.parent
         path = source / (module + '.tex')
         return path.expanduser().resolve().absolute()
 

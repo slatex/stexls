@@ -8,7 +8,7 @@ from enum import Enum
 class SerializableEnum(Enum):
     def to_json(self):
         return self.value
-    
+
     @classmethod
     def from_json(cls, json):
         return cls(json)
@@ -48,11 +48,11 @@ class Position:
 
     def __hash__(self):
         return hash(hash(self.line) ^ hash(self.character))
-    
+
     def translate(self, lines: int = 0, characters: int = 0):
         """ Creates a copy of this position with the line and character
             attributes offsetted by the given amount.
-        
+
         Parameters:
             lines (int): Optional line offset of the returned copy.
             characters (int): Optional character offset of the returned copy.
@@ -153,7 +153,7 @@ class Position:
 
     def to_json(self) -> dict:
         return { 'line': self.line, 'character': self.character }
-    
+
     @staticmethod
     def from_json(json: dict) -> Position:
         return Position(json['line'], json['character'])
@@ -254,7 +254,7 @@ class Range:
 
         Returns:
             New range instance with provided start and end.
-        
+
         Examples:
             >>> range = Range(Position(10, 5), Position(16, 9))
             >>> range.replace(Position(1, 1), Position(2, 2))
@@ -276,24 +276,24 @@ class Range:
     def copy(self) -> Range:
         ' Creates a deep copy of self. '
         return Range(self.start.copy(), self.end.copy())
-    
+
     def split(self, index: int) -> Tuple[Range, Range]:
         ''' Splits the range at the given index.
-        
+
         If the split lies outside of the range, one range will be the
         original range, and the other will be empty at the
         side which was outside.
 
         Parameters:
             index (int): Index offset at which the range should be split
-        
+
         Raises:
             ValueError: If index is negative.
 
         Returns:
             Tuple[Range, Range]: First range is in range (self.start, self.start + index)
                 and the other is (self.start + index, self.end).
-        
+
         Examples:
             >>> range = Range(Position(5, 5), Position(6, 10))
             >>> first, second = range.split(10)
@@ -371,6 +371,9 @@ class Location:
             assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
+    def copy(self) -> Location:
+        return Location(self.uri, self.range.copy())
+
     def __eq__(self, other: Location):
         return isinstance(other, Location) and self.uri == other.uri and self.range == other.range
 
@@ -415,7 +418,7 @@ class Location:
 
         Parameters:
             relative: If True, then the path is formated relative to current working dir.
-        
+
         Returns:
             String formatted as a clickable link.
         """
@@ -432,7 +435,7 @@ class Location:
         Parameters:
             uri: Optional uri replacement.
             positionOrRange: Optional range replacement.
-        
+
         Returns:
             Location: Copy of this location with uri and/or range replaced.
         '''
@@ -442,10 +445,10 @@ class Location:
 
     def __repr__(self):
         return f'[Location uri="{self.uri}" range={self.range}]'
-    
+
     def to_json(self) -> dict:
         return { 'uri': str(self.uri), 'range': self.range.to_json() }
-    
+
     @staticmethod
     def from_json(json: dict) -> Location:
         return Location(DocumentUri(json['uri']), Range.from_json(json['range']))
@@ -616,7 +619,7 @@ class CompletionContext:
         json = { 'triggerKind': self.triggerKind.to_json() }
         if getattr(self, 'triggerCharacter', undefined) != undefined:
             json['triggerCharacter'] = self.triggerCharacter
-    
+
     @staticmethod
     def from_json(json) -> CompletionContext:
         return CompletionContext(
@@ -754,9 +757,9 @@ class CompletionItem:
         if self.commitCharacters != undefined:
             json['commitCharacters'] = self.commitCharacters
         if self.command != undefined:
-            json['command'] = self.command 
+            json['command'] = self.command
         if self.data != undefined:
-            json['data'] = self.data 
+            json['data'] = self.data
         return json
 
     @staticmethod

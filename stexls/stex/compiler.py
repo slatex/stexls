@@ -10,6 +10,7 @@ import itertools
 import functools
 import glob
 import logging
+from enum import Flag
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ from .symbols import *
 from .exceptions import *
 from . import util
 
-__all__ = ['Compiler', 'StexObject']
+__all__ = ['Compiler', 'StexObject', 'Dependency', 'Reference', 'ReferenceType']
 
 class Dependency:
     def __init__(
@@ -45,6 +46,7 @@ class Dependency:
             file_hint: Path to the file in which the dependent module is supposed to be defined inside or
                 exported by.
             export: If True, this dependency should be exported, and visisible to modules that import this object.
+                TODO: Check if "export" is a good term, because it's only set to false by 'usemodule'
         """
         self.range = range
         self.scope = scope
@@ -53,28 +55,30 @@ class Dependency:
         self.file_hint = file_hint
         self.export = export
 
+    def check_if_same_module_imported(self, other: Dependency):
+        if self.module_name == other.module_name:
+            if self.scope == other.scope or self.scope.is_parent_of(other.scope):
+                return True
+        return False
+
     def __repr__(self):
         return f'[Dependency at={self.range} module={self.module_name} type={self.module_type_hint} file="{self.file_hint}" export={self.export}]'
 
 
+class ReferenceType(Flag):
+    MODULE=1
+    MODSIG=2
+    VERB=4
+
+
 class Reference:
-    def __init__(self, range: Range): self.range = range
-
-
-class SymbolReference(Reference):
-    def __init__(self, range: Range, name: Iterable[str]):
-        super().__init__(range)
+    def __init__(self, range: Range, scope: Symbol, name: Iterable[str], reference_type: ReferenceType):
+        self.range = range
+        self.scope = scope
         self.name = name
+        self.reference_type = reference_type
 
-    def __repr__(self): return f'[SymbolReference "{self.name}" at {self.range}]'
-
-
-class FileReference(Reference):
-    def __init__(self, range: Range, file: Path):
-        super().__init__(range)
-        self.file = file
-
-    def __repr__(self): return f'[FileReference "{self.file}" at {self.range}]'
+    def __repr__(self): return f'[Reference {self.reference_type.name} "{self.name}" at {self.range}]'
 
 
 class StexObject:
@@ -95,20 +99,23 @@ class StexObject:
         f += '\nDependencies:'
         if self.dependencies:
             for dep in self.dependencies:
-                f += f'\n\t{dep}'
+                loc = Location(self.file.as_uri(), dep.range).format_link()
+                f += f'\n\t{loc}: {dep.module_name} from "{dep.file_hint}"'
         else:
             f += 'n\tNo dependencies.'
         f += '\nReferences:'
         if self.references:
             for ref in self.references:
-                f += f'\n\t{ref}'
+                loc = Location(self.file.as_uri(), ref.range).format_link()
+                f += f'\n\t{loc}: {"?".join(ref.name)} of type {ref.reference_type}'
         else:
             f += '\n\tNo references.'
         f += '\nErrors:'
         if self.errors:
             for r, errs in self.errors.items():
+                loc = Location(self.file.as_uri(), r).format_link()
                 for err in errs:
-                    f += f'\n\t{r}: {err}'
+                    f += f'\n\t{loc}: {err}'
         else:
             f += '\n\tNo errors.'
         f += '\nSymbol Table:'
@@ -125,6 +132,13 @@ class StexObject:
         Parameters:
             dep: Information about the dependency.
         """
+        for dep0 in self.dependencies:
+            if dep0.check_if_same_module_imported(dep):
+                # Skip adding this dependency
+                location = Location(self.file.as_uri(), dep0.range)
+                self.errors.setdefault(dep.range, []).append(
+                    Warning(f'Import of same modue "{dep.module_name}" at "{location.format_link()}"'))
+                return
         self.dependencies.append(dep)
 
     def add_reference(self, reference: Reference):
@@ -137,16 +151,50 @@ class StexObject:
 
 
 class Compiler:
-    def __init__(self, root: Path, outdir: Path):
-        self.root = root.expanduser().resolve().absolute()
+    def __init__(self, workspace: Workspace, outdir: Path):
+        # TODO: Having the workspace be part of the compiler may make multiprocessing too slow
+        self.workspace = workspace
         self.outdir = outdir.expanduser().resolve().absolute()
 
-    def compile(self, file: Path, content: str = None):
+    @staticmethod
+    def compute_objectfile_path_hash(path: Path) -> str:
+        ' Computes an hash from the path of a source file. '
+        return sha1(path.parent.as_posix().encode()).hexdigest()
+
+    @staticmethod
+    def get_objectfile_path(outdir: Path, file: Path) -> Path:
+        ' Returns the path to where the objectfile should be cached. '
+        return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
+
+    def recompilation_required(self, file: Path):
+        ' Checks if sourcefile <file> should be recompiled based off of timestamps and whether an objectfile exists or not. '
+        objectfile = Compiler.get_objectfile_path(self.outdir, file)
+        return not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime
+
+    def compile(self, file: Path) -> StexObject:
+        """ Compiles a single stex latex file into a objectfile.
+
+        The compiled stex object will be stored into the provided outdir.
+        Compilation of the file will be skipped automatically and the object is loaded from disk,
+        if the stored object file already exists and it's timestamp is from later then
+        the last change to the file.
+
+        Compilation of the file is forced if the workspace property of the compiler has
+        the file registered as currently open. In that case, the content registered at the workspace object
+        is used instead of reading the file from disk.
+
+        Parameters:
+            file: Path to sourcefile.
+
+        Returns:
+            The compiled stex object.
+        """
         file = file.expanduser().resolve().absolute()
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
         objectdir = objectfile.parent
         for _ in range(2): # give it two attempts to figure out whats going on
-            if content is not None or not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime:
+            content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
+            if content is not None or self.recompilation_required(file):
                 # if not already compiled or the compiled object is old, create a new object
                 objectdir.mkdir(parents=True, exist_ok=True)
                 object = StexObject(file)
@@ -164,10 +212,9 @@ class Compiler:
                     with open(objectfile, 'wb') as fd:
                         pickle.dump(object, fd)
                 except:
-                    log.exception('Failed to write object in "%s" to "%s".', file, objectfile)
                     # ignore errors if objectfile can't be written to disk
                     # and continue as usual
-                    pass
+                    log.exception('Failed to write object in "%s" to "%s".', file, objectfile)
                 return object
             try:
                 # else load from cached
@@ -175,14 +222,18 @@ class Compiler:
                     return pickle.load(fd)
             except:
                 # if loading fails, attempt to delete the cachefile
-                if objectfile.is_file():
-                    objectfile.unlink()
+                try:
+                    if objectfile.is_file():
+                        objectfile.unlink()
+                except:
+                    # ignore possible concurrent unlinks depending on if I do things concurrently later
+                    pass
                 # because this is a for loop, try again after deleting it
 
     def _compile_modsig(self, obj: StexObject, stack: List[Symbol], modsig: ModsigIntermediateParseTree):
         name_location = modsig.location.replace(positionOrRange=modsig.name.range)
         if obj.file.name != f'{modsig.name.text}.tex':
-            obj.errors[name_location.range].append(
+            obj.errors.setdefault(name_location.range, []).append(
                 CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
         module = ModuleSymbol(
             module_type=ModuleType.MODSIG,
@@ -193,9 +244,9 @@ class Compiler:
 
     def _compile_modnl(self, obj: StexObject, stack: List[Symbol], modnl: ModnlIntermediateParseTree):
         if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
-            obj.errors[modnl.location].append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
+            obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
         # Add the reference from the module name to the parent module
-        ref = SymbolReference(modnl.name.range, [modnl.name.text])
+        ref = Reference(modnl.name.range, stack[-1], [modnl.name.text], ReferenceType.MODSIG)
         obj.add_reference(ref)
         # Add dependency to the file the module definition must be located in
         dep = Dependency(
@@ -206,6 +257,9 @@ class Compiler:
             file_hint=modnl.path,
             export=True)
         obj.add_dependency(dep)
+        binding = BindingSymbol(modnl.location, modnl.name, modnl.lang)
+        stack[-1].add_child(binding)
+        stack.append(binding)
 
     def _compile_module(self, obj: StexObject, stack: List[Symbol], module: ModuleIntermediateParseTree):
         if module.id:
@@ -218,22 +272,18 @@ class Compiler:
 
     def _compile_trefi(self, obj: StexObject, stack: List[Symbol], trefi: TrefiIntermediateParseTree):
         if trefi.drefi:
-            module: ModuleSymbol = stack[-1].current_module
+            module: ModuleSymbol = stack[-1].get_current_module()
             if not module:
                 obj.errors.setdefault(trefi.location.range, []).append(
                     CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
             else:
-                module.add_child(VerbSymbol(VerbType.DREF, trefi.location, trefi.name))
+                module.add_child(VerbSymbol(VerbType.DREF, trefi.location, trefi.name), alternative=True)
         if trefi.module:
-            obj.add_reference(SymbolReference(trefi.module.range, [trefi.module.text]))
-            obj.add_reference(SymbolReference(trefi.location.range, [trefi.module.text, trefi.name]))
+            obj.add_reference(Reference(trefi.module.range, stack[-1], [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
+            obj.add_reference(Reference(trefi.location.range, stack[-1], [trefi.module.text, trefi.name], ReferenceType.VERB))
         else:
-            try:
-                module_name: str = trefi.find_parent_module_name()
-                obj.add_reference(SymbolReference(trefi.location.range, [module_name, trefi.name]))
-            except:
-                obj.format()
-                raise
+            module_name: str = trefi.find_parent_module_name()
+            obj.add_reference(Reference(trefi.location.range, stack[-1], [module_name, trefi.name], ReferenceType.VERB))
         if trefi.m:
             obj.errors.setdefault(trefi.location.range, []).append(
                 DeprecationWarning('mtref environments are deprecated.'))
@@ -243,15 +293,27 @@ class Compiler:
                     CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
 
     def _compile_defi(self, obj: StexObject, stack: List[Symbol], defi: DefiIntermediateParseTree):
-        if isinstance(defi.find_parent_module_name(), ModuleIntermediateParseTree):
+        if isinstance(defi.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
             symbol = VerbSymbol(VerbType.DEF, defi.location, defi.name)
-            stack[-1].add_child(symbol)
+            try:
+                # TODO: alternative definition possibly allowed here?
+                stack[-1].add_child(symbol)
+            except DuplicateSymbolDefinedException as err:
+                obj.errors.setdefault(symbol.location.range, []).append(err)
         else:
-            obj.add_reference(SymbolReference(defi.location.range, [defi.find_parent_module_name(), defi.name]))
+            obj.add_reference(
+                Reference(
+                    range=defi.location.range,
+                    scope=stack[-1],
+                    name=[defi.find_parent_module_name(), defi.name],
+                    reference_type=ReferenceType.VERB))
 
     def _compile_sym(self, obj: StexObject, stack: List[Symbol], sym: SymIntermediateParserTree):
         symbol = VerbSymbol(VerbType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
-        stack[-1].add_child(symbol)
+        try:
+            stack[-1].add_child(symbol)
+        except DuplicateSymbolDefinedException as err:
+            obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_symdef(self, obj: StexObject, stack: List[Symbol], symdef: SymdefIntermediateParseTree):
         symbol = VerbSymbol(
@@ -263,41 +325,43 @@ class Compiler:
         stack[-1].add_child(symbol, alternative=True)
 
     def _compile_importmodule(self, obj: StexObject, stack: List[Symbol], importmodule: ImportModuleIntermediateParseTree):
+        # TODO: importmodule only allowed inside begin{module}?
         dep = Dependency(
             range=importmodule.location.range,
             scope=stack[-1],
             module_name=importmodule.module.text,
             module_type_hint=ModuleType.MODULE,
-            file_hint=importmodule.path_to_imported_file(self.root),
+            file_hint=importmodule.path_to_imported_file(self.workspace.root),
             export=importmodule.export) #TODO: Is usemodule exportet?
         obj.add_dependency(dep)
-        ref = SymbolReference(importmodule.location.range, [importmodule.module.text])
+        ref = Reference(importmodule.location.range, stack[-1], [importmodule.module.text], ReferenceType.MODULE)
         obj.add_reference(ref)
         if importmodule.repos:
             obj.errors.setdefault(importmodule.repos.range, []).append(
                 DeprecationWarning('Argument "repos" is deprecated and should be replaced with "mhrepos".'))
-        if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root, obj.file):
+        if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.workspace.root, obj.file):
             obj.errors.setdefault(importmodule.mhrepos.range, []).append(
                 Warning(f'Redundant mhrepos key: "{importmodule.mhrepos.text}" is the current repository.'))
-        if importmodule.path and importmodule.path.text == util.get_path(self.root, obj.file):
+        if importmodule.path and importmodule.path.text == util.get_path(self.workspace.root, obj.file):
             obj.errors.setdefault(importmodule.path.range, []).append(
                 Warning(f'Redundant path key: "{importmodule.path.text}" is the current path.'))
-        if importmodule.dir and importmodule.dir.text == util.get_dir(self.root, obj.file).as_posix():
+        if importmodule.dir and importmodule.dir.text == util.get_dir(self.workspace.root, obj.file).as_posix():
             obj.errors.setdefault(importmodule.location.range, []).append(
                 Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
     def _compile_gimport(self, obj: StexObject, stack: List[Symbol], gimport: GImportIntermediateParseTree):
+        # TODO: gimport only allowed in mhmodsig
         dep = Dependency(
             range=gimport.location.range,
             scope=stack[-1],
             module_name=gimport.module.text,
             module_type_hint=ModuleType.MODSIG,
-            file_hint=gimport.path_to_imported_file(self.root),
+            file_hint=gimport.path_to_imported_file(self.workspace.root),
             export=True)
         obj.add_dependency(dep)
-        ref = SymbolReference(dep.range, [dep.module_name])
+        ref = Reference(dep.range, stack[-1], [dep.module_name], ReferenceType.MODSIG)
         obj.add_reference(ref)
-        if gimport.repository and gimport.repository.text == util.get_repository_name(self.root, gimport.location.path):
+        if gimport.repository and gimport.repository.text == util.get_repository_name(self.workspace.root, gimport.location.path):
             obj.errors.setdefault(gimport.repository.range, []).append(
                 Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
@@ -354,26 +418,11 @@ class Compiler:
         elif isinstance(tree, GImportIntermediateParseTree):
             pass
         elif isinstance(tree, GStructureIntermediateParseTree):
-            symbol_stack.pop()
+            pass#symbol_stack.pop()
         elif isinstance(tree, ViewIntermediateParseTree):
-            symbol_stack.pop()
+            pass#symbol_stack.pop()
         elif isinstance(tree, ViewSigIntermediateParseTree):
-            symbol_stack.pop()
-
-    @property
-    def objectfiles(self) -> Set[Path]:
-        ' Return paths to all objectfiles in the output directory. '
-        return set(map(Path, glob.glob((self.outdir / '*/*.stexobj').as_posix(), recursive=True)))
-
-    @staticmethod
-    def compute_objectfile_path_hash(path: Path) -> str:
-        ' Computes an hash from the path to an objectfile. '
-        return sha1(path.parent.as_posix().encode()).hexdigest()
-
-    @staticmethod
-    def get_objectfile_path(outdir: Path, file: Path) -> Path:
-        ' Returns the path to where the objectfile should be cached. '
-        return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
+            pass#symbol_stack.pop()
 
 
 def _report_invalid_environments(env_name: str, lst: List[IntermediateParseTree], obj: StexObject):

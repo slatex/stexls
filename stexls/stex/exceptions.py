@@ -17,3 +17,7 @@ class LinkWarning(LinkError, Warning):
 
 class Info(Exception):
     pass
+
+
+class DuplicateSymbolDefinedException(Exception):
+    pass

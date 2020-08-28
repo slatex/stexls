@@ -96,7 +96,7 @@ class IntermediateParser:
             parser.walk(
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
-        except (CompilerError, LatexException, UnicodeError) as ex:
+        except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self
 

@@ -4,7 +4,7 @@ import functools
 import multiprocessing
 from stexls.vscode import *
 from stexls.stex.parser import IntermediateParser
-from stexls.stex.compiler import StexObject
+from stexls.stex.compiler import StexObject, Compiler, Dependency, Reference, ReferenceType
 from stexls.stex.symbols import *
 from stexls.util.format import format_enumeration
 from .exceptions import *
@@ -17,167 +17,122 @@ import logging
 log = logging.getLogger(__name__)
 
 class Linker:
-    def __init__(self, root: Path):
-        self.root = Path(root).expanduser().resolve().absolute()
-        # Keeps track of all objects currently used to create links
-        self.objects: Dict[Path, List[StexObject]] = dict()
-        # Keeps track of errors raised when making build orders
-        # this is needed because these errors need to be added later to the link which currently doesnt exist
-        self.errors: Dict[StexObject, Dict[Location, List[Exception]]] = dict()
-        # Build orders for every object
-        self.build_orders: Dict[StexObject, OrderedDict[StexObject, bool]] = dict()
-        # The finished linked objects
-        self.links: Dict[StexObject, StexObject] = dict()
+    def __init__(self, compiler: Compiler):
+        self.compiler = compiler
 
-    def get_all_modules(self, definition_type: DefinitionType = None) -> Set[ModuleSymbol]:
-        ' Gets all modules with the specified definition type, or all definition types if None, registered with this linker. '
-        return set(
-            module
-            for path, objects in self.objects.items()
-            for object in objects
-            for module in object.symbol_table.get(object.module, ())
-            if isinstance(module, ModuleSymbol)
-            and definition_type is None or module.definition_type == definition_type)
+    def _import_into(self, scope: Symbol, module: Symbol):
+        ' Imports the symbols from <module> into <scope>. '
+        prev = scope.children.get(module.name)
+        if isinstance(prev, ModuleSymbol):
+            return
+        cpy = module.copy()
+        try:
+            scope.add_child(cpy)
+        except:
+            # TODO: Propagate import error, but probably not useful here
+            return
+        for alts in module.children.values():
+            for child in alts:
+                if child.access_modifier != AccessModifier.PUBLIC:
+                    continue
+                if isinstance(child, ModuleSymbol):
+                    self._import_into(scope, child)
+                elif isinstance(child, VerbSymbol):
+                    # TODO: VerbType.DEFI also allowed alternatives in certain contexts
+                    cpy.add_child(child.copy(), child.verb_type in (VerbType.DREF, VerbType.SYMDEF))
 
-    def link(self, other: StexObject, finalize: bool = False):
-        # TODO: Copied from StexObject.link --> Should not be done by StexObject --> Implement here
-        """ Links self with other object.
+    def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
+        ' Links <imported> to <obj> to the scope specified in <dependency> '
+        alts = imported.symbol_table.lookup(dependency.module_name)
+        if len(alts) > 1:
+            obj.errors.setdefault(dependency.range, []).append(
+                LinkError(f'Module "{dependency.module_name}" not unique in "{imported.file}".'))
+            return
+        if not alts:
+            obj.errors.setdefault(dependency.range, []).append(
+                LinkError(f'Module "{dependency.module_name}" not defined in file "{imported.file}".'))
+            return
+        for module in alts:
+            if module.access_modifier != AccessModifier.PUBLIC:
+                obj.errors.setdefault(dependency.range, []).append(
+                    LinkError(f'Module "{dependency.module_name}" can\'t be imported because it is marked private.'))
+                return
+            self._import_into(dependency.scope, module)
 
-            This is the main linking operation needed to properly
-            merge two objects. Finalize should only be true when
-            linking to the object for which this link will be used.
-            Finalizing will make this link include errors and references
-            defined by the finalized object.
-
-        Parameters:
-            other: Object to link with this accumulator object.
-            finalize: Flag that signalizes that this "other" will be the last object to be linked against.
-
-        Returns:
-            self, but all symbols are copied from "other" and if finalize
-            is enabled errors and references will as well be copied.
-        """
-        self.files.update(other.files)
-        if finalize:
-            for location, errors in other.errors.items():
-                self.errors[location].extend(errors)
-            for module, paths in other.dependencies.items():
-                for path, locations in paths.items():
-                    if not path.is_file():
-                        for location in locations:
-                            self.errors[location].append(
-                                LinkError(f'File targeted by import does not exist: "{path}"'))
-                    if module not in self.symbol_table:
-                        modules_set = set(
-                            id.identifier
-                            for id, symbols in self.symbol_table.items()
-                            for symbol in symbols
-                            if symbol.location.uri == path
-                            and symbol.identifier.symbol_type == SymbolType.MODULE)
-                        available_modules = '", "'.join(modules_set)
-                        close_matches = difflib.get_close_matches(module.identifier, modules_set)
-                        if close_matches:
-                            close_matches = '", "'.join(close_matches)
-                        for location in locations:
-                            if close_matches:
-                                self.errors[location].append(
-                                    LinkError(f'Not a module: "{module.identifier}", did you maybe mean "{available_modules}"?'))
-                            elif modules_set:
-                                self.errors[location].append(
-                                    LinkError(f'Not a module: "{module.identifier}", available modules are "{available_modules}"'))
-                            else:
-                                self.errors[location].append(
-                                    LinkError(f'Not a module: "{module.identifier}"'))
-                    if module in self.dependencies:
-                        for previous_location, (_, module_type_hint, scope) in self.dependencies[module].get(path, {}).items():
-                            for location in locations:
-                                self.errors[location].append(
-                                    LinkWarning(f'Module "{module.identifier}" was indirectly imported at "{previous_location.format_link()}" and may be removed.'))
-        for module, paths in other.dependencies.items():
-            for path, locations in paths.items():
-                for location, (public, module_type_hint, scope) in locations.items():
-                    # add dependencies only if public, except for the finalize case, then always add
-                    if public or finalize:
-                        self.dependencies[module].setdefault(path, {})[location] = (public, module_type_hint, scope)
-        for id, symbols in other.symbol_table.items():
-            for symbol in symbols:
-                self.add_symbol(symbol, export=None, severity=LinkError if finalize else None)
-        if finalize:
-            for path, ranges in other.references.items():
-                for range, id in ranges.items():
-                    if id.symbol_type == SymbolType.BINDING:
-                        # do not dereference references to bindings as they will never be located in this link
-                        continue
-                    location = Location(path.as_uri(), range)
-                    if id not in self.symbol_table:
-                        identifiers_of_same_type = (
-                            symbol.qualified_identifier.identifier
-                            for symbols in self.symbol_table.values()
-                            for symbol in symbols
-                            if symbol.identifier.symbol_type == id.symbol_type)
-                        close_matches = set(difflib.get_close_matches(id.identifier, identifiers_of_same_type))
-                        if close_matches:
-                            close_matches_str = '", "'.join(close_matches)
-                            self.errors[location].append(
-                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}", did you maybe mean "{close_matches_str}"?'))
-                        else:
-                            self.errors[location].append(
-                                LinkError(f'Undefined {id.symbol_type.value}: "{id.identifier}"'))
-                self.references[path].update(ranges)
-
-    def _cleanup(self, files: Dict[Path, List[StexObject]]):
-        """ This is an private method used to clean up old references to objects from files given in the keys() of the files dict.
-
-            This method goes through the list of files and deletes errors, build orders and links
-            related to these files. Also the list of root objects provided in the dict's values()
-            are stored for later use.
-
-        Parameters:
-            files: Dictionary of paths to a list of toplevel objects they export.
-        """
-        for path, objects in files.items():
-            # delete old objects, build orders, errors and links related to
-            # the new file
-            if path in self.objects:
-                for object in self.objects[path]:
-                    if object in self.build_orders:
-                        del self.build_orders[object]
-                    if object in self.errors:
-                        del self.errors[object]
-                    if object in self.links:
-                        del self.links[object]
-            # add the objects from the new file again
-            if objects is None:
-                if path in self.objects:
-                    del self.objects[path]
-            else:
-                self.objects[path] = objects
-
-    def link(
+    def compile_and_link(
         self,
-        inputs: Dict[Path, List[StexObject]],
-        modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        progressfn: Callable[[str], Callable[[Iterable], Iterable]] = None,
-        use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
-        """ This is the main functionality of the linker. It links all the input files using the provided importable modules dictionary.
+        file: Path,
+        index: Dict[Path, StexObject] = None,
+        stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
+        toplevel_module: str = None,
+        usemodule_on_stack: bool = False) -> StexObject:
+        stack = {} if stack is None else stack
+        index = {} if index is None else index
+        obj = self.compiler.compile(file)
+        index[file] = obj
+        for dep in reversed(obj.dependencies):
+            if not dep.export and stack:
+                # TODO: Is this really how usemodules behave?
+                # Skip usemodule dependencies if dep is not exportet and the stack is not empty, indicating
+                # that this object is currently being imported
+                continue
+            if usemodule_on_stack and dep.module_name == toplevel_module:
+                # TODO: Is this really how usemodules behave?
+                # Ignore the import of the same module as the toplevel module if a usemodule import is
+                # currently in the stack somewhere
+                continue
+            if (dep.file_hint, dep.module_name) in stack:
+                cyclic_obj, cyclic_dep = stack[(dep.file_hint, dep.module_name)]
+                cyclic_obj.errors.setdefault(cyclic_dep.range, []).append(
+                    LinkError(
+                        f'Dependency to module "{cyclic_dep.module_name}"'
+                        f' creates cycle at "{Location(file.as_uri(), dep.range).format_link()}"'))
+                continue
+            if dep.file_hint not in index or self.compiler.recompilation_required(dep.file_hint):
+                stack[(dep.file_hint, dep.module_name)] = (obj, dep)
+                imported = self.compile_and_link(
+                    file=dep.file_hint,
+                    index=index,
+                    stack=stack,
+                    toplevel_module=toplevel_module or dep.scope.get_current_module(),
+                    usemodule_on_stack=usemodule_on_stack or not dep.export)
+                del stack[(dep.file_hint, dep.module_name)]
+            else:
+                imported = index[dep.file_hint]
+            self.link_dependency(obj, dep, imported)
+        self.validate_linked_object(obj)
+        return obj
 
-        Parameters:
-            inputs: Map of all files with their objects which need to be linked.
-            modules: A dictionary of files to the dictionary of module id's to the module objects they export.
-
-        Keyword Parameters:
-            progressfn: A progress function.
-            use_multiprocessing: Enables multiprocessing.
-
-        Returns:
-            A linked object for all objects provided in files.
-        """
-        progressfn = progressfn or (lambda title: lambda it: it)
-        self._cleanup(inputs)
-        build_orders = self._resolve_dependencies(inputs, modules, progressfn('Resolving Dependencies'))
-        links = self._link(build_orders, progressfn('Linking'), use_multiprocessing)
-        self._validate_references(links)
-        return links
+    def validate_linked_object(self, linked: StexObject):
+        for ref in linked.references:
+            refname = "?".join(ref.name)
+            resolved: List[Symbol] = ref.scope.lookup(ref.name)
+            if not resolved:
+                linked.errors.setdefault(ref.range, []).append(
+                    LinkError(f'Unresolved symbol: "{refname}"'))
+            for symbol in resolved:
+                if isinstance(symbol, VerbType):
+                    if ReferenceType.VERB not in ref.reference_type:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkError(f'Referenced verb "{refname}" wrong type: Found {ref.reference_type}, expected {ReferenceType.VERB}'))
+                        continue
+                    verb: VerbSymbol = symbol
+                    if verb.noverb:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkWarning(f'Referenced verbsymbol "{refname}" is marked as "noverb".'))
+                    if verb.get_binding_language() in verb.noverbs:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkWarning(
+                                f'Referenced symbol "{refname}" is marked as "noverb"'
+                                f' for the language {verb.get_binding_language()}.'))
+                elif isinstance(symbol, ModuleSymbol):
+                    module: ModuleSymbol = symbol
+                    if module.module_type == ModuleType.MODSIG and ReferenceType.MODSIG not in ref.reference_type:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkError(f'Referenced modsig "{refname}" wrong type: Expected {ref.reference_type}'))
+                    elif module.module_type == ModuleType.MODULE and ReferenceType.MODULE not in ref.reference_type:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkError(f'Referenced module "{refname}" wrong type: Expected {ref.reference_type}'))
 
     def _validate_references(self, links: Dict[StexObject, StexObject]):
         """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """
@@ -328,211 +283,4 @@ class Linker:
                 G.edge(origin, target)
         G.view(directory='/tmp/stexls')
 
-    def _resolve_dependencies(
-        self,
-        inputs: Dict[Path, List[StexObject]],
-        modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        progressfn: Callable[[Iterable], Iterable]) -> Dict[StexObject, List[StexObject]]:
-        """ This is the resolve dependency step during linking.
-
-        This step takes all the new objects and resolves their respective dependencies.
-        Creating the order in which the imported module should be linked together in order
-        to properly create a link for the input objects.
-
-        Parameters:
-            inputs:
-                Map of files to the objects they export.
-                The build orders will be created for each of these exported objects.
-            modules:
-                Map of files to a map of module symbol identifiers to the object containing
-                the module. This map is used to efficiently find the dependencies.
-            progressfn:
-                Optional progress report function.
-
-        Returns:
-            Map of origin stex object to the list of objects their link needs to link against
-            to be build properly.
-        """
-        build_orders: Dict[StexObject, List[StexObject]] = dict()
-        for _, objects in progressfn(inputs.items()):
-            for object in objects:
-                self.errors[object] = {}
-                build_orders[object] = Linker._make_build_order(
-                    object,
-                    modules,
-                    self.errors[object])
-        self.build_orders.update(build_orders)
-        return build_orders
-
-    def _link(
-        self,
-        build_orders: Dict[StexObject, List[StexObject]],
-        progressfn: Callable[[Iterable], Iterable],
-        use_multiprocessing: bool = True) -> Dict[StexObject, StexObject]:
-        """ This is the final link step.
-
-            Takes map of origin objects and their respective build orders as input in
-            order to create the linked object.
-
-        Parameters:
-            build_orders: Map of objects to the build order they need to be linked against.
-            progressfn: Optional progress report function.
-            use_multiprocessing: Enables multiprocessing.
-
-        Returns:
-            Map of origin objects to the new linked object.
-        """
-        linkfn = functools.partial(StexObject.link_list, root=self.root)
-        with multiprocessing.Pool() as pool:
-            mapfn = pool.map if use_multiprocessing else map
-            futures = mapfn(linkfn, progressfn(build_orders.values()))
-            links: Dict[StexObject, StexObject] = dict(zip(build_orders, futures))
-            for obj, link in links.items():
-                for loc, errors in self.errors.get(obj, {}).items():
-                    link.errors.setdefault(loc, []).extend(errors)
-        self.links.update(links)
-        return links
-
-    @staticmethod
-    def _make_build_order(
-        current: StexObject,
-        modules: Dict[Path, Dict[SymbolIdentifier, StexObject]],
-        errors: Dict[Location, List[Exception]],
-        build_order_cache: Dict[StexObject, List[StexObject]] = None,
-        cyclic_stack: OrderedDict[StexObject, Location] = None,
-        at_toplevel: bool = True,
-        usemodule_on_stack: bool = False,
-        root: StexObject = None) -> List[StexObject]:
-        """ Recursively creates the build order for a root object.
-
-            It takes a current object, a dictionary of modules that can be imported and
-            a output dictionary for the errors that are relevant to the first "current" object provided.
-            All the keyword arguments are internal and not to be used by the user who wants to create a
-            build order for the current object.
-
-        Parameters:
-            current:
-                The current object for which the build order is being generated.
-            modules:
-                A dictionary of (filepath)->(module identifier)->(object with that module).
-                The Path is the path to the file which contains the module with the SymbolIdentifier.
-                And the object is the object which contains the mdoule with the specified SymbolIdentifier.
-                E.g.: modules[primenumber.tex][primenumber/MODULE] = compile(primenumber.tex)
-            errors:
-                An output dictionary which is used to store exceptions that occured during linking.
-                Only errors which are relevant to the first "current" object will be added.
-
-        Keyword Arguments:
-            build_order_cache:
-                A dictionary which maps source objects to their already computed build lists.
-                Build orders can't be shared because they depend on the path they were imported on.
-                It is used during the current linking processes in cases like
-                A imports B and C, but B and C both import D. Then D only has to be computed once instead of twice.
-            cyclic_stack:
-                A dict of objects and the location they are imported from. Used to diagnose cyclic imports.
-            at_toplevel:
-                This should be used to indicate the "first current" object. This is required because
-                only the toplevel current object can utilize "use" imports. This option must be false
-                for all recursive usages.
-            usemodule_on_stack:
-                A simple flag which tracks whether a "usemodule" or "guse" type of import
-                was used. If this is true, then we can ignore cyclic imports of the root object.
-            root:
-                This must be None for the toplevel. This is used to keep track of what the "first current"
-                object was in recursive calls.
-
-        Returns:
-            Build order of the current object.
-            Furthermore, errors related to the root object are stored in errors.
-        """
-
-        # create default values if none are given
-        build_order_cache = dict() if build_order_cache is None else build_order_cache
-        cyclic_stack: OrderedDict[StexObject, Location] = OrderedDict() if cyclic_stack is None else cyclic_stack
-
-        # check if the build order for the current not was created yet
-        if current not in build_order_cache:
-            # new build order
-            build_order: List[StexObject] = list()
-
-            # check all dependencies
-            for module, files in current.dependencies.items():
-                for path, locations in files.items():
-                    # ignore not indexed files or if the file does not contain the module
-                    if path not in modules:
-                        if at_toplevel:
-                            e = LinkError(f'Not a file: "{path}" does not exist or does not export any modules.')
-                            for location in locations:
-                                errors.setdefault(location, []).append(e)
-                        continue
-
-                    if module not in modules[path]:
-                        if at_toplevel:
-                            e = LinkError(f'Imported module not exported: "{module.identifier}" is not exported by "{path}"')
-                            for location in locations:
-                                errors.setdefault(location, []).append(e)
-                        continue
-
-                    object = modules[path][module]
-
-                    # Warning for multiple imports of same module
-                    if at_toplevel and len(locations) > 1:
-                        # TODO: Does this fix multiple import errors with usemodules in omtext etc environments?
-                        for loc1, (_, _, scope1) in locations.items():
-                            for loc2, (_, _, scope2) in locations.items():
-                                if loc1 == loc2:
-                                    continue
-                                if scope1.contains(scope2):
-                                    first, second = (loc2, loc1) if scope1.range.length <= scope2.range.length else (loc1, loc2)
-                                    e = LinkWarning(f'Multiple imports of module "{module.identifier}" in this file, earlier imported in {first.range.start.translate(1, 1).format()}.')
-                                    errors.setdefault(second, []).append(e)
-
-                    # For each import location
-                    for location, (public, _, _) in locations.items():
-                        # ignore all private imports that are not done by the toplevel root
-                        if not public and not at_toplevel:
-                            continue
-
-                        # If a importmodule of the root is done while the stack is marked as "usemodule used", ignore the import
-                        if usemodule_on_stack and object.path == root.path:
-                            continue
-
-                        # Check if cycle created
-                        if object in cyclic_stack:
-                            cycle = list(cyclic_stack.items())
-                            cycle_end_module, cycle_end = cycle[-1]
-                            # Create error only if we are at the toplevel for a clean diagnostic report
-                            if not at_toplevel and cycle_end_module == root:
-                                cycle_module, cycle_start = cycle[0]
-                                errors.setdefault(cycle_start, []).append(
-                                    LinkError(f'Cyclic dependency: Import of "{cycle_module.module.identifier}" creates cycle at "{cycle_end.format_link()}"'))
-                            # always ignore this import to prevent infinite loops
-                            continue
-
-                        # Stack the child at the current location and compute it's build order
-                        cyclic_stack[object] = location
-                        child_build_order: List[StexObject] = Linker._make_build_order(
-                            current=object, # next object
-                            modules=modules, # inherit
-                            errors=errors, # inherit
-                            build_order_cache=build_order_cache, # inherit
-                            cyclic_stack=cyclic_stack, # inherit
-                            # only the toplevel call _make_build_order can do certain things
-                            at_toplevel=False,
-                            root=current if at_toplevel else root, # use toplevel if current is toplevel, else inherit
-                            # mark child as used if any import in the stack is imported via "usemodule"
-                            usemodule_on_stack=usemodule_on_stack or not public)
-                        del cyclic_stack[object]
-
-                        # remove duplicates
-                        for child in child_build_order:
-                            while child in build_order:
-                                build_order.remove(child)
-
-                        # Move all imports from the child to the front
-                        build_order = child_build_order + build_order
-            # cache the current object
-            build_order_cache[current] = build_order + [current]
-        # return cached build order
-        return build_order_cache[current]
 

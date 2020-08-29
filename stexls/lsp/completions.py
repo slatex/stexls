@@ -85,7 +85,7 @@ class CompletionEngine:
                 if repository.startswith(fragment)
             ]
         return []
-    
+
     def get_named_arguments(self, line: str) -> Dict[str, str]:
         return {
             match.group('name'): match.group('value')
@@ -206,7 +206,7 @@ class CompletionEngine:
                 for id, symbols in object.symbol_table.items()
                 if id.symbol_type == SymbolType.DEFI
                 and id.identifier.startswith(fragment)
-                and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, VerbSymbol))
+                and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, DefSymbol))
                 for symbol in symbols[:1]
             ]
             return self._completions_from_choices(fragment, choices, CompletionItemKind.Field, position)
@@ -219,7 +219,7 @@ class CompletionEngine:
                 for id, symbols in object.symbol_table.items()
                 if id.symbol_type == SymbolType.DEFI
                 and id.identifier.startswith(fragment)
-                and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, VerbSymbol))
+                and any(symbol.definition_type == DefinitionType.SYMDEF for symbol in symbols if isinstance(symbol, DefSymbol))
                 for symbol in symbols[:1])
             return self._completions_from_choices(fragment, choices, CompletionItemKind.Field, position)
         return []
@@ -239,7 +239,7 @@ class CompletionEngine:
                     if id.symbol_type == SymbolType.DEFI
                     for symbol in symbols
                     if symbol.parent.identifier == target_module
-                    and (not isinstance(symbol, VerbSymbol) or not symbol.noverb)
+                    and (not isinstance(symbol, DefSymbol) or not symbol.noverb)
                 )
                 fragment = fragment.split('?')[-1]
             else:

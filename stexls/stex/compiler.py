@@ -68,7 +68,7 @@ class Dependency:
 class ReferenceType(Flag):
     MODULE=1
     MODSIG=2
-    VERB=4
+    DEF=4
 
 
 class Reference:
@@ -76,7 +76,7 @@ class Reference:
         self.range = range
         self.scope = scope
         self.name = name
-        self.reference_type = reference_type
+        self.reference_type: ReferenceType = reference_type
 
     def __repr__(self): return f'[Reference {self.reference_type.name} "{self.name}" at {self.range}]'
 
@@ -277,13 +277,13 @@ class Compiler:
                 obj.errors.setdefault(trefi.location.range, []).append(
                     CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
             else:
-                module.add_child(VerbSymbol(VerbType.DREF, trefi.location, trefi.name), alternative=True)
+                module.add_child(DefSymbol(DefType.DREF, trefi.location, trefi.name), alternative=True)
         if trefi.module:
             obj.add_reference(Reference(trefi.module.range, stack[-1], [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
-            obj.add_reference(Reference(trefi.location.range, stack[-1], [trefi.module.text, trefi.name], ReferenceType.VERB))
+            obj.add_reference(Reference(trefi.location.range, stack[-1], [trefi.module.text, trefi.name], ReferenceType.DEF))
         else:
             module_name: str = trefi.find_parent_module_name()
-            obj.add_reference(Reference(trefi.location.range, stack[-1], [module_name, trefi.name], ReferenceType.VERB))
+            obj.add_reference(Reference(trefi.location.range, stack[-1], [module_name, trefi.name], ReferenceType.DEF))
         if trefi.m:
             obj.errors.setdefault(trefi.location.range, []).append(
                 DeprecationWarning('mtref environments are deprecated.'))
@@ -294,7 +294,7 @@ class Compiler:
 
     def _compile_defi(self, obj: StexObject, stack: List[Symbol], defi: DefiIntermediateParseTree):
         if isinstance(defi.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
-            symbol = VerbSymbol(VerbType.DEF, defi.location, defi.name)
+            symbol = DefSymbol(DefType.DEF, defi.location, defi.name)
             try:
                 # TODO: alternative definition possibly allowed here?
                 stack[-1].add_child(symbol)
@@ -306,18 +306,18 @@ class Compiler:
                     range=defi.location.range,
                     scope=stack[-1],
                     name=[defi.find_parent_module_name(), defi.name],
-                    reference_type=ReferenceType.VERB))
+                    reference_type=ReferenceType.DEF))
 
     def _compile_sym(self, obj: StexObject, stack: List[Symbol], sym: SymIntermediateParserTree):
-        symbol = VerbSymbol(VerbType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
+        symbol = DefSymbol(DefType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
         try:
             stack[-1].add_child(symbol)
         except DuplicateSymbolDefinedException as err:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_symdef(self, obj: StexObject, stack: List[Symbol], symdef: SymdefIntermediateParseTree):
-        symbol = VerbSymbol(
-            VerbType.SYMDEF,
+        symbol = DefSymbol(
+            DefType.SYMDEF,
             symdef.location,
             symdef.name.text,
             noverb=symdef.noverb.is_all,

@@ -9,8 +9,6 @@ from stexls.stex.symbols import *
 from stexls.util.format import format_enumeration
 from .exceptions import *
 
-import pkg_resources
-
 __all__ = ['Linker']
 
 import logging
@@ -37,9 +35,9 @@ class Linker:
                     continue
                 if isinstance(child, ModuleSymbol):
                     self._import_into(scope, child)
-                elif isinstance(child, VerbSymbol):
-                    # TODO: VerbType.DEFI also allowed alternatives in certain contexts
-                    cpy.add_child(child.copy(), child.verb_type in (VerbType.DREF, VerbType.SYMDEF))
+                elif isinstance(child, DefSymbol):
+                    # TODO: DefType.DEFI also allowed alternatives in certain contexts
+                    cpy.add_child(child.copy(), child.def_type in (DefType.DREF, DefType.SYMDEF))
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
         ' Links <imported> to <obj> to the scope specified in <dependency> '
@@ -109,22 +107,25 @@ class Linker:
             resolved: List[Symbol] = ref.scope.lookup(ref.name)
             if not resolved:
                 linked.errors.setdefault(ref.range, []).append(
-                    LinkError(f'Unresolved symbol: "{refname}"'))
+                    LinkError(f'Undefined symbol: "{refname}" of type {ref.reference_type.name.lower()}'))
             for symbol in resolved:
-                if isinstance(symbol, VerbType):
-                    if ReferenceType.VERB not in ref.reference_type:
+                if isinstance(symbol, DefType):
+                    if ReferenceType.DEF not in ref.reference_type:
                         linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced verb "{refname}" wrong type: Found {ref.reference_type}, expected {ReferenceType.VERB}'))
+                            LinkError(
+                                f'Referenced verb "{refname}" wrong type:'
+                                f' Found {ref.reference_type.name.lower()}, expected {ReferenceType.DEF.name.lower()}'))
                         continue
-                    verb: VerbSymbol = symbol
-                    if verb.noverb:
+                    defs: DefSymbol = symbol
+                    if defs.noverb:
                         linked.errors.setdefault(ref.range, []).append(
-                            LinkWarning(f'Referenced verbsymbol "{refname}" is marked as "noverb".'))
-                    if verb.get_binding_language() in verb.noverbs:
+                            LinkWarning(f'Referenced DefSymbol "{refname}" is marked as "noverb".'))
+                    binding: BindingSymbol = defs.get_current_binding()
+                    if binding and binding.lang in defs.noverbs:
                         linked.errors.setdefault(ref.range, []).append(
                             LinkWarning(
                                 f'Referenced symbol "{refname}" is marked as "noverb"'
-                                f' for the language {verb.get_binding_language()}.'))
+                                f' for the language {binding.lang}.'))
                 elif isinstance(symbol, ModuleSymbol):
                     module: ModuleSymbol = symbol
                     if module.module_type == ModuleType.MODSIG and ReferenceType.MODSIG not in ref.reference_type:
@@ -154,8 +155,8 @@ class Linker:
                         referenced_locations.add(referenced_symbol.location)
                         if origin not in links:
                             continue
-                        if isinstance(referenced_symbol, VerbSymbol):
-                            referenced_symbol: VerbSymbol
+                        if isinstance(referenced_symbol, DefSymbol):
+                            referenced_symbol: DefSymbol
                             # additionally if the reference is a verb check also that it is not marked noverb
                             if referenced_symbol.noverb:
                                 reference_location = Location(path.as_uri(), range)
@@ -171,7 +172,7 @@ class Linker:
                 for symbol, link in symbols.items():
                     if link not in links.values():
                         continue
-                    if isinstance(symbol, VerbSymbol):
+                    if isinstance(symbol, DefSymbol):
                         if symbol.definition_type == DefinitionType.DEFI:
                             # Defi definitions are their own reference
                             continue
@@ -183,7 +184,7 @@ class Linker:
                             link.errors.setdefault(symbol.location, []).append(
                                 Info(f'Symbol marked as noverb for the language(s) {langs} is never referenced: {symbol.qualified_identifier.identifier}'))
                             continue
-                    if not (isinstance(symbol, VerbSymbol) and symbol.definition_type == DefinitionType.DEFI):
+                    if not (isinstance(symbol, DefSymbol) and symbol.definition_type == DefinitionType.DEFI):
                         link.errors.setdefault(symbol.location, []).append(
                             Info(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
 

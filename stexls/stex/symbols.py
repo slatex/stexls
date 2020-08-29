@@ -10,11 +10,11 @@ from .exceptions import DuplicateSymbolDefinedException
 __all__ = [
     'AccessModifier',
     'ModuleType',
-    'VerbType',
+    'DefType',
     'Symbol',
     'ModuleSymbol',
     'BindingSymbol',
-    'VerbSymbol',
+    'DefSymbol',
     'ScopeSymbol',
 ]
 
@@ -30,7 +30,7 @@ class ModuleType(Enum):
     MODULE='module'
 
 
-class VerbType(Enum):
+class DefType(Enum):
     DEF='def'
     DREF='dref'
     SYMDEF='symdef'
@@ -96,15 +96,15 @@ class Symbol:
             return (*self.parent.qualified, self.name)
         return (self.name,)
 
-    def get_current_module(self) -> Optional[str]:
+    def get_current_module(self) -> Optional[ModuleSymbol]:
         ' Find the first parent ModuleSymbol. '
         if self.parent:
             return self.parent.get_current_module()
         return None
 
-    def get_binding_language(self) -> Optional[str]:
+    def get_current_binding(self) -> Optional[BindingSymbol]:
         if self.parent:
-            return self.parent.get_binding_language()
+            return self.parent.get_current_binding()
         return None
 
     def add_child(self, child: Symbol, alternative: bool = False):
@@ -211,10 +211,10 @@ class ModuleSymbol(Symbol):
         return f'[ModuleSymbol "{self.name}"/{self.module_type.name}]'
 
 
-class VerbSymbol(Symbol):
+class DefSymbol(Symbol):
     def __init__(
         self,
-        verb_type: VerbType,
+        def_type: DefType,
         location: Location,
         name: str,
         noverb: bool = False,
@@ -223,44 +223,40 @@ class VerbSymbol(Symbol):
 
         Parameters:
             module:
-            verb_type: Latex environment used to define this symbol.
+            def_type: Latex environment used to define this symbol.
             noverb: If True, then this verb symbol should not have any references in any language.
             noverbs: Set of languages this symbol should not be referenced from.
         """
         super().__init__(location, name)
-        self.verb_type = verb_type
+        self.def_type = def_type
         self.noverb = noverb
         self.noverbs = noverbs or set()
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} VerbSymbol "{self.name}"/{self.verb_type.name}]'
+        return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name}]'
 
-    def copy(self) -> VerbSymbol:
+    def copy(self) -> DefSymbol:
         ' Shallow copy of this symbol without parent and child structure. '
-        cpy = VerbSymbol(self.verb_type, self.location.copy(), self.name, self.noverb, self.noverbs.copy())
+        cpy = DefSymbol(self.def_type, self.location.copy(), self.name, self.noverb, self.noverbs.copy())
         cpy.access_modifier = self.access_modifier
         return cpy
 
 
 class BindingSymbol(Symbol):
     def __init__(self, location: Location, module: str, lang: str):
-        super().__init__(location, f'__{module}-binding__')
-        self.module = module
+        super().__init__(location, module)
         self.lang = lang
 
-    def get_binding_language(self) -> str:
-        return self.lang
-
-    def get_current_module(self) -> str:
-        return self.module
+    def get_current_binding(self) -> BindingSymbol:
+        return self
 
     def copy(self) -> BindingSymbol:
-        cpy = BindingSymbol(self.location.copy(), self.module, self.lang)
+        cpy = BindingSymbol(self.location.copy(), self.name, self.lang)
         cpy.access_modifier = self.access_modifier
         return cpy
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} BindingSymbol {self.module}.{self.lang}]'
+        return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang}]'
 
 
 class ScopeSymbol(Symbol):

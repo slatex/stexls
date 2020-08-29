@@ -60,61 +60,93 @@ class Linker:
     def compile_and_link(
         self,
         file: Path,
-        index: Dict[Path, StexObject] = None,
-        stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
-        toplevel_module: str = None,
-        usemodule_on_stack: bool = False) -> StexObject:
-        stack = {} if stack is None else stack
-        index = {} if index is None else index
+        cache: Dict[bool, Dict[Path, StexObject]] = None,
+        _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
+        _toplevel_module: str = None,
+        _usemodule_on_stack: bool = False,
+        _allow_caching: bool = False) -> StexObject:
+        # Compile the file (loading the cached object is only done before including them because more context is needed)
         obj = self.compiler.compile(file)
-        index[file] = obj
+        if _allow_caching:
+            # Only cache object files which are not part of the recursion
+            cache[_usemodule_on_stack][file] = obj
+        # initialize the stack
+        _stack = {} if _stack is None else _stack
+        # Cache initialization is a little bit more complicated
+        if not cache:
+            # initialize with empty dict
+            if cache is None:
+                cache = dict()
+            # and initialize with the possible True and False values of _usemodule_on_stack, which changes
+            # how the object is compiled
+            cache[True] = dict()
+            cache[False] = dict()
         for dep in reversed(obj.dependencies):
-            if not dep.export and stack:
+            if not dep.export and _stack:
                 # TODO: Is this really how usemodules behave?
                 # Skip usemodule dependencies if dep is not exportet and the stack is not empty, indicating
                 # that this object is currently being imported
                 continue
-            if usemodule_on_stack and dep.module_name == toplevel_module:
+            if _usemodule_on_stack and dep.module_name == _toplevel_module:
                 # TODO: Is this really how usemodules behave?
                 # Ignore the import of the same module as the toplevel module if a usemodule import is
                 # currently in the stack somewhere
                 continue
-            if (dep.file_hint, dep.module_name) in stack:
-                cyclic_obj, cyclic_dep = stack[(dep.file_hint, dep.module_name)]
+            if (dep.file_hint, dep.module_name) in _stack:
+                # if same current context of file_hint and module_name is on stack, a cyclic dependency occurs
+                cyclic_obj, cyclic_dep = _stack[(dep.file_hint, dep.module_name)]
                 cyclic_obj.errors.setdefault(cyclic_dep.range, []).append(
                     LinkError(
                         f'Dependency to module "{cyclic_dep.module_name}"'
                         f' creates cycle at "{Location(file.as_uri(), dep.range).format_link()}"'))
                 continue
-            if dep.file_hint not in index or self.compiler.recompilation_required(dep.file_hint):
-                stack[(dep.file_hint, dep.module_name)] = (obj, dep)
-                imported = self.compile_and_link(
-                    file=dep.file_hint,
-                    index=index,
-                    stack=stack,
-                    toplevel_module=toplevel_module or dep.scope.get_current_module(),
-                    usemodule_on_stack=usemodule_on_stack or not dep.export)
-                del stack[(dep.file_hint, dep.module_name)]
+            if dep.file_hint not in cache[_usemodule_on_stack or not dep.export] or self.compiler.recompilation_required(dep.file_hint):
+                # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
+                _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
+                try:
+                    imported = self.compile_and_link(
+                        file=dep.file_hint,
+                        cache=cache,
+                        _stack=_stack,
+                        _toplevel_module=_toplevel_module or dep.scope.get_current_module(),
+                        _usemodule_on_stack=_usemodule_on_stack or not dep.export,
+                        _allow_caching=True)
+                except Exception as err:
+                    obj.errors.setdefault(dep.range, []).append(err)
+                    continue
+                finally:
+                    del _stack[(dep.file_hint, dep.module_name)]
             else:
-                imported = index[dep.file_hint]
+                # If the linked file is already indexed for the current context, than load it
+                imported = cache[_usemodule_on_stack or not dep.export][dep.file_hint]
+            # Link the single dependency to the current object
             self.link_dependency(obj, dep, imported)
+        # Validate some stuff about the object after all dependencies have been linked.
         self.validate_linked_object(obj)
         return obj
 
     def validate_linked_object(self, linked: StexObject):
         for ref in linked.references:
             refname = "?".join(ref.name)
-            resolved: List[Symbol] = ref.scope.lookup(ref.name)
-            if not resolved:
+            try:
+                resolved: List[Symbol] = ref.scope.lookup(ref.name)
+                if not resolved:
+                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
+                    linked.errors.setdefault(ref.range, []).append(
+                        LinkError(
+                            f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
+                            f'Did you maybe mean {suggestions}?'))
+            except ValueError:
+                resolved = []
                 linked.errors.setdefault(ref.range, []).append(
-                    LinkError(f'Undefined symbol: "{refname}" of type {ref.reference_type.name.lower()}'))
+                    LinkError(f'Invalid reference to non-unique symbol "{refname}" of type {ref.reference_type.format_enum()}'))
             for symbol in resolved:
                 if isinstance(symbol, DefType):
                     if ReferenceType.DEF not in ref.reference_type:
                         linked.errors.setdefault(ref.range, []).append(
                             LinkError(
                                 f'Referenced verb "{refname}" wrong type:'
-                                f' Found {ref.reference_type.name.lower()}, expected {ReferenceType.DEF.name.lower()}'))
+                                f' Found {ref.reference_type.format_enum()}, expected {ReferenceType.DEF.name.lower()}'))
                         continue
                     defs: DefSymbol = symbol
                     if defs.noverb:
@@ -130,10 +162,10 @@ class Linker:
                     module: ModuleSymbol = symbol
                     if module.module_type == ModuleType.MODSIG and ReferenceType.MODSIG not in ref.reference_type:
                         linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced modsig "{refname}" wrong type: Expected {ref.reference_type}'))
+                            LinkError(f'Referenced modsig "{refname}" wrong type: Expected {ref.reference_type.format_enum()}'))
                     elif module.module_type == ModuleType.MODULE and ReferenceType.MODULE not in ref.reference_type:
                         linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced module "{refname}" wrong type: Expected {ref.reference_type}'))
+                            LinkError(f'Referenced module "{refname}" wrong type: Expected {ref.reference_type.format_enum()}'))
 
     def _validate_references(self, links: Dict[StexObject, StexObject]):
         """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """

@@ -3,9 +3,9 @@ from typing import Dict, Optional, Set, Union, Iterable, Callable, List, Tuple
 from pathlib import Path
 from collections import defaultdict
 from hashlib import sha1
+import difflib
 import multiprocessing
 import pickle
-import difflib
 import itertools
 import functools
 import glob
@@ -70,6 +70,14 @@ class ReferenceType(Flag):
     MODSIG=2
     DEF=4
 
+    def format_enum(self):
+        l = []
+        for exp in range(0, 3):
+            mask = 2**exp
+            if self.value & mask:
+                l.append(ReferenceType(mask).name.lower())
+        return format_enumeration(l, last='or')
+
 
 class Reference:
     def __init__(self, range: Range, scope: Symbol, name: Iterable[str], reference_type: ReferenceType):
@@ -93,6 +101,19 @@ class StexObject:
         self.references: List[Reference] = list()
         # Accumulator for errors that occured at <range> of this file.
         self.errors: Dict[Range, List[Exception]] = dict()
+
+    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
+        ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
+        names = []
+        def f(ref_type: ReferenceType, names: List[str], symbol: Symbol):
+            if isinstance(symbol, DefSymbol):
+                if ReferenceType.DEF in ref_type:
+                    names.append('?'.join(symbol.qualified[-2:]))
+            elif isinstance(symbol, ModuleSymbol):
+                if ReferenceType.MODSIG in ref_type or ReferenceType.MODULE in ref_type:
+                    names.append('?'.join(symbol.qualified[-2:]))
+        self.symbol_table.traverse(lambda s: f(ref_type, names, s))
+        return difflib.get_close_matches('?'.join(qualified), names)
 
     def format(self):
         f = f'\nFile: "{self.file}"'
@@ -188,8 +209,13 @@ class Compiler:
 
         Returns:
             The compiled stex object.
+
+        Raises:
+            FileNotFoundError: If the source file is not a file.
         """
         file = file.expanduser().resolve().absolute()
+        if not file.is_file():
+            raise FileNotFoundError(f'"{file}" is not a file.')
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
         objectdir = objectfile.parent
         for _ in range(2): # give it two attempts to figure out whats going on

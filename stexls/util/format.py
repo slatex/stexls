@@ -4,6 +4,7 @@ from typing import Iterable
 __all__ = ('format_enumeration',)
 
 
+# TODO: Find better place for this function
 def format_enumeration(it: Iterable[str], last: str = 'and'):
     ''' Formats an enumeration into a comma concatenated list except for the last two elements, which are concatenated with "and" or "or"
 

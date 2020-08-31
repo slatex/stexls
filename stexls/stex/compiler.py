@@ -1,7 +1,6 @@
 from __future__ import annotations
-from typing import Dict, Optional, Set, Union, Iterable, Callable, List, Tuple
+from typing import Dict, Optional, Set, Union, Iterable, Callable, List, Tuple, OrderedDict
 from pathlib import Path
-from collections import defaultdict
 from hashlib import sha1
 import difflib
 import multiprocessing
@@ -55,6 +54,14 @@ class Dependency:
         self.file_hint = file_hint
         self.export = export
 
+    def pretty_format(self, file: Path = None):
+        export = 'public' if self.export else 'private'
+        if file:
+            loc = f'{file}:{self.range.start.line}:{self.range.start.character}: '
+        else:
+            loc = ''
+        return loc + f'{export} Import {self.module_type_hint.name} "{self.module_name}" from "{self.file_hint}"'
+
     def check_if_same_module_imported(self, other: Dependency):
         if self.module_name == other.module_name:
             if self.scope == other.scope or self.scope.is_parent_of(other.scope):
@@ -81,6 +88,9 @@ class ReferenceType(Flag):
 
 class Reference:
     def __init__(self, range: Range, scope: Symbol, name: Iterable[str], reference_type: ReferenceType):
+        assert range is not None
+        assert name is not None
+        assert all(isinstance(i, str) for i in name)
         self.range = range
         self.scope = scope
         self.name = name
@@ -94,7 +104,7 @@ class StexObject:
         # Path to source file from which this object is generated
         self.file = file
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
-        self.symbol_table: Symbol = Symbol(None, '__root__')
+        self.symbol_table: Symbol = Symbol(Location(file.as_uri(), Position(0, 0)), '__root__')
         # Dict of the ranges at which a dependency was create to the dependency that was created there.
         self.dependencies: List[Dependency] = list()
         # List of references. A reference consists of a range relative to the file that owns the reference and the referenced file or symbol identifier.
@@ -108,10 +118,10 @@ class StexObject:
         def f(ref_type: ReferenceType, names: List[str], symbol: Symbol):
             if isinstance(symbol, DefSymbol):
                 if ReferenceType.DEF in ref_type:
-                    names.append('?'.join(symbol.qualified[-2:]))
+                    names.append('?'.join(symbol.qualified[1:][-2:]))
             elif isinstance(symbol, ModuleSymbol):
                 if ReferenceType.MODSIG in ref_type or ReferenceType.MODULE in ref_type:
-                    names.append('?'.join(symbol.qualified[-2:]))
+                    names.append('?'.join(symbol.qualified[1:][-2:]))
         self.symbol_table.traverse(lambda s: f(ref_type, names, s))
         return difflib.get_close_matches('?'.join(qualified), names)
 
@@ -192,7 +202,7 @@ class Compiler:
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
         return not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime
 
-    def compile(self, file: Path) -> StexObject:
+    def compile(self, file: Path, dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.
 
         The compiled stex object will be stored into the provided outdir.
@@ -206,6 +216,7 @@ class Compiler:
 
         Parameters:
             file: Path to sourcefile.
+            dryrun: Do not store objectfiles in outdir after compiling.
 
         Returns:
             The compiled stex object.
@@ -230,13 +241,14 @@ class Compiler:
                 parser.parse(content)
                 for root in parser.roots:
                     root: IntermediateParseTree
-                    symbol_stack: List[Symbol] = [object.symbol_table]
-                    enter = functools.partial(self._compile_enter, object, symbol_stack)
-                    exit = functools.partial(self._compile_exit, object, symbol_stack)
+                    context: List[Tuple[IntermediateParseTree, Symbol]] = [(None, object.symbol_table)]
+                    enter = functools.partial(self._compile_enter, object, context)
+                    exit = functools.partial(self._compile_exit, object, context)
                     root.traverse(enter, exit)
                 try:
-                    with open(objectfile, 'wb') as fd:
-                        pickle.dump(object, fd)
+                    if not dryrun:
+                        with open(objectfile, 'wb') as fd:
+                            pickle.dump(object, fd)
                 except:
                     # ignore errors if objectfile can't be written to disk
                     # and continue as usual
@@ -256,7 +268,7 @@ class Compiler:
                     pass
                 # because this is a for loop, try again after deleting it
 
-    def _compile_modsig(self, obj: StexObject, stack: List[Symbol], modsig: ModsigIntermediateParseTree):
+    def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
         name_location = modsig.location.replace(positionOrRange=modsig.name.range)
         if obj.file.name != f'{modsig.name.text}.tex':
             obj.errors.setdefault(name_location.range, []).append(
@@ -265,51 +277,66 @@ class Compiler:
             module_type=ModuleType.MODSIG,
             location=name_location,
             name=modsig.name.text)
-        stack[-1].add_child(module)
-        stack.append(module)
+        try:
+            context.add_child(module)
+            return module
+        except DuplicateSymbolDefinedException:
+            log.exception('%s: Failed to compile modsig %s.', module.location.format_link(), module.name)
+        return None
 
-    def _compile_modnl(self, obj: StexObject, stack: List[Symbol], modnl: ModnlIntermediateParseTree):
+    def _compile_modnl(self, obj: StexObject, context: Symbol, modnl: ModnlIntermediateParseTree):
         if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
             obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
         # Add the reference from the module name to the parent module
-        ref = Reference(modnl.name.range, stack[-1], [modnl.name.text], ReferenceType.MODSIG)
+        ref = Reference(modnl.name.range, context, [modnl.name.text], ReferenceType.MODSIG)
         obj.add_reference(ref)
         # Add dependency to the file the module definition must be located in
         dep = Dependency(
             range=modnl.name.range,
-            scope=stack[-1],
+            scope=context,
             module_name=modnl.name.text,
             module_type_hint=ModuleType.MODSIG,
             file_hint=modnl.path,
             export=True)
         obj.add_dependency(dep)
         binding = BindingSymbol(modnl.location, modnl.name, modnl.lang)
-        stack[-1].add_child(binding)
-        stack.append(binding)
+        try:
+            context.add_child(binding)
+            return binding
+        except DuplicateSymbolDefinedException:
+            log.exception('%s: Failed to compile language binding of %s.', modnl.location.format_link(), modnl.name.text)
+        return None
 
-    def _compile_module(self, obj: StexObject, stack: List[Symbol], module: ModuleIntermediateParseTree):
+    def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
         if module.id:
             name_location = module.location.replace(positionOrRange=module.id.range)
             symbol = ModuleSymbol(ModuleType.MODULE, name_location, module.id.text)
         else:
             symbol = ModuleSymbol(ModuleType.MODULE, module.location, name=None)
-        stack[-1].add_child(symbol)
-        stack.append(symbol)
+        try:
+            context.add_child(symbol)
+            return symbol
+        except DuplicateSymbolDefinedException:
+            log.exception('%s: Failed to compile module %s.', module.location.format_link(), module.id.text)
+        return None
 
-    def _compile_trefi(self, obj: StexObject, stack: List[Symbol], trefi: TrefiIntermediateParseTree):
+    def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
         if trefi.drefi:
-            module: ModuleSymbol = stack[-1].get_current_module()
+            module: ModuleSymbol = context.get_current_module()
             if not module:
                 obj.errors.setdefault(trefi.location.range, []).append(
                     CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
             else:
-                module.add_child(DefSymbol(DefType.DREF, trefi.location, trefi.name), alternative=True)
+                try:
+                    module.add_child(DefSymbol(DefType.DREF, trefi.location, trefi.name), alternative=True)
+                except InvalidSymbolRedifinitionException as err:
+                    obj.errors.setdefault(trefi.location.range, []).append(err)
         if trefi.module:
-            obj.add_reference(Reference(trefi.module.range, stack[-1], [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
-            obj.add_reference(Reference(trefi.location.range, stack[-1], [trefi.module.text, trefi.name], ReferenceType.DEF))
+            obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
+            obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.DEF))
         else:
             module_name: str = trefi.find_parent_module_name()
-            obj.add_reference(Reference(trefi.location.range, stack[-1], [module_name, trefi.name], ReferenceType.DEF))
+            obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.DEF))
         if trefi.m:
             obj.errors.setdefault(trefi.location.range, []).append(
                 DeprecationWarning('mtref environments are deprecated.'))
@@ -318,49 +345,57 @@ class Compiler:
                 obj.errors.setdefault(trefi.location.range, []).append(
                     CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
 
-    def _compile_defi(self, obj: StexObject, stack: List[Symbol], defi: DefiIntermediateParseTree):
+    def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
         if isinstance(defi.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
             symbol = DefSymbol(DefType.DEF, defi.location, defi.name)
             try:
                 # TODO: alternative definition possibly allowed here?
-                stack[-1].add_child(symbol)
+                context.add_child(symbol)
             except DuplicateSymbolDefinedException as err:
                 obj.errors.setdefault(symbol.location.range, []).append(err)
         else:
+            if not defi.find_parent_module_name():
+                obj.errors.setdefault(defi.location.range, []).append(
+                    CompilerError(f'Invalid defi: "{defi.name}" does not have a module.'))
+                # A defi without a parent module doesn't generate a reference
+                return
             obj.add_reference(
                 Reference(
                     range=defi.location.range,
-                    scope=stack[-1],
+                    scope=context,
                     name=[defi.find_parent_module_name(), defi.name],
                     reference_type=ReferenceType.DEF))
 
-    def _compile_sym(self, obj: StexObject, stack: List[Symbol], sym: SymIntermediateParserTree):
+    def _compile_sym(self, obj: StexObject, context: Symbol, sym: SymIntermediateParserTree):
         symbol = DefSymbol(DefType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
         try:
-            stack[-1].add_child(symbol)
+            context.add_child(symbol)
         except DuplicateSymbolDefinedException as err:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
-    def _compile_symdef(self, obj: StexObject, stack: List[Symbol], symdef: SymdefIntermediateParseTree):
+    def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):
         symbol = DefSymbol(
             DefType.SYMDEF,
             symdef.location,
             symdef.name.text,
             noverb=symdef.noverb.is_all,
             noverbs=symdef.noverb.langs)
-        stack[-1].add_child(symbol, alternative=True)
+        try:
+            context.add_child(symbol, alternative=True)
+        except InvalidSymbolRedifinitionException as err:
+            obj.errors.setdefault(symbol.location.range, []).append(err)
 
-    def _compile_importmodule(self, obj: StexObject, stack: List[Symbol], importmodule: ImportModuleIntermediateParseTree):
+    def _compile_importmodule(self, obj: StexObject, context: Symbol, importmodule: ImportModuleIntermediateParseTree):
         # TODO: importmodule only allowed inside begin{module}?
         dep = Dependency(
             range=importmodule.location.range,
-            scope=stack[-1],
+            scope=context,
             module_name=importmodule.module.text,
             module_type_hint=ModuleType.MODULE,
             file_hint=importmodule.path_to_imported_file(self.workspace.root),
             export=importmodule.export) #TODO: Is usemodule exportet?
         obj.add_dependency(dep)
-        ref = Reference(importmodule.location.range, stack[-1], [importmodule.module.text], ReferenceType.MODULE)
+        ref = Reference(importmodule.location.range, context, [importmodule.module.text], ReferenceType.MODULE)
         obj.add_reference(ref)
         if importmodule.repos:
             obj.errors.setdefault(importmodule.repos.range, []).append(
@@ -375,80 +410,63 @@ class Compiler:
             obj.errors.setdefault(importmodule.location.range, []).append(
                 Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
-    def _compile_gimport(self, obj: StexObject, stack: List[Symbol], gimport: GImportIntermediateParseTree):
+    def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
         # TODO: gimport only allowed in mhmodsig
         dep = Dependency(
             range=gimport.location.range,
-            scope=stack[-1],
+            scope=context,
             module_name=gimport.module.text,
             module_type_hint=ModuleType.MODSIG,
             file_hint=gimport.path_to_imported_file(self.workspace.root),
             export=True)
         obj.add_dependency(dep)
-        ref = Reference(dep.range, stack[-1], [dep.module_name], ReferenceType.MODSIG)
+        ref = Reference(dep.range, context, [dep.module_name], ReferenceType.MODSIG)
         obj.add_reference(ref)
         if gimport.repository and gimport.repository.text == util.get_repository_name(self.workspace.root, gimport.location.path):
             obj.errors.setdefault(gimport.repository.range, []).append(
                 Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
-    def _compile_enter(self, obj: StexObject, symbol_stack: List[Symbol], tree: IntermediateParseTree):
-        # TODO: Make sure trycatch not needed. If needed then the pop() in exit must be fixed.
-        if isinstance(tree, ScopeIntermediateParseTree):
-            scope = ScopeSymbol(tree.location)
-            symbol_stack[-1].add_child(scope)
-            symbol_stack.append(scope)
-        elif isinstance(tree, ModsigIntermediateParseTree):
-            self._compile_modsig(obj, symbol_stack, tree)
-        elif isinstance(tree, ModnlIntermediateParseTree):
-            self._compile_modnl(obj, symbol_stack, tree)
-        elif isinstance(tree, ModuleIntermediateParseTree):
-            self._compile_module(obj, symbol_stack, tree)
-        elif isinstance(tree, TrefiIntermediateParseTree):
-            self._compile_trefi(obj, symbol_stack, tree)
-        elif isinstance(tree, DefiIntermediateParseTree):
-            self._compile_defi(obj, symbol_stack, tree)
-        elif isinstance(tree, SymIntermediateParserTree):
-            self._compile_sym(obj, symbol_stack, tree)
-        elif isinstance(tree, SymdefIntermediateParseTree):
-            self._compile_symdef(obj, symbol_stack, tree)
-        elif isinstance(tree, ImportModuleIntermediateParseTree):
-            self._compile_importmodule(obj, symbol_stack, tree)
-        elif isinstance(tree, GImportIntermediateParseTree):
-            self._compile_gimport(obj, symbol_stack, tree)
-        elif isinstance(tree, GStructureIntermediateParseTree):
-            pass
-        elif isinstance(tree, ViewIntermediateParseTree):
-            pass
-        elif isinstance(tree, ViewSigIntermediateParseTree):
-            pass
+    def _compile_scope(self, obj: StexObject, context: Symbol, tree: ScopeIntermediateParseTree):
+        scope = ScopeSymbol(tree.location)
+        context.add_child(scope)
+        return scope
 
-    def _compile_exit(self, obj: StexObject, symbol_stack: List[Symbol], tree: IntermediateParseTree):
+    def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
+        _, current_context = context[-1]
+        next_context = None
         if isinstance(tree, ScopeIntermediateParseTree):
-            symbol_stack.pop()
+            next_context = self._compile_scope(obj, current_context, tree)
         elif isinstance(tree, ModsigIntermediateParseTree):
-            symbol_stack.pop()
+            next_context = self._compile_modsig(obj, current_context, tree)
         elif isinstance(tree, ModnlIntermediateParseTree):
-            symbol_stack.pop()
+            next_context = self._compile_modnl(obj, current_context, tree)
         elif isinstance(tree, ModuleIntermediateParseTree):
-            symbol_stack.pop()
+            next_context = self._compile_module(obj, current_context, tree)
         elif isinstance(tree, TrefiIntermediateParseTree):
-            pass
+            self._compile_trefi(obj, current_context, tree)
         elif isinstance(tree, DefiIntermediateParseTree):
-            pass
+            self._compile_defi(obj, current_context, tree)
         elif isinstance(tree, SymIntermediateParserTree):
-            pass
+            self._compile_sym(obj, current_context, tree)
         elif isinstance(tree, SymdefIntermediateParseTree):
-            pass
+            self._compile_symdef(obj, current_context, tree)
         elif isinstance(tree, ImportModuleIntermediateParseTree):
-            pass
+            self._compile_importmodule(obj, current_context, tree)
         elif isinstance(tree, GImportIntermediateParseTree):
-            pass
+            self._compile_gimport(obj, current_context, tree)
         elif isinstance(tree, GStructureIntermediateParseTree):
-            pass#symbol_stack.pop()
+            pass
         elif isinstance(tree, ViewIntermediateParseTree):
-            pass#symbol_stack.pop()
+            pass
         elif isinstance(tree, ViewSigIntermediateParseTree):
-            pass#symbol_stack.pop()
+            pass
+        if next_context:
+            context.append((tree, next_context))
+
+    def _compile_exit(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
+        current_context_tree, _ = context[-1]
+        if current_context_tree == tree:
+            context.pop()
 
 
 def _report_invalid_environments(env_name: str, lst: List[IntermediateParseTree], obj: StexObject):

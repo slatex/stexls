@@ -19,5 +19,9 @@ class Info(Exception):
     pass
 
 
-class DuplicateSymbolDefinedException(Exception):
+class DuplicateSymbolDefinedException(CompilerError):
+    pass
+
+
+class InvalidSymbolRedifinitionException(CompilerError):
     pass

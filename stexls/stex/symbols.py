@@ -4,7 +4,8 @@ from typing import Set, Optional, Dict, List, Union, Tuple
 from enum import Enum
 from pathlib import Path
 from stexls.vscode import Location, Range, DocumentSymbol
-from .exceptions import DuplicateSymbolDefinedException
+from stexls.stex.exceptions import DuplicateSymbolDefinedException, InvalidSymbolRedifinitionException
+from stexls.util.format import format_enumeration
 
 
 __all__ = [
@@ -50,6 +51,8 @@ class Symbol:
                 when revealing this symbol.
             name: Identifier of this symbol relative to it's parent.
         """
+        assert location is not None, "Invalid symbol location"
+        assert name is not None, "Invalid symbol name"
         self.name = name
         self.parent: Optional[Symbol] = None
         self.children: Dict[str, List[Symbol]] = dict()
@@ -103,6 +106,7 @@ class Symbol:
         return None
 
     def get_current_binding(self) -> Optional[BindingSymbol]:
+        ' Find the first parent BindingSymbol. '
         if self.parent:
             return self.parent.get_current_binding()
         return None
@@ -120,8 +124,23 @@ class Symbol:
         """
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')
-        if not alternative and child.name in self.children:
-            raise DuplicateSymbolDefinedException(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
+        if child.name in self.children:
+            if not alternative:
+                raise DuplicateSymbolDefinedException(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
+            for prev_child in self.children[prev_child.name]:
+                if not isinstance(prev_child, type(child)):
+                    raise InvalidSymbolRedifinitionException(f'Symbol types do not match to previous definition: {type(child)} vs. {type(prev_child)}')
+                if isinstance(child, DefSymbol):
+                    if child.def_type != prev_child.def_type:
+                        raise InvalidSymbolRedifinitionException(f'Redefinition definition types do not match: {child.def_type} vs. {prev_child.def_type}')
+                    if child.noverb != prev_child.noverb:
+                        a = 'noverb' if child.noverb else 'not noverb'
+                        b = 'noverb' if prev_child.noverb else 'not noverb'
+                        raise InvalidSymbolRedifinitionException(f'Redefinition noverb signatures do not match to previous definition: {a} vs. {b}')
+                    if len(child.noverbs) != len(prev_child.noverbs) or not all(a==b for a, b in zip(child.noverbs, prev_child.noverbs)):
+                        a = format_enumeration(child.noverbs, last='and')
+                        b = format_enumeration(prev_child.noverbs, last='and')
+                        raise InvalidSymbolRedifinitionException(f'Redefinition noverb signatures do not match to previous definition: {a} vs. {b}')
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
@@ -185,6 +204,7 @@ class Symbol:
 
 
 class ModuleSymbol(Symbol):
+    UNNAMED_MODULE_COUNT=0
     def __init__(
         self,
         module_type: ModuleType,
@@ -195,7 +215,10 @@ class ModuleSymbol(Symbol):
         Parameters:
             module_type: The latex environment type used to define this symbol.
         """
-        super().__init__(location, name)
+        super().__init__(location, name or f'__UNNAMED_MODULE_{ModuleSymbol.UNNAMED_MODULE_COUNT}__')
+        if not name:
+            ModuleSymbol.UNNAMED_MODULE_COUNT += 1
+            self.access_modifier = AccessModifier.PRIVATE
         self.module_type = module_type
 
     def copy(self) -> ModuleSymbol:
@@ -208,7 +231,7 @@ class ModuleSymbol(Symbol):
         return self
 
     def __repr__(self):
-        return f'[ModuleSymbol "{self.name}"/{self.module_type.name}]'
+        return f'[{self.access_modifier.name} ModuleSymbol "{self.name}"/{self.module_type.name}]'
 
 
 class DefSymbol(Symbol):

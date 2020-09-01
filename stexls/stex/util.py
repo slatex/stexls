@@ -85,3 +85,7 @@ def get_dir(root: Path, file: Path) -> Path:
         PosixPath('digidocs/en')
     """
     return file.relative_to(find_source_dir(root, file)).parent
+
+def is_file_newer(file: Path, old_file: Path) -> bool:
+    ' Checks if file is newer than old_file. '
+    return file.lstat().st_mtime > old_file.lstat().st_mtime

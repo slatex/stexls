@@ -1,6 +1,6 @@
 from __future__ import annotations
 import os
-from typing import Set, Optional, Dict, List, Union, Tuple
+from typing import Set, Optional, Dict, List, Union, Tuple, Iterator
 from enum import Enum
 from pathlib import Path
 from stexls.vscode import Location, Range, DocumentSymbol
@@ -58,6 +58,36 @@ class Symbol:
         self.children: Dict[str, List[Symbol]] = dict()
         self.location = location
         self.access_modifier = AccessModifier.PUBLIC
+
+    def import_from(self, module: Symbol):
+        ' Imports the symbols from <source> into this symbol table. '
+        cpy = module.copy()
+        try:
+            self.add_child(cpy)
+        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+            # TODO: Currently already imported modules are ignored, what's the right procedure here?
+            # TODO: Propagate import error, but probably not useful here
+            return
+        for alts in module.children.values():
+            for child in alts:
+                if child.access_modifier != AccessModifier.PUBLIC:
+                    continue
+                if isinstance(child, ModuleSymbol):
+                    self.import_from(child)
+                elif isinstance(child, DefSymbol):
+                    # TODO: Correct add_child behaviour depending on the context the symbol was imported under
+                    try:
+                        cpy.add_child(child.copy(), len(alts) > 1)
+                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+                        # TODO: What to do in case of error? Should this be impossible?
+                        pass
+
+    def __iter__(self) -> Iterator[Symbol]:
+        ' Iterates over all child symbols. '
+        for alts in self.children.values():
+            for child in alts:
+                yield child
+                yield from child
 
     def is_parent_of(self, other: Symbol) -> bool:
         ' Returns true if this symbol is a parent of the other symbol. '
@@ -127,7 +157,7 @@ class Symbol:
         if child.name in self.children:
             if not alternative:
                 raise DuplicateSymbolDefinedException(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
-            for prev_child in self.children[prev_child.name]:
+            for prev_child in self.children[child.name]:
                 if not isinstance(prev_child, type(child)):
                     raise InvalidSymbolRedifinitionException(f'Symbol types do not match to previous definition: {type(child)} vs. {type(prev_child)}')
                 if isinstance(child, DefSymbol):

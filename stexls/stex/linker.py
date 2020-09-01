@@ -2,12 +2,14 @@ from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict, Patt
 from pathlib import Path
 import functools
 import multiprocessing
+import pickle
 from stexls.vscode import *
-from stexls.stex.parser import IntermediateParser
 from stexls.stex.compiler import StexObject, Compiler, Dependency, Reference, ReferenceType
 from stexls.stex.symbols import *
+from stexls.stex.exceptions import *
+from stexls.stex import util
 from stexls.util.format import format_enumeration
-from .exceptions import *
+from time import time
 
 __all__ = ['Linker']
 
@@ -17,27 +19,8 @@ log = logging.getLogger(__name__)
 class Linker:
     def __init__(self, compiler: Compiler):
         self.compiler = compiler
-
-    def _import_into(self, scope: Symbol, module: Symbol):
-        ' Imports the symbols from <module> into <scope>. '
-        prev = scope.children.get(module.name)
-        if isinstance(prev, ModuleSymbol):
-            return
-        cpy = module.copy()
-        try:
-            scope.add_child(cpy)
-        except:
-            # TODO: Propagate import error, but probably not useful here
-            return
-        for alts in module.children.values():
-            for child in alts:
-                if child.access_modifier != AccessModifier.PUBLIC:
-                    continue
-                if isinstance(child, ModuleSymbol):
-                    self._import_into(scope, child)
-                elif isinstance(child, DefSymbol):
-                    # TODO: DefType.DEFI also allowed alternatives in certain contexts
-                    cpy.add_child(child.copy(), child.def_type in (DefType.DREF, DefType.SYMDEF))
+        # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
+        self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
         ' Links <imported> to <obj> to the scope specified in <dependency> '
@@ -55,33 +38,25 @@ class Linker:
                 obj.errors.setdefault(dependency.range, []).append(
                     LinkError(f'Module "{dependency.module_name}" can\'t be imported because it is marked private.'))
                 return
-            self._import_into(dependency.scope, module)
+            # TODO: Maybe let import_from raise all it's exception, then capture them here, add them to the obj for display
+            dependency.scope.import_from(module)
 
     def compile_and_link(
         self,
         file: Path,
-        cache: Dict[bool, Dict[Path, StexObject]] = None,
+        required_symbol_names: List[str] = None,
+        precompiled_objects: Dict[Path, StexObject] = {},
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
-        _usemodule_on_stack: bool = False,
-        _allow_caching: bool = False) -> StexObject:
-        # Compile the file (loading the cached object is only done before including them because more context is needed)
-        obj = self.compiler.compile(file)
-        if _allow_caching:
-            # Only cache object files which are not part of the recursion
-            cache[_usemodule_on_stack][file] = obj
-        # initialize the stack
+        _usemodule_on_stack: bool = False) -> StexObject:
+        # Compile the file, loading the cached object is only done before including them because more context is needed
+        obj = precompiled_objects[file].copy() if file in precompiled_objects else self.compiler.compile(file)
+        # initialize the stack if not already initialized
         _stack = {} if _stack is None else _stack
         # Cache initialization is a little bit more complicated
-        if not cache:
-            # initialize with empty dict
-            if cache is None:
-                cache = dict()
-            # and initialize with the possible True and False values of _usemodule_on_stack, which changes
-            # how the object is compiled
-            cache[True] = dict()
-            cache[False] = dict()
-        for dep in reversed(obj.dependencies):
+        for dep in obj.dependencies:
+            if required_symbol_names and dep.scope.name not in required_symbol_names:
+                continue
             if not dep.export and _stack:
                 # TODO: Is this really how usemodules behave?
                 # Skip usemodule dependencies if dep is not exportet and the stack is not empty, indicating
@@ -100,17 +75,18 @@ class Linker:
                         f'Dependency to module "{cyclic_dep.module_name}"'
                         f' creates cycle at "{Location(file.as_uri(), dep.range).format_link()}"'))
                 continue
-            if dep.file_hint not in cache[_usemodule_on_stack or not dep.export] or self.compiler.recompilation_required(dep.file_hint):
+            update_usemodule_on_stack = _usemodule_on_stack or not dep.export
+            if self._relink_required(dep.file_hint, dep.module_name, update_usemodule_on_stack):
                 # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
                 _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
                 try:
                     imported = self.compile_and_link(
                         file=dep.file_hint,
-                        cache=cache,
+                        required_symbol_names=[dep.module_name],
                         _stack=_stack,
                         _toplevel_module=_toplevel_module or dep.scope.get_current_module(),
-                        _usemodule_on_stack=_usemodule_on_stack or not dep.export,
-                        _allow_caching=True)
+                        _usemodule_on_stack=update_usemodule_on_stack)
+                    self._store_linked(update_usemodule_on_stack, dep.file_hint, dep.module_name, imported)
                 except Exception as err:
                     obj.errors.setdefault(dep.range, []).append(err)
                     continue
@@ -118,24 +94,59 @@ class Linker:
                     del _stack[(dep.file_hint, dep.module_name)]
             else:
                 # If the linked file is already indexed for the current context, than load it
-                imported = cache[_usemodule_on_stack or not dep.export][dep.file_hint]
+                _mtime, imported = self._load_linked(update_usemodule_on_stack, dep.file_hint, dep.module_name)
+                assert imported, "Invalid state: Cached file not found even though it should be present."
             # Link the single dependency to the current object
             self.link_dependency(obj, dep, imported)
         # Validate some stuff about the object after all dependencies have been linked.
-        self.validate_linked_object(obj)
+        self.validate_linked_object(obj, precompiled_objects=precompiled_objects)
         return obj
 
-    def validate_linked_object(self, linked: StexObject):
+    def _relink_required(self, file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
+        ' Returns True if the module in the file was not linked yet or if a newer version can be created. '
+        # TODO: Integration of workspace.is_open and file time modified check can be done better maybe
+        mtime, obj = self._load_linked(usemodule_on_stack, file, module_name)
+        if not obj:
+            # Module not cached
+            return True
+        if mtime < file.lstat().st_mtime or mtime < self.compiler.workspace.get_time_live_modified(file):
+            # The sourcefile of the module has been update
+            # Or the sourcefile is currently open and has received live upates
+            # Check in case the sourcefile was empty previously and didnt have any symbols or dependencies
+            return True
+        try:
+            # Check whether any file referenced by a dependency or symbol is newer than this link
+            paths = set(symbol.location.path for symbol in obj.symbol_table)
+            paths |= set(dep.file_hint for dep in obj.dependencies)
+            for path in paths:
+                if (path.is_file() and mtime < path.lstat().st_mtime) or mtime < self.compiler.workspace.get_time_live_modified(path):
+                    return True
+            return False
+        except:
+            log.exception('Failed relink check')
+        return True
+
+    def _load_linked(self, usemodule_on_stack: bool, file: Path, module: str) -> Tuple[float, StexObject]:
+        ' Return the tuple of (timestamp added, stexobj) from cache or (None, None) if not cached. '
+        return self.cache.get(usemodule_on_stack, {}).get(str(file), {}).get(module, (None, None))
+
+    def _store_linked(self, usemodule_on_stack: bool, file: Path, module: str, obj: StexObject):
+        ' Store an obj in cache. '
+        self.cache[usemodule_on_stack].setdefault(str(file), {})[module] = (time(), obj)
+
+    def validate_linked_object(self, linked: StexObject, precompiled_objects: Dict[Path, StexObject] = {}):
         for ref in linked.references:
             refname = "?".join(ref.name)
             try:
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)
                 if not resolved:
                     suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
-                    linked.errors.setdefault(ref.range, []).append(
-                        LinkError(
-                            f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
-                            f'Did you maybe mean {suggestions}?'))
+                    if suggestions:
+                        err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
+                            f'Did you maybe mean {suggestions}?')
+                    else:
+                        err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}')
+                    linked.errors.setdefault(ref.range, []).append(err)
             except ValueError:
                 resolved = []
                 linked.errors.setdefault(ref.range, []).append(
@@ -146,7 +157,7 @@ class Linker:
                         linked.errors.setdefault(ref.range, []).append(
                             LinkError(
                                 f'Referenced verb "{refname}" wrong type:'
-                                f' Found {ref.reference_type.format_enum()}, expected {ReferenceType.DEF.name.lower()}'))
+                                f' Found {ref.reference_type.format_enum()}, expected {ReferenceType.DEF.format_enum()}'))
                         continue
                     defs: DefSymbol = symbol
                     if defs.noverb:
@@ -317,3 +328,9 @@ class Linker:
         G.view(directory='/tmp/stexls')
 
 
+if __name__ == '__main__':
+    from stexls.util.workspace import Workspace
+    from tempfile import TemporaryDirectory
+    c = Compiler(Workspace(Path('~/MathHub').expanduser()), Path(TemporaryDirectory().name))
+    ln = Linker(c)
+    o = ln.compile_and_link(Path('/home/marian/MathHub/MiKoMH/talks/source/sTeX/ex/sTeX-modules-ex.tex'))

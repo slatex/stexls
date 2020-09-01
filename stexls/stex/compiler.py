@@ -112,6 +112,15 @@ class StexObject:
         # Accumulator for errors that occured at <range> of this file.
         self.errors: Dict[Range, List[Exception]] = dict()
 
+    def copy(self) -> StexObject:
+        ' Creates a full copy of the original. Any objects that are not directly referenced by the copy are expected to be constant. '
+        cpy = StexObject(self.file)
+        cpy.symbol_table = self.symbol_table.copy()
+        cpy.dependencies = self.dependencies.copy()
+        cpy.references = self.references.copy()
+        cpy.errors = {r: l.copy() for r, l in self.errors.items()}
+        return cpy
+
     def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
         ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
         names = []
@@ -200,7 +209,7 @@ class Compiler:
     def recompilation_required(self, file: Path):
         ' Checks if sourcefile <file> should be recompiled based off of timestamps and whether an objectfile exists or not. '
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
-        return not objectfile.is_file() or objectfile.lstat().st_mtime < file.lstat().st_mtime
+        return not objectfile.is_file() or util.is_file_newer(file, objectfile)
 
     def compile(self, file: Path, dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.

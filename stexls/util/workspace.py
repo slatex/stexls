@@ -4,6 +4,7 @@ import itertools
 import logging
 import multiprocessing
 import functools
+import time
 from hashlib import sha1
 from pathlib import Path
 from typing import List, Iterator, Pattern, Callable, Iterable, Set, Dict
@@ -20,13 +21,18 @@ class Workspace:
         and additionally can keep track of the state of modified files.
         """
         self.root = Path(root).expanduser().resolve().absolute()
-        self._open_files: Dict[Path, str] = {}
+        self._open_files: Dict[Path, (float, str)] = {}
         self._ignore: Optional[List[Pattern]] = None
         self._include: Optional[List[Pattern]] = None
 
     def is_open(self, file: Path) -> bool:
         ' Returns true if a modified version of this file that can be queried with read_file() is in memory. '
         return file in self._open_files
+
+    def get_time_live_modified(self, file: Path) -> float:
+        ' Retrieves the timestamp since the last edit to the opened file. Returns 0 if the file is not open. '
+        mtime, _content = self._open_files.get(file, (0, None))
+        return mtime
 
     def open_file(self, path: Path, content: str) -> bool:
         """ Opens a file in the current workspace.
@@ -38,7 +44,7 @@ class Workspace:
         Parameters:
             path: Path of the opened file.
             content: Content of the file when opening it.
-        
+
         Returns:
             True if the file was opened or is already open. False otherwise.
         """
@@ -49,7 +55,7 @@ class Workspace:
         if path not in self.files:
             log.debug('Ignoring open file attempt of "%s" because it is not part of this workspace.', path)
             return False
-        self._open_files[path] = content
+        self._open_files[path] = (time.time(), content)
         return True
 
     def update_file_incremental(self, path: Path, content: str):
@@ -59,7 +65,7 @@ class Workspace:
             The client can decide to only report changes to the file and
             the workspace constructs the modified file's state.
             This allows the server to work with files not stored to disk.
-        
+
         Parameters:
             path: The path of the file.
         """
@@ -67,7 +73,7 @@ class Workspace:
             log.debug('Updating file: "%s"', path)
         else:
             log.warning('Updating not open file: "%s"', path)
-        self._open_files[path] = content
+        self._open_files[path] = (time.time(), content)
 
     def close_file(self, path: Path) -> bool:
         """ Removes an opened file from ram.
@@ -78,7 +84,7 @@ class Workspace:
 
         Parameters:
             path: The closed file.
-        
+
         Returns:
             True if the file was closed because it was open.
         """
@@ -93,14 +99,15 @@ class Workspace:
     def read_file(self, path: Path) -> Optional[str]:
         """ Reads a file modified in this workspace. If the accessed file is not modified
             it is read from disk instead.
-        
+
         Returns:
             Content of the file. Read from disk if not opened and read from ram if opened.
             If any kind of exception occurs None is returned.
         """
         if path in self._open_files:
             log.debug('Reading open file: "%s"', path)
-            return self._open_files[path]
+            _mtime, content = self._open_files[path]
+            return content
         try:
             with open(path) as fd:
                 log.debug('Reading local file: "%s"', path)
@@ -120,7 +127,7 @@ class Workspace:
 
         Parameters:
             location: Location to read.
-        
+
         Returns:
             Content of the location from ram if opened, from disk if not.
             None if any kind of error occurs.

@@ -212,9 +212,13 @@ class Compiler:
         return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
 
     def recompilation_required(self, file: Path):
-        ' Checks if sourcefile <file> should be recompiled based off of timestamps and whether an objectfile exists or not. '
+        ' Returns true if the file wasnt compiled yet or if the objectfile is older than the last edit to the file. '
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
-        return not objectfile.is_file() or util.is_file_newer(file, objectfile)
+        if not objectfile.is_file():
+            return True
+        if file.is_file() and util.is_file_newer(file, objectfile):
+            return True
+        return objectfile.lstat().st_mtime < self.workspace.get_time_live_modified(file)
 
     def compile(self, file: Path, dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.

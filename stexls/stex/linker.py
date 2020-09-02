@@ -164,7 +164,6 @@ class Linker:
                             LinkError(
                                 f'Referenced verb "{refname}" wrong type:'
                                 f' Found {ref.reference_type.format_enum()}, expected {ReferenceType.DEF.format_enum()}'))
-                        continue
                     defs: DefSymbol = symbol
                     if defs.noverb:
                         linked.errors.setdefault(ref.range, []).append(

@@ -76,6 +76,7 @@ class ReferenceType(Flag):
     MODULE=1
     MODSIG=2
     DEF=4
+    BINDING=8
 
     def format_enum(self):
         l = []

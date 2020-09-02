@@ -97,6 +97,10 @@ class Reference:
         self.name = name
         self.reference_type: ReferenceType = reference_type
 
+    @property
+    def qualified_name(self) -> Iterable[str]:
+        return (*self.scope.qualified, *self.name)
+
     def __repr__(self): return f'[Reference {self.reference_type.name} "{self.name}" at {self.range}]'
 
 

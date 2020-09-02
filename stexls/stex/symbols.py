@@ -200,7 +200,9 @@ class Symbol:
                 return child.find(qualified_identifier[1:])
         if children:
             return children
-        if self.parent:
+        if self.parent and not isinstance(self, (ModuleSymbol, BindingSymbol)):
+            # Parent lookup only allowed through non-modules
+            # TODO: Is preventing lookup through modules enough? Or is there a more generic way to describe this lookup behaviour?
             return self.parent.lookup(qualified_identifier)
         return []
 

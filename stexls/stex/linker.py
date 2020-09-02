@@ -45,12 +45,17 @@ class Linker:
         self,
         file: Path,
         required_symbol_names: List[str] = None,
-        precompiled_objects: Dict[Path, StexObject] = {},
+        precompiled_objects: Dict[Path, StexObject] = None,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
+        precompiled_objects = precompiled_objects or {}
         # Compile the file, loading the cached object is only done before including them because more context is needed
-        obj = precompiled_objects[file].copy() if file in precompiled_objects else self.compiler.compile(file)
+        if file not in precompiled_objects or self.compiler.recompilation_required(file):
+            obj = self.compiler.compile(file)
+            precompiled_objects[file] = obj
+        else:
+            obj = precompiled_objects[file].copy()
         # initialize the stack if not already initialized
         _stack = {} if _stack is None else _stack
         # Cache initialization is a little bit more complicated

@@ -126,8 +126,8 @@ class StexObject:
         cpy.errors = {r: l.copy() for r, l in self.errors.items()}
         return cpy
 
-    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
-        ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
+    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType, scope: Symbol = None) -> List[str]:
+        ' Find simlar symbols with reference to a qualified name and an expected symbol type.  If scope is specified only symbols from that scope will be looked at. '
         names = []
         def f(ref_type: ReferenceType, names: List[str], symbol: Symbol):
             if isinstance(symbol, DefSymbol):
@@ -136,7 +136,7 @@ class StexObject:
             elif isinstance(symbol, ModuleSymbol):
                 if ReferenceType.MODSIG in ref_type or ReferenceType.MODULE in ref_type:
                     names.append('?'.join(symbol.qualified[1:][-2:]))
-        self.symbol_table.traverse(lambda s: f(ref_type, names, s))
+        (scope or self.symbol_table).traverse(lambda s: f(ref_type, names, s))
         return difflib.get_close_matches('?'.join(qualified), names)
 
     def format(self):

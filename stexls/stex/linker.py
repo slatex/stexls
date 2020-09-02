@@ -145,7 +145,7 @@ class Linker:
             try:
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)
                 if not resolved:
-                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
+                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type, ref.scope), last='or')
                     if suggestions:
                         err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
                             f'Did you maybe mean {suggestions}?')

@@ -249,7 +249,7 @@ class Compiler:
         objectdir = objectfile.parent
         for _ in range(2): # give it two attempts to figure out whats going on
             content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
-            if content is not None or self.recompilation_required(file):
+            if self.recompilation_required(file):
                 # if not already compiled or the compiled object is old, create a new object
                 objectdir.mkdir(parents=True, exist_ok=True)
                 object = StexObject(file)

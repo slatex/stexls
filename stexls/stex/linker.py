@@ -141,6 +141,7 @@ class Linker:
 
     def validate_linked_object(self, linked: StexObject, precompiled_objects: Dict[Path, StexObject] = {}):
         for ref in linked.references:
+            # TODO: Prevent validating references of modules that are not compiled yet? Use compile_and_link(required_module)?
             refname = "?".join(ref.name)
             try:
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)

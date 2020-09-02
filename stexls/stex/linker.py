@@ -183,6 +183,12 @@ class Linker:
                     elif module.module_type == ModuleType.MODULE and ReferenceType.MODULE not in ref.reference_type:
                         linked.errors.setdefault(ref.range, []).append(
                             LinkError(f'Referenced module "{refname}" wrong type: Expected {ref.reference_type.format_enum()}'))
+                elif isinstance(symbol, BindingSymbol):
+                    binding: BindingSymbol = symbol
+                    if ReferenceType.BINDING not in ref.reference_type:
+                        linked.errors.setdefault(ref.range, []).append(
+                            LinkError(f'Referenced symbol "{refname}" of wrong type: Expected "binding", found {ref.reference_type.format_enum()}'))
+
 
     def _validate_references(self, links: Dict[StexObject, StexObject]):
         """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """

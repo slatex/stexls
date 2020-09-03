@@ -315,9 +315,14 @@ class Compiler:
                 CompilerError(f'Invalid modnl location: Parent is not root'))
         if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
             obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
-        # Add the reference from the module name to the parent module
-        ref = Reference(modnl.name.range, context, [modnl.name.text], ReferenceType.MODSIG)
-        obj.add_reference(ref)
+        binding = BindingSymbol(modnl.location, modnl.name, modnl.lang)
+        try:
+            context.add_child(binding)
+        except DuplicateSymbolDefinedException:
+            log.exception('%s: Failed to compile language binding of %s.', modnl.location.format_link(), modnl.name.text)
+            return None
+        # Important, the context must be changed here to the binding, else the dependency and reference won't be resolved correctly
+        context = binding
         # Add dependency to the file the module definition must be located in
         dep = Dependency(
             range=modnl.name.range,
@@ -327,13 +332,10 @@ class Compiler:
             file_hint=modnl.path,
             export=True)
         obj.add_dependency(dep)
-        binding = BindingSymbol(modnl.location, modnl.name, modnl.lang)
-        try:
-            context.add_child(binding)
-            return binding
-        except DuplicateSymbolDefinedException:
-            log.exception('%s: Failed to compile language binding of %s.', modnl.location.format_link(), modnl.name.text)
-        return None
+        # Add the reference from the module name to the parent module
+        ref = Reference(modnl.name.range, context, [modnl.name.text], ReferenceType.MODSIG)
+        obj.add_reference(ref)
+        return binding
 
     def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
         if context.name != _ROOT_:

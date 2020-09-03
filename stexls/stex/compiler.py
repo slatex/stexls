@@ -24,6 +24,8 @@ from . import util
 
 __all__ = ['Compiler', 'StexObject', 'Dependency', 'Reference', 'ReferenceType']
 
+_ROOT_: str = '__root__'
+
 class Dependency:
     def __init__(
         self,
@@ -109,7 +111,7 @@ class StexObject:
         # Path to source file from which this object is generated
         self.file = file
         # Symbol table with definitions: Key is symbol name for easy search access by symbol name
-        self.symbol_table: Symbol = Symbol(Location(file.as_uri(), Position(0, 0)), '__root__')
+        self.symbol_table: Symbol = Symbol(Location(file.as_uri(), Position(0, 0)), _ROOT_)
         # Dict of the ranges at which a dependency was create to the dependency that was created there.
         self.dependencies: List[Dependency] = list()
         # List of references. A reference consists of a range relative to the file that owns the reference and the referenced file or symbol identifier.
@@ -287,6 +289,10 @@ class Compiler:
                 # because this is a for loop, try again after deleting it
 
     def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
+        if context.name != _ROOT_:
+            # TODO: Semantic location check
+            obj.errors.setdefault(modsig.location.range, []).append(
+                CompilerError(f'Invalid modsig location: Parent is not root'))
         name_location = modsig.location.replace(positionOrRange=modsig.name.range)
         if obj.file.name != f'{modsig.name.text}.tex':
             obj.errors.setdefault(name_location.range, []).append(
@@ -303,6 +309,10 @@ class Compiler:
         return None
 
     def _compile_modnl(self, obj: StexObject, context: Symbol, modnl: ModnlIntermediateParseTree):
+        if context.name != _ROOT_:
+            # TODO: Semantic location check
+            obj.errors.setdefault(modnl.location.range, []).append(
+                CompilerError(f'Invalid modnl location: Parent is not root'))
         if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
             obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
         # Add the reference from the module name to the parent module
@@ -326,6 +336,10 @@ class Compiler:
         return None
 
     def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
+        if context.name != _ROOT_:
+            # TODO: Semantic location check
+            obj.errors.setdefault(module.location.range, []).append(
+                CompilerError(f'Invalid module location: Parent is not root'))
         if module.id:
             name_location = module.location.replace(positionOrRange=module.id.range)
             symbol = ModuleSymbol(ModuleType.MODULE, name_location, module.id.text)
@@ -343,6 +357,7 @@ class Compiler:
             module: ModuleSymbol = context.get_current_module()
             if not module:
                 obj.errors.setdefault(trefi.location.range, []).append(
+                    # TODO: Semantic location check
                     CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
             else:
                 try:
@@ -350,9 +365,11 @@ class Compiler:
                 except InvalidSymbolRedifinitionException as err:
                     obj.errors.setdefault(trefi.location.range, []).append(err)
         if trefi.module:
+            # TODO: Semantic location check
             obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
             obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.DEF))
         else:
+            # TODO: Semantic location check
             module_name: str = trefi.find_parent_module_name()
             obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.DEF))
         if trefi.m:
@@ -365,6 +382,7 @@ class Compiler:
 
     def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
         if isinstance(defi.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
+            # TODO: Semantic location check
             symbol = DefSymbol(DefType.DEF, defi.location, defi.name)
             try:
                 # TODO: alternative definition possibly allowed here?
@@ -373,10 +391,10 @@ class Compiler:
                 obj.errors.setdefault(symbol.location.range, []).append(err)
         else:
             if not defi.find_parent_module_name():
+                # TODO: Semantic location check
+                # A defi without a parent module doesn't generate a reference
                 obj.errors.setdefault(defi.location.range, []).append(
                     CompilerError(f'Invalid defi: "{defi.name}" does not have a module.'))
-                # A defi without a parent module doesn't generate a reference
-                return
             obj.add_reference(
                 Reference(
                     range=defi.location.range,
@@ -385,6 +403,10 @@ class Compiler:
                     reference_type=ReferenceType.DEF))
 
     def _compile_sym(self, obj: StexObject, context: Symbol, sym: SymIntermediateParserTree):
+        if not sym.find_parent_module_parse_tree():
+            # TODO: Semantic location check
+            obj.errors.setdefault(sym.location.range, []).append(
+                CompilerError(f'Invalid location: "{sym.name}" does not have a module.'))
         symbol = DefSymbol(DefType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
         try:
             context.add_child(symbol)
@@ -392,6 +414,10 @@ class Compiler:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):
+        if not symdef.find_parent_module_parse_tree():
+            # TODO: Semantic location check
+            obj.errors.setdefault(symdef.location.range, []).append(
+                CompilerError(f'Invalid location: "{symdef.name.text}" does not have a module.'))
         symbol = DefSymbol(
             DefType.SYMDEF,
             symdef.location,
@@ -404,7 +430,10 @@ class Compiler:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_importmodule(self, obj: StexObject, context: Symbol, importmodule: ImportModuleIntermediateParseTree):
-        # TODO: importmodule only allowed inside begin{module}?
+        if not isinstance(importmodule.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
+            # TODO: Semantic location check: importmodule only allowed inside begin{module}?
+            obj.errors.setdefault(importmodule.location.range, []).append(
+                CompilerError(f'Invalid importmodule location: module environment not found.'))
         dep = Dependency(
             range=importmodule.location.range,
             scope=context,
@@ -429,7 +458,10 @@ class Compiler:
                 Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
-        # TODO: gimport only allowed in mhmodsig
+        if not isinstance(gimport.find_parent_module_parse_tree(), (ModuleIntermediateParseTree, ModsigIntermediateParseTree)):
+            # TODO: Semantic location check
+            obj.errors.setdefault(gimport.location.range, []).append(
+                CompilerError(f'Invalid gimport location: module or modsig environment not found.'))
         dep = Dependency(
             range=gimport.location.range,
             scope=context,
@@ -445,6 +477,7 @@ class Compiler:
                 Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
     def _compile_scope(self, obj: StexObject, context: Symbol, tree: ScopeIntermediateParseTree):
+        # TODO: Semantic location check
         scope = ScopeSymbol(tree.location)
         context.add_child(scope)
         return scope
@@ -485,10 +518,3 @@ class Compiler:
         current_context_tree, _ = context[-1]
         if current_context_tree == tree:
             context.pop()
-
-
-def _report_invalid_environments(env_name: str, lst: List[IntermediateParseTree], obj: StexObject):
-    # TODO: Add invalid environments
-    for invalid_environment in lst:
-        obj.errors[invalid_environment.location].append(
-            CompilerWarning(f'Invalid environment of type {type(invalid_environment).__name__} in {env_name}.'))

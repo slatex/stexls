@@ -1,4 +1,8 @@
 
+class NotCompiledError(Exception):
+    pass
+
+
 class CompilerError(Exception):
     pass
 

@@ -9,6 +9,7 @@ from stexls.stex.symbols import *
 from stexls.stex.exceptions import *
 from stexls.stex import util
 from stexls.util.format import format_enumeration
+from stexls.util.workspace import Workspace
 from time import time
 
 __all__ = ['Linker']
@@ -18,7 +19,13 @@ log = logging.getLogger(__name__)
 
 class Linker:
     def __init__(self, workspace: Workspace, compiler_outdir: Path):
+        # Workspace required for time modified checking for files
+        self.workspace = workspace
+        # Directory in which the compiler stores the compiled objects
+        self.outdir = compiler_outdir
+        # This caches all already linked objects. These are loaded each time some import is made, instead of linking again.
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
+        # ModuleName is the name of the Module that is guaranteed to be fully linked inside StexObject
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
@@ -40,21 +47,17 @@ class Linker:
             # TODO: Maybe let import_from raise all it's exception, then capture them here, add them to the obj for display
             dependency.scope.import_from(module)
 
-    def compile_and_link(
+    def link(
         self,
         file: Path,
         required_symbol_names: List[str] = None,
-        precompiled_objects: Dict[Path, StexObject] = None,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
-        precompiled_objects = precompiled_objects or {}
-        # Compile the file, loading the cached object is only done before including them because more context is needed
-        if file not in precompiled_objects or self.compiler.recompilation_required(file):
-            obj = self.compiler.compile(file)
-            precompiled_objects[file] = obj
-        else:
-            obj = precompiled_objects[file].copy()
+        # load the objectfile
+        obj = Compiler.load_from_objectfile(self.outdir, file)
+        if not obj:
+            raise NotCompiledError(f'Sourcefile is not compiled and no objectfile was found: "{file}"')
         # initialize the stack if not already initialized
         _stack = {} if _stack is None else _stack
         # Cache initialization is a little bit more complicated
@@ -84,7 +87,7 @@ class Linker:
                 # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
                 _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
                 try:
-                    imported = self.compile_and_link(
+                    imported = self.link(
                         file=dep.file_hint,
                         required_symbol_names=[dep.module_name],
                         _stack=_stack,
@@ -103,7 +106,7 @@ class Linker:
             # Link the single dependency to the current object
             self.link_dependency(obj, dep, imported)
         # Validate some stuff about the object after all dependencies have been linked.
-        self.validate_linked_object(obj, precompiled_objects=precompiled_objects)
+        self.validate_linked_object(obj)
         return obj
 
     def _relink_required(self, file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
@@ -113,7 +116,7 @@ class Linker:
         if not obj:
             # Module not cached
             return True
-        if mtime < file.lstat().st_mtime or mtime < self.compiler.workspace.get_time_live_modified(file):
+        if mtime < file.lstat().st_mtime or mtime < self.workspace.get_time_live_modified(file):
             # The sourcefile of the module has been update
             # Or the sourcefile is currently open and has received live upates
             # Check in case the sourcefile was empty previously and didnt have any symbols or dependencies
@@ -123,7 +126,7 @@ class Linker:
             paths = set(symbol.location.path for symbol in obj.symbol_table)
             paths |= set(dep.file_hint for dep in obj.dependencies)
             for path in paths:
-                if (path.is_file() and mtime < path.lstat().st_mtime) or mtime < self.compiler.workspace.get_time_live_modified(path):
+                if (path.is_file() and mtime < path.lstat().st_mtime) or mtime < self.workspace.get_time_live_modified(path):
                     return True
             return False
         except:
@@ -138,9 +141,9 @@ class Linker:
         ' Store an obj in cache. '
         self.cache[usemodule_on_stack].setdefault(str(file), {})[module] = (time(), obj)
 
-    def validate_linked_object(self, linked: StexObject, precompiled_objects: Dict[Path, StexObject] = {}):
+    def validate_linked_object(self, linked: StexObject):
         for ref in linked.references:
-            # TODO: Prevent validating references of modules that are not compiled yet? Use compile_and_link(required_module)?
+            # TODO: Prevent validating references of modules that are not compiled yet? Use link(required_module)?
             refname = "?".join(ref.name)
             try:
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)

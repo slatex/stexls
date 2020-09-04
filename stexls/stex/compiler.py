@@ -213,6 +213,18 @@ class Compiler:
         ' Returns the path to where the objectfile should be cached. '
         return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
 
+    @staticmethod
+    def load_from_objectfile(outdir: Path, file: Path) -> Optional[StexObject]:
+        ' Searches for the objectfile for <file> inside <outdir>, unpickles it and returns the object inside. '
+        objectfile = Compiler.get_objectfile_path(outdir, file)
+        if not objectfile.is_file():
+            return None
+        with open(objectfile, 'rb') as fd:
+            obj = pickle.load(fd)
+            if not isinstance(obj, StexObject):
+                raise Exception(f'Objectfile for "{file}" is corrupted.')
+            return obj
+
     def recompilation_required(self, file: Path):
         ' Returns true if the file wasnt compiled yet or if the objectfile is older than the last edit to the file. '
         objectfile = Compiler.get_objectfile_path(self.outdir, file)

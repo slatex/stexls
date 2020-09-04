@@ -17,8 +17,7 @@ import logging
 log = logging.getLogger(__name__)
 
 class Linker:
-    def __init__(self, compiler: Compiler):
-        self.compiler = compiler
+    def __init__(self, workspace: Workspace, compiler_outdir: Path):
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}
 
@@ -188,122 +187,17 @@ class Linker:
                         linked.errors.setdefault(ref.range, []).append(
                             LinkError(f'Referenced symbol "{refname}" of wrong type: Expected "binding", found {ref.reference_type.format_enum()}'))
 
-
-    def _validate_references(self, links: Dict[StexObject, StexObject]):
-        """ This method finds errors related to unreferenced symbols and referenced symbols that are marked as noverb. """
-        unreferenced: Dict[Location, Dict[Symbol, StexObject]] = dict()
-        referenced_locations: Set[Location] = set()
-        for origin, link in self.links.items():
-            binding: BindingSymbol = next(origin.bindings, None)
-            language: str = binding.lang if binding else None
-            for id, symbols in origin.symbol_table.items():
-                if id.symbol_type == SymbolType.BINDING:
-                    continue
-                for symbol in symbols:
-                    unreferenced.setdefault(symbol.location, dict())[symbol] = link
-            for path, ranges in origin.references.items():
-                for range, referenced_id in ranges.items():
-                    if referenced_id.symbol_type == SymbolType.BINDING:
-                        continue
-                    for referenced_symbol in link.symbol_table.get(referenced_id, ()):
-                        referenced_locations.add(referenced_symbol.location)
-                        if origin not in links:
-                            continue
-                        if isinstance(referenced_symbol, DefSymbol):
-                            referenced_symbol: DefSymbol
-                            # additionally if the reference is a verb check also that it is not marked noverb
-                            if referenced_symbol.noverb:
-                                reference_location = Location(path.as_uri(), range)
-                                link.errors.setdefault(reference_location, []).append(
-                                    LinkError(f'Referenced "noverb" symbol "{referenced_id.identifier}" defined at "{referenced_symbol.location.format_link()}"'))
-                            # and that the language of the current origin is not listed in the noverb languages
-                            if language in referenced_symbol.noverbs:
-                                reference_location = Location(path.as_uri(), range)
-                                link.errors.setdefault(reference_location, []).append(
-                                    LinkError(f'Referenced symbol "{referenced_id.identifier}" is marked "noverb" for the language "{language}" at "{referenced_symbol.location.format_link()}"'))
-        for ref, symbols in unreferenced.items():
-            if ref not in referenced_locations:
-                for symbol, link in symbols.items():
-                    if link not in links.values():
-                        continue
-                    if isinstance(symbol, DefSymbol):
-                        if symbol.definition_type == DefinitionType.DEFI:
-                            # Defi definitions are their own reference
-                            continue
-                        if symbol.noverb:
-                            # Noverbs are expected to be never referenced and errors are created above if they are referenced
-                            continue
-                        if symbol.noverbs:
-                            langs = format_enumeration(symbol.noverbs)
-                            link.errors.setdefault(symbol.location, []).append(
-                                Info(f'Symbol marked as noverb for the language(s) {langs} is never referenced: {symbol.qualified_identifier.identifier}'))
-                            continue
-                    if not (isinstance(symbol, DefSymbol) and symbol.definition_type == DefinitionType.DEFI):
-                        link.errors.setdefault(symbol.location, []).append(
-                            Info(f'Symbol never referenced: {symbol.qualified_identifier.identifier}'))
-
-    def relevant_objects(self, file: Path, line: int, column: int, unlinked: bool = False) -> Iterator[StexObject]:
-        """ Determines the stex objects at the current coursor position.
-
-        Parameters:
-            file: Current file.
-            line: 0 indexed line of cursor.
-            column: 0 indexed column of cursor.
-            unlinked: If true, returns the unlinked object instead of the linked one.
-
-        Returns:
-            Objects at the specified location. If unlinked is set, then the original objects are yielded,
-            if false, then the linked objects will be yielded.
-        """
-        for object in self.objects.get(file, ()):
-            if unlinked:
-                yield object
-                continue
-            if object.module:
-                for module in object.symbol_table.get(object.module, ()):
-                    if module.full_range.contains(Position(line, column)):
-                        if object in self.links:
-                            yield self.links[object]
-            elif object in self.links:
-                yield self.links[object]
-
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
         """ Finds definitions at the current cursor position.
 
         Returns:
             List of tuples with (the range used to create the link on mouse hover, The symbol found at the location)
         """
-        definitions: Dict[int, List[Tuple[Range, Symbol]]] = {}
-        position = Position(line, column)
-        origin = Location(file.as_uri(), position)
-        for object in self.relevant_objects(file, line, column):
-            for id, symbols in object.symbol_table.items():
-                for symbol in symbols:
-                    if symbol.location.contains(origin):
-                        range = symbol.location.range
-                        definitions.setdefault(range.length, []).append((range, symbol))
-            for range, id in object.references.get(file, {}).items():
-                if range.contains(position):
-                    for symbol in object.symbol_table.get(id, ()):
-                        definitions.setdefault(range.length, []).append((range, symbol))
-        if definitions:
-            return definitions[min(definitions)]
-        else:
-            return []
+        # TODO
 
     def references(self, symbol: Symbol) -> List[Location]:
         """ Finds all references to the specified symbol (only if the symbol is properly imported). """
-        references = []
-        for _, link in self.links.items():
-            if symbol.location.path not in link.files:
-                # ignore this link if the file of the symbol
-                # is not even imported by the link
-                continue
-            for path, ranges in link.references.items():
-                for range, id in ranges.items():
-                    if symbol.qualified_identifier == id:
-                        references.append(Location(path.as_uri(), range))
-        return references
+        # TODO
 
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:
@@ -338,10 +232,3 @@ class Linker:
                 G.edge(origin, target)
         G.view(directory='/tmp/stexls')
 
-
-if __name__ == '__main__':
-    from stexls.util.workspace import Workspace
-    from tempfile import TemporaryDirectory
-    c = Compiler(Workspace(Path('~/MathHub').expanduser()), Path(TemporaryDirectory().name))
-    ln = Linker(c)
-    o = ln.compile_and_link(Path('/home/marian/MathHub/MiKoMH/talks/source/sTeX/ex/sTeX-modules-ex.tex'))

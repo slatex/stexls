@@ -128,6 +128,12 @@ class StexObject:
         cpy.errors = {r: l.copy() for r, l in self.errors.items()}
         return cpy
 
+    def is_symbol_exported(self, symbol: Symbol) -> bool:
+        ' Returns true if the symbol is exported by the object. E.g.: It and all parents of it are public. '
+        while symbol and symbol.access_modifier == AccessModifier.PUBLIC:
+            symbol = symbol.parent
+        return not symbol or symbol.access_modifier == AccessModifier.PUBLIC
+
     def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType, scope: Symbol = None) -> List[str]:
         ' Find simlar symbols with reference to a qualified name and an expected symbol type.  If scope is specified only symbols from that scope will be looked at. '
         names = []

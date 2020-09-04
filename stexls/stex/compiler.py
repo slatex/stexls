@@ -333,7 +333,7 @@ class Compiler:
                 CompilerError(f'Invalid modnl location: Parent is not root'))
         if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
             obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
-        binding = BindingSymbol(modnl.location, modnl.name, modnl.lang)
+        binding = BindingSymbol(modnl.location, modnl.name.text, modnl.lang)
         try:
             context.add_child(binding)
         except DuplicateSymbolDefinedException:

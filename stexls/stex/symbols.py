@@ -319,6 +319,9 @@ class ScopeSymbol(Symbol):
     def __init__(self, location: Location):
         super().__init__(location, f'__ANONYMOUS_SCOPE{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
+        # TODO: Should all symbols added to a scope never be exported?
+        # TODO: Access mod probably should be PRIVATE
+        self.access_modifier = AccessModifier.PUBLIC
 
     def copy(self) -> ScopeSymbol:
         ' Creates a shallow copy without parent and child information. '

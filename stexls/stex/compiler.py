@@ -147,7 +147,7 @@ class StexObject:
         (scope or self.symbol_table).traverse(lambda s: f(ref_type, names, s))
         return difflib.get_close_matches('?'.join(qualified), names)
 
-    def format(self):
+    def format(self) -> str:
         f = f'\nFile: "{self.file}"'
         f += '\nDependencies:'
         if self.dependencies:
@@ -177,7 +177,7 @@ class StexObject:
             l.append(f'{"-"*s.depth}> {s}')
         self.symbol_table.traverse(lambda s: enter(l, s))
         f += '\n' + '\n'.join(l)
-        print(f)
+        return f
 
     def add_dependency(self, dep: Dependency):
         """ Registers a dependency that the owner file has to the in the dependency written file and module.

@@ -52,7 +52,7 @@ class Symbol:
             name: Identifier of this symbol relative to it's parent.
         """
         assert location is not None, "Invalid symbol location"
-        assert name is not None, "Invalid symbol name"
+        assert isinstance(name, str), "Member 'name' is not of type str"
         self.name = name
         self.parent: Optional[Symbol] = None
         self.children: Dict[str, List[Symbol]] = dict()

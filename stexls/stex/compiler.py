@@ -415,6 +415,7 @@ class Compiler:
                 # A defi without a parent module doesn't generate a reference
                 obj.errors.setdefault(defi.location.range, []).append(
                     CompilerError(f'Invalid defi: "{defi.name}" does not have a module.'))
+                return
             obj.add_reference(
                 Reference(
                     range=defi.location.range,

@@ -30,7 +30,7 @@ class Linter:
         o = self.compiler.compile(file)
         for dep in o.dependencies:
             if self.compiler.recompilation_required(dep.file_hint):
-                self.compile_related(file)
+                self.compile_related(dep.file_hint)
 
     def compile_workspace(self):
         files = list(filter(self.compiler.recompilation_required, self.workspace.files))

@@ -23,15 +23,18 @@ __all__ = [
 class AccessModifier(Enum):
     PUBLIC='public'
     PRIVATE='private'
+    # TODO: Unused?
     PROTECTED='protected'
 
 
 class ModuleType(Enum):
+    ' For module symbols: Used to remember which latex environment created this module. '
     MODSIG='modsig'
     MODULE='module'
 
 
 class DefType(Enum):
+    ' For definitions: Used to remember which latex environment created this module (e.g.: defii{}, symii{}, symdef{} or drefi{}) '
     DEF='def'
     DREF='dref'
     SYMDEF='symdef'

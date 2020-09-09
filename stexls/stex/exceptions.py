@@ -1,4 +1,6 @@
 
+# TODO: Maybe a seperate exceptions module is not needed and the module that creates their respective exception should declare the needed exceptions in their module?
+
 class CompilerError(Exception):
     pass
 

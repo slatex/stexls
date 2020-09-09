@@ -1,8 +1,10 @@
-from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict, Pattern, Iterable, Iterator, Callable
+""" This module contains the linker that links 
+
+The idea here is that it mirrors the "ln" command for c++.
+The ln command takes a list of c++ objects and resolves the symbol references inside them.
+"""
+from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
-import functools
-import multiprocessing
-import pickle
 from stexls.vscode import *
 from stexls.stex.compiler import StexObject, Compiler, Dependency, Reference, ReferenceType
 from stexls.stex.symbols import *
@@ -17,6 +19,14 @@ import logging
 log = logging.getLogger(__name__)
 
 class Linker:
+    """
+    This linker does the same thing as the "ln", except that the name of the object file is inferred from the name of
+    the sourcefile and the dependent objectfiles are also inferred from the dependencies inside the
+    objects.
+
+    A "ln dep1.o dep2.o main.o -o a.out" command is the same as "aout = Linker(...).link(main.tex)"
+    Notice the main.o and main.tex inputs respectively.
+    """
     def __init__(self, compiler: Compiler):
         self.compiler = compiler
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]

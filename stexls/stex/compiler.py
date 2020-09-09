@@ -548,15 +548,21 @@ class Compiler:
 
     def _compile_gstructure(self, obj: StexObject, context: Symbol, tree: GStructureIntermediateParseTree):
         # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class. 
-        # TODO: If content of the gstructure environment is not important, do not return anything
+        # TODO: If content of the gstructure environment is not important, do not return anything, and delete the "next_context = " line in Compiler._enter.
+
+        # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_view(self, obj: StexObject, context: Symbol, tree: ViewIntermediateParseTree):
         # TODO: Compile view and return either a Scope symbol or create a new ViewSymbol class. 
+
+        # Hint: Da view nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_viewsig(self, obj: StexObject, context: Symbol, tree: ViewSigIntermediateParseTree):
         # TODO: Compile viewsig and return either a Scope symbol or create a new ViewSigSymbol class. 
+
+        # Hint: Da viewsig nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):

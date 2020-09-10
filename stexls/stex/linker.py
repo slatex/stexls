@@ -1,8 +1,10 @@
-from typing import List, Dict, Tuple, Set, Iterator, Optional, OrderedDict, Pattern, Iterable, Iterator, Callable
+""" This module contains the linker that links 
+
+The idea here is that it mirrors the "ln" command for c++.
+The ln command takes a list of c++ objects and resolves the symbol references inside them.
+"""
+from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
-import functools
-import multiprocessing
-import pickle
 from stexls.vscode import *
 from stexls.stex.compiler import StexObject, Compiler, Dependency, Reference, ReferenceType
 from stexls.stex.symbols import *
@@ -18,12 +20,20 @@ import logging
 log = logging.getLogger(__name__)
 
 class Linker:
+    """
+    This linker does the same thing as the "ln", except that the name of the object file is inferred from the name of
+    the sourcefile and the dependent objectfiles are also inferred from the dependencies inside the
+    objects.
+
+    A "ln dep1.o dep2.o main.o -o a.out" command is the same as "aout = Linker(...).link(main.tex)"
+    Notice the main.o and main.tex inputs respectively.
+    """
     def __init__(self, workspace: Workspace, compiler_outdir: Path):
+        # TODO: Remove workspace dependency: The linker should not be responsible for checking updates
         # Workspace required for time modified checking for files
         self.workspace = workspace
         # Directory in which the compiler stores the compiled objects
         self.outdir = compiler_outdir
-        # This caches all already linked objects. These are loaded each time some import is made, instead of linking again.
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
         # ModuleName is the name of the Module that is guaranteed to be fully linked inside StexObject
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}

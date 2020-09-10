@@ -1,19 +1,31 @@
+"""
+This module contains the compiler for stexls files with *.tex extensions.
+
+The idea behind the compiler is that it mirrors a c++ compiler, which takes
+c/c++ files and compiles them into *.o object files.
+This compiler also creates object files with the *.stexobj extension.
+They don't contain executable information like gcc objects, but symbol
+names and locations. Also references to symbols and dependencies created
+by import statements are recorded. Everything with location information, in order
+to produce good error messages later.
+
+Every object is only compiled with it's local information and dependencies are not
+resolved here. In order to get global information the dependencies need to be linked
+using the linker from the linker module and then the linter from the linter package.
+"""
 from __future__ import annotations
-from typing import Dict, Optional, Set, Union, Iterable, Callable, List, Tuple, OrderedDict
+from typing import Dict, List, Tuple
 from pathlib import Path
 from hashlib import sha1
 import difflib
-import multiprocessing
 import pickle
-import itertools
 import functools
-import glob
 import logging
 from enum import Flag
 
 log = logging.getLogger(__name__)
 
-from stexls.vscode import DocumentUri, Position, Range, Location
+from stexls.vscode import Position, Range, Location
 from stexls.util.workspace import Workspace
 from stexls.util.format import format_enumeration
 
@@ -57,6 +69,7 @@ class Dependency:
         self.export = export
 
     def pretty_format(self, file: Path = None):
+        ' A simple formatting method for debugging. '
         export = 'public' if self.export else 'private'
         if file:
             loc = f'{file}:{self.range.start.line}:{self.range.start.character}: '
@@ -65,6 +78,7 @@ class Dependency:
         return loc + f'{export} Import {self.module_type_hint.name} "{self.module_name}" from "{self.file_hint}"'
 
     def check_if_same_module_imported(self, other: Dependency):
+        ' Returns true if two dependencies point to the same module. '
         if self.module_name == other.module_name:
             if self.scope == other.scope or self.scope.is_parent_of(other.scope):
                 return True
@@ -75,12 +89,19 @@ class Dependency:
 
 
 class ReferenceType(Flag):
+    """ The reference type is the expected type of the symbol pointed to by a reference.
+
+    The statement used to generate the reference usually knows which types of symbols
+    are expected. After the reference is resolved the symbol type and expected reference
+    type can be compared in order to detect errors.
+    """
     MODULE=1
     MODSIG=2
     DEF=4
     BINDING=8
 
     def format_enum(self):
+        ' Formats the flag as a list in case multiple are possible like: "module" or "modsig" for ReferenceType.MODULE|MODSIG '
         l = []
         for exp in range(0, 3):
             mask = 2**exp
@@ -90,7 +111,17 @@ class ReferenceType(Flag):
 
 
 class Reference:
+    ' Container that contains information about which symbol is referenced by name. '
     def __init__(self, range: Range, scope: Symbol, name: Iterable[str], reference_type: ReferenceType):
+        """ Initializes the reference container.
+
+        Parameters:
+            range: Location at which the reference is created.
+            scope: The parent symbol which contains range. Used to create error messages.
+            name: Path to the symbol.
+            reference_type: Expected type of the resolved symbol.
+                Hint: The reference type can be or'd together to create more complex references.
+        """
         assert range is not None
         assert name is not None
         assert all(isinstance(i, str) for i in name)
@@ -101,20 +132,30 @@ class Reference:
 
     @property
     def qualified_name(self) -> Iterable[str]:
+        ' Creates a qualified name for the symbol relative to the root of the scope. '
         return (*self.scope.qualified, *self.name)
 
     def __repr__(self): return f'[Reference {self.reference_type.name} "{self.name}" at {self.range}]'
 
 
 class StexObject:
+    """ Stex objects contain all the local information about dependencies, symbols and references in one file,
+    as well as a list of errors that occured during parsing and compiling.
+    """
     def __init__(self, file: Path):
+        """ Initializes an object.
+
+        Parameters:
+            file: The file which was compiled.
+        """
         # Path to source file from which this object is generated
         self.file = file
-        # Symbol table with definitions: Key is symbol name for easy search access by symbol name
+        # Root symbol tabel. All new symbols are added first to this.
+        # TODO: Root location range should be the whole file.
         self.symbol_table: Symbol = Symbol(Location(file.as_uri(), Position(0, 0)), _ROOT_)
-        # Dict of the ranges at which a dependency was create to the dependency that was created there.
+        # List of dependencies this file has. There may exist multiple scopes with the same module/file as dependency.
         self.dependencies: List[Dependency] = list()
-        # List of references. A reference consists of a range relative to the file that owns the reference and the referenced file or symbol identifier.
+        # List of references. A reference consists of a range relative to the file that owns the reference and the symbol identifier that is referenced.
         self.references: List[Reference] = list()
         # Accumulator for errors that occured at <range> of this file.
         self.errors: Dict[Range, List[Exception]] = dict()
@@ -148,6 +189,7 @@ class StexObject:
         return difflib.get_close_matches('?'.join(qualified), names)
 
     def format(self) -> str:
+        ' Simple formatter for debugging, that prints out all information in this object. '
         f = f'\nFile: "{self.file}"'
         f += '\nDependencies:'
         if self.dependencies:
@@ -181,6 +223,9 @@ class StexObject:
 
     def add_dependency(self, dep: Dependency):
         """ Registers a dependency that the owner file has to the in the dependency written file and module.
+        
+        Multiple dependencies from the same scope to the same module in the same file will be prevented from adding
+        and import warnings will be generated.
 
         Parameters:
             dep: Information about the dependency.
@@ -204,19 +249,33 @@ class StexObject:
 
 
 class Compiler:
+    """ This is the compiler class that mirrors a gcc command.
+
+    The idea is that "c++ main.cpp -c -o outdir/main.o" is equal to "Compiler(., outdir).compile(main.tex)"
+    Important is the -c flag, as linking is seperate in our case.
+    """
     def __init__(self, workspace: Workspace, outdir: Path):
+        """ Creates a new compile for a workspace and output directory.
+
+        Parameters:
+            workspace: The workspace that records buffered but unsaved changes to files.
+            outdir: Directory into which compiled objects will be stored.
+        """
         # TODO: Having the workspace be part of the compiler may make multiprocessing too slow
+        # TODO: Workspace should not be part of the compiler
         self.workspace = workspace
         self.outdir = outdir.expanduser().resolve().absolute()
 
     @staticmethod
     def compute_objectfile_path_hash(path: Path) -> str:
         ' Computes an hash from the path of a source file. '
+        # TODO: This should maybe be inlined into get_objectfile_path
         return sha1(path.parent.as_posix().encode()).hexdigest()
 
     @staticmethod
     def get_objectfile_path(outdir: Path, file: Path) -> Path:
         ' Returns the path to where the objectfile should be cached. '
+        # TODO: This maybe should not be part of the compiler class, but instead some kind of manager class, that manages storage of objectfiles
         return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
 
     @staticmethod
@@ -233,6 +292,7 @@ class Compiler:
 
     def recompilation_required(self, file: Path):
         ' Returns true if the file wasnt compiled yet or if the objectfile is older than the last edit to the file. '
+        # TODO: Should be refactored together with self.workspace member
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
         if not objectfile.is_file():
             return True
@@ -262,11 +322,13 @@ class Compiler:
         Raises:
             FileNotFoundError: If the source file is not a file.
         """
+        # TODO: When self.workspace gets refactored, add a content= parameter again, that allows for compilation of buffered sourcefiles
         file = file.expanduser().resolve().absolute()
         if not file.is_file():
             raise FileNotFoundError(f'"{file}" is not a file.')
         objectfile = Compiler.get_objectfile_path(self.outdir, file)
         objectdir = objectfile.parent
+        # TODO: The workspace read_file and is_open operations should be performed by the user and should not be part of the compiler. The compile should always compile the given file even if the objectfile is not being updated.
         for _ in range(2): # give it two attempts to figure out whats going on
             content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
             if self.recompilation_required(file):
@@ -503,7 +565,32 @@ class Compiler:
         context.add_child(scope)
         return scope
 
+    def _compile_gstructure(self, obj: StexObject, context: Symbol, tree: GStructureIntermediateParseTree):
+        # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class. 
+        # TODO: If content of the gstructure environment is not important, do not return anything, and delete the "next_context = " line in Compiler._enter.
+
+        # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+        return None
+
+    def _compile_view(self, obj: StexObject, context: Symbol, tree: ViewIntermediateParseTree):
+        # TODO: Compile view and return either a Scope symbol or create a new ViewSymbol class. 
+
+        # Hint: Da view nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+        return None
+
+    def _compile_viewsig(self, obj: StexObject, context: Symbol, tree: ViewSigIntermediateParseTree):
+        # TODO: Compile viewsig and return either a Scope symbol or create a new ViewSigSymbol class. 
+
+        # Hint: Da viewsig nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+        return None
+
     def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
+        """ This manages the enter operation of the intermediate parse tree into relevant environemnts.
+        
+        Each relevant intermediate environment is compiled here and compile operations of environments that are in \\begin{} & \\end{}
+        tags usually return a new context symbol that allows for other compile operations that are executed before this one
+        is exited, to attach the inner symbols to that context.
+        """
         _, current_context = context[-1]
         next_context = None
         if isinstance(tree, ScopeIntermediateParseTree):
@@ -527,15 +614,17 @@ class Compiler:
         elif isinstance(tree, GImportIntermediateParseTree):
             self._compile_gimport(obj, current_context, tree)
         elif isinstance(tree, GStructureIntermediateParseTree):
-            pass
+            # TODO: Remove "next_context = " in case that gstructure doesn't return a symbol
+            next_context = self._compile_gstructure(obj, current_context, tree)
         elif isinstance(tree, ViewIntermediateParseTree):
-            pass
+            next_context = self._compile_view(obj, current_context, tree)
         elif isinstance(tree, ViewSigIntermediateParseTree):
-            pass
+            next_context = self._compile_viewsig(obj, current_context, tree)
         if next_context:
             context.append((tree, next_context))
 
     def _compile_exit(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
+        " This manages the symbol table context structure, nothing should be done here. Everytime the tree that opened a new context symbol is exited, the context symbol must be replaced as well. "
         current_context_tree, _ = context[-1]
         if current_context_tree == tree:
             context.pop()

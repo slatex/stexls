@@ -1,3 +1,10 @@
+""" This module contains the parser class that
+parses *.tex files and tosses away all information not relevant for the later
+compilation and linking steps of *.stexobj files.
+
+This parses therefore doesn't just parse the *.tex files but also filters and
+preparses the contents in order to create an intermediate parse tree.
+"""
 from __future__ import annotations
 from typing import Callable, Optional, Tuple, List, Dict, Set
 from pathlib import Path
@@ -33,6 +40,7 @@ __all__ = (
 
 
 class IntermediateParseTree:
+    ' Base class for a parse tree specializations. '
     def __init__(self, location: Location):
         self.location = location
         self.children: List[IntermediateParseTree] = []
@@ -44,11 +52,17 @@ class IntermediateParseTree:
         child.parent = self
 
     def find_parent_module_name(self) -> Optional[str]:
+        """ Finds the first intermediate tree that can give us information about in which module we currently
+        are and returns the name of that module. This is required because some environments create module symbols
+        and already know the real module symbol at the compilation step (like modsig), but some environments only give us information
+        about the module name (like bindings).
+        """
         if self.parent:
             return self.parent.find_parent_module_name()
         return None
 
     def find_parent_module_parse_tree(self) -> Optional[IntermediateParseTree]:
+        ' Returns the parse tree with information about the parent module name. '
         if self.parent:
             return self.parent.find_parent_module_parse_tree()
         return None
@@ -149,6 +163,7 @@ class IntermediateParser:
 
 
 class TokenWithLocation:
+    ' Just some container for the text inside range of the file that owns an instance of this class. '
     def __init__(self, text: str, range: Range):
         self.text = text
         self.range = range
@@ -158,6 +173,7 @@ class TokenWithLocation:
 
     @staticmethod
     def parse_oargs(oargs: List[OArgument]) -> Tuple[List[TokenWithLocation], Dict[str, TokenWithLocation]]:
+        ' Returns a tuple of a list and a dict of named and unnamed optional latex arguments respectively. '
         unnamed = [
             TokenWithLocation.from_node(oarg.value)
             for oarg in oargs
@@ -207,12 +223,14 @@ class TokenWithLocation:
 
     @staticmethod
     def from_node_union(nodes: List[Node], separator: str = ',') -> Optional[TokenWithLocation]:
+        # TODO: Can be deleted?
         tags = map(TokenWithLocation.from_node, nodes)
         values, ranges = zip(*((tok.text, tok.range) for tok in tags))
         return TokenWithLocation(separator.join(values), Range.big_union(ranges))
 
 
 class ScopeIntermediateParseTree(IntermediateParseTree):
+    ' A scope is a new scope that seperates import statements from each other and prevent being imported from another file. '
     PATTERN = re.compile(r'n?omtext|example|omgroup|frame')
     def __init__(self, location: Location, scope_name: TokenWithLocation):
         super().__init__(location)
@@ -772,6 +790,17 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         dir: Optional[str],
         load: Optional[str],
         module: str):
+        """ Reconstructs the path to the module imported by a Import statement. (Warning: not gimport!)
+
+        Parameters:
+            root: The mathhub root directory.
+            current_file: File where the import statement is located in.
+            mhrepo: Optional latex environment argument mhrepo=
+            path: Optional latex environment argument path=
+            dir: Optional latex environment argument dir=
+            load: Optional latex environment argument load=
+            module: The module name extracted from the required latex arguments.
+        """
         if load:
             return (root / load / (module + '.tex')).expanduser().resolve().absolute()
         if not mhrepo and not path and not dir:
@@ -789,6 +818,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         return result.expanduser().resolve().absolute()
 
     def path_to_imported_file(self, root: Path) -> Path:
+        ' Calls the classmethod build_path_to_imported_module with information from this instance. '
         return ImportModuleIntermediateParseTree.build_path_to_imported_module(
             root,
             self.location.path,

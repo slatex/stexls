@@ -10,14 +10,14 @@ class Linter:
     def __init__(
         self,
         workspace: Workspace,
-        outdir: Path,
+        outdir: Path = None,
         format_parseable: bool = False,
         enable_global_reference_counting: bool = False,
         enable_global_name_suggestions: bool = False,
         num_jobs: int = 1,
         on_progress_fun: Callable[[Iterable, int], None] = None):
         self.workspace = workspace
-        self.outdir = outdir
+        self.outdir = outdir or (Path.cwd() / 'objects')
         self.format_parsable = format_parseable
         self.enable_global_reference_counting = enable_global_reference_counting
         self.enable_global_name_suggestions = enable_global_name_suggestions

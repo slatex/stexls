@@ -21,6 +21,7 @@ class Linter:
         self.format_parsable = format_parseable
         self.enable_global_reference_counting = enable_global_reference_counting
         self.enable_global_name_suggestions = enable_global_name_suggestions
+        self._global_step = enable_global_name_suggestions or enable_global_reference_counting
         self.num_jobs = num_jobs
         self.on_progress_fun = on_progress_fun
         self.compiler = Compiler(workspace, outdir)
@@ -42,7 +43,7 @@ class Linter:
                 pool.map(self.compiler.compile, files)
 
     def lint(self, file: Path) -> int:
-        if self.enable_global_name_suggestions or self.enable_global_reference_counting:
+        if self._global_step:
             self.compile_workspace()
         else:
             self.compile_related(file)

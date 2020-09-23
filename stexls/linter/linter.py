@@ -24,8 +24,8 @@ class Linter:
         self._global_step = enable_global_name_suggestions or enable_global_reference_counting
         self.num_jobs = num_jobs
         self.on_progress_fun = on_progress_fun
-        self.compiler = Compiler(workspace, outdir)
-        self.linker = Linker(workspace, outdir)
+        self.compiler = Compiler(workspace, self.outdir)
+        self.linker = Linker(workspace, self.outdir)
 
     def compile_related(self, file: Path):
         o = self.compiler.compile(file)

@@ -235,7 +235,7 @@ class StexObject:
                 # Skip adding this dependency
                 location = Location(self.file.as_uri(), dep0.range)
                 self.errors.setdefault(dep.range, []).append(
-                    Warning(f'Import of same modue "{dep.module_name}" at "{location.format_link()}"'))
+                    Warning(f'Redundant import of module "{dep.module_name}" at "{location.format_link()}"'))
                 return
         self.dependencies.append(dep)
 

@@ -39,7 +39,7 @@ class Linker:
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
-        ' Links <imported> to <obj> to the scope specified in <dependency> '
+        ' Links <imported> to <obj> at the scope specified in <dependency> '
         alts = imported.symbol_table.lookup(dependency.module_name)
         if len(alts) > 1:
             obj.errors.setdefault(dependency.range, []).append(

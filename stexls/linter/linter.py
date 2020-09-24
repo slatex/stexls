@@ -1,10 +1,12 @@
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Dict
 from pathlib import Path
 from multiprocessing import Pool
 from stexls.vscode import Location
 from stexls.stex import *
 from stexls.util.workspace import Workspace
+import logging
 
+log = logging.getLogger(__name__)
 
 class Linter:
     def __init__(
@@ -24,14 +26,30 @@ class Linter:
         self._global_step = enable_global_name_suggestions or enable_global_reference_counting
         self.num_jobs = num_jobs
         self.on_progress_fun = on_progress_fun
-        self.compiler = Compiler(workspace, self.outdir)
-        self.linker = Linker(workspace, self.outdir)
+        self.compiler = Compiler(self.workspace.root, self.outdir)
+        self.linker = Linker(self.outdir)
 
-    def compile_related(self, file: Path):
-        o = self.compiler.compile(file)
-        for dep in o.dependencies:
-            if self.compiler.recompilation_required(dep.file_hint):
-                self.compile_related(dep.file_hint)
+    def compile_related(self, file: Path) -> Dict[Path, StexObject]:
+        queue = [file]
+        visited = {}
+        while queue:
+            file = queue.pop()
+            if file in visited:
+                continue
+            if self.compiler.recompilation_required(file):
+                try:
+                    o = self.compiler.compile(file)
+                except FileNotFoundError as err:
+                    log.exception(f'Unable to compile related file: "{err}"')
+                    continue
+            else:
+                o = self.compiler.load_from_objectfile(file)
+            visited[file] = o
+            for dep in o.dependencies:
+                if dep.file_hint in queue:
+                    continue
+                queue.append(dep.file_hint)
+        return visited
 
     def compile_workspace(self):
         files = list(filter(self.compiler.recompilation_required, self.workspace.files))
@@ -45,14 +63,14 @@ class Linter:
     def lint(self, file: Path) -> int:
         if self._global_step:
             self.compile_workspace()
-        else:
-            self.compile_related(file)
-        ln = self.linker.link(file)
+        objects = self.compile_related(file)
+        ln = self.linker.link(objects, file)
+        # TODO: lint() should not automatically print the results: Return a LintingResult that has a format().
         if self.format_parsable:
             self._format_parseable(ln)
         else:
             self._format_messages(ln)
-        return len(ln.errors)
+        return ln, len(ln.errors)
 
     def _format_messages(self, obj: StexObject):
         for range, errors in obj.errors.items():

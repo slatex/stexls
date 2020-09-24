@@ -1,4 +1,4 @@
-""" This module contains the linker that links 
+""" This module contains the linker that links
 
 The idea here is that it mirrors the "ln" command for c++.
 The ln command takes a list of c++ objects and resolves the symbol references inside them.
@@ -11,7 +11,6 @@ from stexls.stex.symbols import *
 from stexls.stex.exceptions import *
 from stexls.stex import util
 from stexls.util.format import format_enumeration
-from stexls.util.workspace import Workspace
 from time import time
 
 __all__ = ['Linker']
@@ -28,10 +27,7 @@ class Linker:
     A "ln dep1.o dep2.o main.o -o a.out" command is the same as "aout = Linker(...).link(main.tex)"
     Notice the main.o and main.tex inputs respectively.
     """
-    def __init__(self, workspace: Workspace, compiler_outdir: Path):
-        # TODO: Remove workspace dependency: The linker should not be responsible for checking updates
-        # Workspace required for time modified checking for files
-        self.workspace = workspace
+    def __init__(self, compiler_outdir: Path):
         # Directory in which the compiler stores the compiled objects
         self.outdir = compiler_outdir
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
@@ -59,13 +55,14 @@ class Linker:
 
     def link(
         self,
+        objects: Dict[Path, StexObject],
         file: Path,
         required_symbol_names: List[str] = None,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
         # load the objectfile
-        obj = Compiler.load_from_objectfile(self.outdir, file)
+        obj = objects.get(file)
         if not obj:
             raise NotCompiledError(f'Sourcefile is not compiled and no objectfile was found: "{file}"')
         # initialize the stack if not already initialized
@@ -93,11 +90,15 @@ class Linker:
                         f' creates cycle at "{Location(file.as_uri(), dep.range).format_link()}"'))
                 continue
             update_usemodule_on_stack = _usemodule_on_stack or not dep.export
-            if self._relink_required(dep.file_hint, dep.module_name, update_usemodule_on_stack):
+            if not dep.file_hint in objects:
+                obj.errors.setdefault(dep.range, []).append(NotCompiledError(f'Dependency "{dep.file_hint}" not found or not compiled.'))
+                continue
+            if self._relink_required(objects, dep.file_hint, dep.module_name, update_usemodule_on_stack):
                 # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
                 _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
                 try:
                     imported = self.link(
+                        objects=objects,
                         file=dep.file_hint,
                         required_symbol_names=[dep.module_name],
                         _stack=_stack,
@@ -119,24 +120,22 @@ class Linker:
         self.validate_linked_object(obj)
         return obj
 
-    def _relink_required(self, file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
+    def _relink_required(self, compiled_objects: Dict[Path, StexObject], file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
         ' Returns True if the module in the file was not linked yet or if a newer version can be created. '
-        # TODO: Integration of workspace.is_open and file time modified check can be done better maybe
         mtime, obj = self._load_linked(usemodule_on_stack, file, module_name)
         if not obj:
             # Module not cached
             return True
-        if mtime < file.lstat().st_mtime or mtime < self.workspace.get_time_live_modified(file):
-            # The sourcefile of the module has been update
-            # Or the sourcefile is currently open and has received live upates
-            # Check in case the sourcefile was empty previously and didnt have any symbols or dependencies
+        if file in compiled_objects and mtime < compiled_objects[file].creation_time:
+            # The sourcefile has been recompiled for some reason
             return True
         try:
             # Check whether any file referenced by a dependency or symbol is newer than this link
             paths = set(symbol.location.path for symbol in obj.symbol_table)
             paths |= set(dep.file_hint for dep in obj.dependencies)
             for path in paths:
-                if (path.is_file() and mtime < path.lstat().st_mtime) or mtime < self.workspace.get_time_live_modified(path):
+                if path in compiled_objects and mtime < compiled_objects[path].creation_time:
+                    # The object of a dependency has been recompiled
                     return True
             return False
         except:
@@ -156,6 +155,7 @@ class Linker:
             # TODO: Prevent validating references of modules that are not compiled yet? Use link(required_module)?
             refname = "?".join(ref.name)
             try:
+                # TODO: Suggestions maybe should always be handled by the global_step of the linter
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)
                 if not resolved:
                     suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type, ref.scope), last='or')

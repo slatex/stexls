@@ -17,16 +17,17 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 from pathlib import Path
 from hashlib import sha1
+import datetime
 import difflib
 import pickle
 import functools
 import logging
+from time import time
 from enum import Flag
 
 log = logging.getLogger(__name__)
 
 from stexls.vscode import Position, Range, Location
-from stexls.util.workspace import Workspace
 from stexls.util.format import format_enumeration
 
 from .parser import *
@@ -135,7 +136,8 @@ class Reference:
         ' Creates a qualified name for the symbol relative to the root of the scope. '
         return (*self.scope.qualified, *self.name)
 
-    def __repr__(self): return f'[Reference {self.reference_type.name} "{self.name}" at {self.range}]'
+    def __repr__(self):
+        return f'[Reference  {".".join(self.qualified_name)} at {self.range.start.format()} of type {self.reference_type}]'
 
 
 class StexObject:
@@ -159,6 +161,8 @@ class StexObject:
         self.references: List[Reference] = list()
         # Accumulator for errors that occured at <range> of this file.
         self.errors: Dict[Range, List[Exception]] = dict()
+        # Stores creation time
+        self.creation_time = time()
 
     def copy(self) -> StexObject:
         ' Creates a full copy of the original. Any objects that are not directly referenced by the copy are expected to be constant. '
@@ -191,6 +195,7 @@ class StexObject:
     def format(self) -> str:
         ' Simple formatter for debugging, that prints out all information in this object. '
         f = f'\nFile: "{self.file}"'
+        f += f'\nCreation time: {datetime.datetime.fromtimestamp(self.creation_time)}'
         f += '\nDependencies:'
         if self.dependencies:
             for dep in self.dependencies:
@@ -216,14 +221,14 @@ class StexObject:
         f += '\nSymbol Table:'
         l = []
         def enter(l, s):
-            l.append(f'{"-"*s.depth}> {s}')
+            l.append(f'{"  "*s.depth}├ {s}')
         self.symbol_table.traverse(lambda s: enter(l, s))
         f += '\n' + '\n'.join(l)
         return f
 
     def add_dependency(self, dep: Dependency):
         """ Registers a dependency that the owner file has to the in the dependency written file and module.
-        
+
         Multiple dependencies from the same scope to the same module in the same file will be prevented from adding
         and import warnings will be generated.
 
@@ -254,34 +259,25 @@ class Compiler:
     The idea is that "c++ main.cpp -c -o outdir/main.o" is equal to "Compiler(., outdir).compile(main.tex)"
     Important is the -c flag, as linking is seperate in our case.
     """
-    def __init__(self, workspace: Workspace, outdir: Path):
-        """ Creates a new compile for a workspace and output directory.
+    def __init__(self, root: Path, outdir: Path):
+        """ Creates a new compiler
 
         Parameters:
-            workspace: The workspace that records buffered but unsaved changes to files.
+            root: Path to root directory.
             outdir: Directory into which compiled objects will be stored.
         """
-        # TODO: Having the workspace be part of the compiler may make multiprocessing too slow
-        # TODO: Workspace should not be part of the compiler
-        self.workspace = workspace
+        self.root_dir = root.expanduser().resolve().absolute()
         self.outdir = outdir.expanduser().resolve().absolute()
 
-    @staticmethod
-    def compute_objectfile_path_hash(path: Path) -> str:
-        ' Computes an hash from the path of a source file. '
-        # TODO: This should maybe be inlined into get_objectfile_path
-        return sha1(path.parent.as_posix().encode()).hexdigest()
-
-    @staticmethod
-    def get_objectfile_path(outdir: Path, file: Path) -> Path:
+    def get_objectfile_path(self, file: Path) -> Path:
         ' Returns the path to where the objectfile should be cached. '
         # TODO: This maybe should not be part of the compiler class, but instead some kind of manager class, that manages storage of objectfiles
-        return outdir / Compiler.compute_objectfile_path_hash(file) / (file.name + '.stexobj')
+        sha = sha1(file.parent.as_posix().encode()).hexdigest()
+        return self.outdir / sha / (file.name + '.stexobj')
 
-    @staticmethod
-    def load_from_objectfile(outdir: Path, file: Path) -> Optional[StexObject]:
-        ' Searches for the objectfile for <file> inside <outdir>, unpickles it and returns the object inside. '
-        objectfile = Compiler.get_objectfile_path(outdir, file)
+    def load_from_objectfile(self, file: Path) -> Optional[StexObject]:
+        ' Loads the cached objectfile for <file> if it exists. '
+        objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
             return None
         with open(objectfile, 'rb') as fd:
@@ -290,30 +286,34 @@ class Compiler:
                 raise Exception(f'Objectfile for "{file}" is corrupted.')
             return obj
 
-    def recompilation_required(self, file: Path):
-        ' Returns true if the file wasnt compiled yet or if the objectfile is older than the last edit to the file. '
-        # TODO: Should be refactored together with self.workspace member
-        objectfile = Compiler.get_objectfile_path(self.outdir, file)
+    def recompilation_required(self, file: Path, time_modified: float = None):
+        ''' Tests if compilation required by checking if the objectfile is up to date.
+
+        Parameters:
+            file: Path to sourcefile
+            time_modified: Some external time of last modification that overrides the objectfile's time. (Range of time.time())
+
+        Returns:
+            Returns true if the file wasnt compiled yet or if the objectfile is older than the last edit to the file.
+        '''
+        objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
             return True
-        if file.is_file() and util.is_file_newer(file, objectfile):
+        mtime = objectfile.lstat().st_mtime
+        if time_modified and mtime < time_modified:
             return True
-        return objectfile.lstat().st_mtime < self.workspace.get_time_live_modified(file)
+        if file.is_file() and mtime < file.lstat().st_mtime:
+            return True
+        return False
 
-    def compile(self, file: Path, dryrun: bool = False) -> StexObject:
+    def compile(self, file: Path, content: str = None, dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.
 
         The compiled stex object will be stored into the provided outdir.
-        Compilation of the file will be skipped automatically and the object is loaded from disk,
-        if the stored object file already exists and it's timestamp is from later then
-        the last change to the file.
-
-        Compilation of the file is forced if the workspace property of the compiler has
-        the file registered as currently open. In that case, the content registered at the workspace object
-        is used instead of reading the file from disk.
 
         Parameters:
             file: Path to sourcefile.
+            content: Content of the file. If given, the file will be compiled using this content.
             dryrun: Do not store objectfiles in outdir after compiling.
 
         Returns:
@@ -322,51 +322,32 @@ class Compiler:
         Raises:
             FileNotFoundError: If the source file is not a file.
         """
-        # TODO: When self.workspace gets refactored, add a content= parameter again, that allows for compilation of buffered sourcefiles
         file = file.expanduser().resolve().absolute()
         if not file.is_file():
-            raise FileNotFoundError(f'"{file}" is not a file.')
-        objectfile = Compiler.get_objectfile_path(self.outdir, file)
+            raise FileNotFoundError(file)
+        objectfile = self.get_objectfile_path(file)
         objectdir = objectfile.parent
-        # TODO: The workspace read_file and is_open operations should be performed by the user and should not be part of the compiler. The compile should always compile the given file even if the objectfile is not being updated.
-        for _ in range(2): # give it two attempts to figure out whats going on
-            content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
-            if self.recompilation_required(file):
-                # if not already compiled or the compiled object is old, create a new object
-                objectdir.mkdir(parents=True, exist_ok=True)
-                object = StexObject(file)
-                parser = IntermediateParser(file)
-                for loc, err in parser.errors:
-                    object.errors[loc.range] = err
-                parser.parse(content)
-                for root in parser.roots:
-                    root: IntermediateParseTree
-                    context: List[Tuple[IntermediateParseTree, Symbol]] = [(None, object.symbol_table)]
-                    enter = functools.partial(self._compile_enter, object, context)
-                    exit = functools.partial(self._compile_exit, object, context)
-                    root.traverse(enter, exit)
-                try:
-                    if not dryrun:
-                        with open(objectfile, 'wb') as fd:
-                            pickle.dump(object, fd)
-                except:
-                    # ignore errors if objectfile can't be written to disk
-                    # and continue as usual
-                    log.exception('Failed to write object in "%s" to "%s".', file, objectfile)
-                return object
-            try:
-                # else load from cached
-                with open(objectfile, 'rb') as fd:
-                    return pickle.load(fd)
-            except:
-                # if loading fails, attempt to delete the cachefile
-                try:
-                    if objectfile.is_file():
-                        objectfile.unlink()
-                except:
-                    # ignore possible concurrent unlinks depending on if I do things concurrently later
-                    pass
-                # because this is a for loop, try again after deleting it
+        objectdir.mkdir(parents=True, exist_ok=True)
+        object = StexObject(file)
+        parser = IntermediateParser(file)
+        for loc, err in parser.errors:
+            object.errors[loc.range] = err
+        parser.parse(content)
+        for root in parser.roots:
+            root: IntermediateParseTree
+            context: List[Tuple[IntermediateParseTree, Symbol]] = [(None, object.symbol_table)]
+            enter = functools.partial(self._compile_enter, object, context)
+            exit = functools.partial(self._compile_exit, object, context)
+            root.traverse(enter, exit)
+        try:
+            if not dryrun:
+                with open(objectfile, 'wb') as fd:
+                    pickle.dump(object, fd)
+        except:
+            # ignore errors if objectfile can't be written to disk
+            # and continue as usual
+            log.exception('Failed to write object in "%s" to "%s".', file, objectfile)
+        return object
 
     def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
         if context.name != _ROOT_:
@@ -522,7 +503,7 @@ class Compiler:
             scope=context,
             module_name=importmodule.module.text,
             module_type_hint=ModuleType.MODULE,
-            file_hint=importmodule.path_to_imported_file(self.workspace.root),
+            file_hint=importmodule.path_to_imported_file(self.root_dir),
             export=importmodule.export) #TODO: Is usemodule exportet?
         obj.add_dependency(dep)
         ref = Reference(importmodule.location.range, context, [importmodule.module.text], ReferenceType.MODULE)
@@ -530,13 +511,13 @@ class Compiler:
         if importmodule.repos:
             obj.errors.setdefault(importmodule.repos.range, []).append(
                 DeprecationWarning('Argument "repos" is deprecated and should be replaced with "mhrepos".'))
-        if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.workspace.root, obj.file):
+        if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
             obj.errors.setdefault(importmodule.mhrepos.range, []).append(
                 Warning(f'Redundant mhrepos key: "{importmodule.mhrepos.text}" is the current repository.'))
-        if importmodule.path and importmodule.path.text == util.get_path(self.workspace.root, obj.file):
+        if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
             obj.errors.setdefault(importmodule.path.range, []).append(
                 Warning(f'Redundant path key: "{importmodule.path.text}" is the current path.'))
-        if importmodule.dir and importmodule.dir.text == util.get_dir(self.workspace.root, obj.file).as_posix():
+        if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
             obj.errors.setdefault(importmodule.location.range, []).append(
                 Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
 
@@ -550,43 +531,43 @@ class Compiler:
             scope=context,
             module_name=gimport.module.text,
             module_type_hint=ModuleType.MODSIG,
-            file_hint=gimport.path_to_imported_file(self.workspace.root),
+            file_hint=gimport.path_to_imported_file(self.root_dir),
             export=True)
         obj.add_dependency(dep)
         ref = Reference(dep.range, context, [dep.module_name], ReferenceType.MODSIG)
         obj.add_reference(ref)
-        if gimport.repository and gimport.repository.text == util.get_repository_name(self.workspace.root, gimport.location.path):
+        if gimport.repository and gimport.repository.text == util.get_repository_name(self.root_dir, gimport.location.path):
             obj.errors.setdefault(gimport.repository.range, []).append(
                 Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
 
     def _compile_scope(self, obj: StexObject, context: Symbol, tree: ScopeIntermediateParseTree):
         # TODO: Semantic location check
-        scope = ScopeSymbol(tree.location)
+        scope = ScopeSymbol(tree.location, name=tree.scope_name.text)
         context.add_child(scope)
         return scope
 
     def _compile_gstructure(self, obj: StexObject, context: Symbol, tree: GStructureIntermediateParseTree):
-        # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class. 
+        # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class.
         # TODO: If content of the gstructure environment is not important, do not return anything, and delete the "next_context = " line in Compiler._enter.
 
         # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_view(self, obj: StexObject, context: Symbol, tree: ViewIntermediateParseTree):
-        # TODO: Compile view and return either a Scope symbol or create a new ViewSymbol class. 
+        # TODO: Compile view and return either a Scope symbol or create a new ViewSymbol class.
 
         # Hint: Da view nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_viewsig(self, obj: StexObject, context: Symbol, tree: ViewSigIntermediateParseTree):
-        # TODO: Compile viewsig and return either a Scope symbol or create a new ViewSigSymbol class. 
+        # TODO: Compile viewsig and return either a Scope symbol or create a new ViewSigSymbol class.
 
         # Hint: Da viewsig nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
     def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
         """ This manages the enter operation of the intermediate parse tree into relevant environemnts.
-        
+
         Each relevant intermediate environment is compiled here and compile operations of environments that are in \\begin{} & \\end{}
         tags usually return a new context symbol that allows for other compile operations that are executed before this one
         is exited, to attach the inner symbols to that context.

@@ -3,7 +3,7 @@ import os
 from typing import Set, Optional, Dict, List, Union, Tuple, Iterator
 from enum import Enum
 from pathlib import Path
-from stexls.vscode import Location, Range, DocumentSymbol
+from stexls.vscode import Location, Range, DocumentSymbol, Position
 from stexls.stex.exceptions import DuplicateSymbolDefinedException, InvalidSymbolRedifinitionException
 from stexls.util.format import format_enumeration
 
@@ -70,8 +70,10 @@ class Symbol:
         except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
             # TODO: Currently already imported modules are ignored, what's the right procedure here?
             # TODO: Propagate import error, but probably not useful here
+            # TODO: Solution: Report Indirect import errors.
             return
         for alts in module.children.values():
+            # TODO: Import behaviour of 'import scopes' like 'frame' and 'omtext' --> What to do with defis inside these?
             for child in alts:
                 if child.access_modifier != AccessModifier.PUBLIC:
                     continue
@@ -319,11 +321,29 @@ class BindingSymbol(Symbol):
 
 class ScopeSymbol(Symbol):
     COUNTER=0
-    def __init__(self, location: Location):
-        super().__init__(location, f'__ANONYMOUS_SCOPE{ScopeSymbol.COUNTER}__')
+    def __init__(self, location: Location, name: str = 'UNNAMED_SCOPE'):
+        super().__init__(location, f'__{name}{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
         # TODO: Should all symbols added to a scope never be exported?
         # TODO: Access mod probably should be PRIVATE
+        # TODO: Important: Behaviour of Scope.
+        # File a: \\begin{module}[hidden]\\begin{omtext}..\\defi[hidden-defi]...\\end{omtext}\\end{module}
+        # File b: \\usemodule[file a]{hidden} \\trefii[hidden]{hidden}{defi} ---> Is hidden-defi accessable if module hidden is imported?
+        # But duplicate imports like \\begin{omtext}\\usemodule{module}\\end{omtext}\\begin{omtext}\\usemodule{module}\\end{omtext}
+        # are ok? "module" is two times imported inside same file, but different omtext environments.
+        # If omtext was not there, then it would be a duplicate import
+        # \\begin{omtext}
+        #   \\usemodule{module}
+        #   \\defi{test-defi}
+        #   \\trefi[module]{...}
+        # \\end{omtext}
+        # \\begin{omtext}
+        #   \\usemodule{module}
+        #   \\trefi[module]{...}
+        #   \\trefi{test-defi}
+        # \\end{omtext}
+        # Here usemodule{module} two times is neccesserary because of the omtext
+        # #TODO: but the use of test-defi in the trefi inside the other omtext is allowed?
         self.access_modifier = AccessModifier.PUBLIC
 
     def copy(self) -> ScopeSymbol:

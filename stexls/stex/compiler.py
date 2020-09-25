@@ -137,7 +137,7 @@ class Reference:
         return (*self.scope.qualified, *self.name)
 
     def __repr__(self):
-        return f'[Reference  {".".join(self.qualified_name)} at {self.range.start.format()} of type {self.reference_type}]'
+        return f'[Reference  {".".join(self.qualified_name)} of type {self.reference_type} at {self.range.start.format()}]'
 
 
 class StexObject:

@@ -322,7 +322,7 @@ class BindingSymbol(Symbol):
 class ScopeSymbol(Symbol):
     COUNTER=0
     def __init__(self, location: Location, name: str = 'UNNAMED_SCOPE'):
-        super().__init__(location, f'__{name}{ScopeSymbol.COUNTER}__')
+        super().__init__(location, f'__{name}#{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
         # TODO: Should all symbols added to a scope never be exported?
         # TODO: Access mod probably should be PRIVATE

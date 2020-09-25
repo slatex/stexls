@@ -146,7 +146,7 @@ class Position:
         return Position(self.line, self.character)
 
     def format(self) -> str:
-        return f'line {self.line}, column {self.character}'
+        return f'line {self.line + 1}, column {self.character + 1}'
 
     def __repr__(self):
         return f'[Position ({self.line} {self.character})]'

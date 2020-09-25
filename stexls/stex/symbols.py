@@ -268,7 +268,7 @@ class ModuleSymbol(Symbol):
         return self
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} ModuleSymbol "{self.name}"/{self.module_type.name}]'
+        return f'[{self.access_modifier.name} ModuleSymbol "{self.name}"/{self.module_type.name} at {self.location.range.start.format()}]'
 
 
 class DefSymbol(Symbol):
@@ -293,7 +293,7 @@ class DefSymbol(Symbol):
         self.noverbs = noverbs or set()
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name}]'
+        return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name} at {self.location.range.start.format()}]'
 
     def copy(self) -> DefSymbol:
         ' Shallow copy of this symbol without parent and child structure. '
@@ -316,7 +316,7 @@ class BindingSymbol(Symbol):
         return cpy
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang}]'
+        return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang} at {self.location.range.start.format()}]'
 
 
 class ScopeSymbol(Symbol):
@@ -345,6 +345,9 @@ class ScopeSymbol(Symbol):
         # Here usemodule{module} two times is neccesserary because of the omtext
         # #TODO: but the use of test-defi in the trefi inside the other omtext is allowed?
         self.access_modifier = AccessModifier.PUBLIC
+
+    def __repr__(self):
+        return f'[Scope "{self.name}" at {self.location.range.start.format()}]'
 
     def copy(self) -> ScopeSymbol:
         ' Creates a shallow copy without parent and child information. '

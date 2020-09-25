@@ -36,6 +36,7 @@ __all__ = (
     'GStructureIntermediateParseTree',
     'ViewIntermediateParseTree',
     'ViewSigIntermediateParseTree',
+    'TassignIntermediateParseTree',
 )
 
 
@@ -123,6 +124,7 @@ class IntermediateParser:
                     ModsigIntermediateParseTree,
                     ModnlIntermediateParseTree,
                     ModuleIntermediateParseTree,
+                    TassignIntermediateParseTree,
                     TrefiIntermediateParseTree,
                     DefiIntermediateParseTree,
                     SymIntermediateParserTree,
@@ -394,12 +396,16 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         self,
         location: Location,
         fromrepos: Optional[TokenWithLocation],
+        torepos: Optional[TokenWithLocation],
         module: TokenWithLocation,
-        imports: List[TokenWithLocation]):
+        source_module: TokenWithLocation,
+        target_module: TokenWithLocation):
         super().__init__(location)
         self.fromrepos = fromrepos
+        self.torepos = torepos
         self.module = module
-        self.imports = imports
+        self.source_module = source_module
+        self.target_module = target_module
 
     def find_parent_module_name(self):
         return self.module.text
@@ -409,18 +415,20 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         match = ViewSigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return None
-        if len(e.rargs) < 1:
-            raise CompilerError('viewsig requires at least one argument, found 0.')
+        if len(e.rargs) < 3:
+            raise CompilerError(f'viewsig requires at least three arguments, found {len(e.rargs)}.')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return ViewSigIntermediateParseTree(
             location=e.location,
             fromrepos=named.get('fromrepos', None),
+            torepos=named.get('torepos', None),
             module=TokenWithLocation.from_node(e.rargs[0]),
-            imports=list(map(TokenWithLocation.from_node, e.rargs[1:]))
+            source_module=TokenWithLocation.from_node(e.rargs[1]),
+            target_module=TokenWithLocation.from_node(e.rargs[2]),
         )
 
     def __repr__(self) -> str:
-        return f'[ViewSig "{self.module}" from "{self.fromrepos}" imports {self.imports}]'
+        return f'[ViewSig "{self.module}" from "{self.fromrepos}" with source "{self.source_module}" and target "{self.target_module}"]'
 
 
 class ModuleIntermediateParseTree(IntermediateParseTree):
@@ -878,7 +886,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
     def build_path_to_imported_module(
         root: Path,
         current_file: Path,
-        repo: Optional[Path],
+        repo: Optional[union[Path, str]],
         module: str):
         """ A static helper method to get the targeted filepath by a gimport environment.
 
@@ -934,3 +942,39 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             from_ = ''
         access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
         return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}"{from_}]'
+
+
+
+class TassignIntermediateParseTree(IntermediateParseTree):
+    PATTERN = re.compile(r'(?P<at>[tv])assign(?P<asterisk>\*?)')
+    def __init__(
+        self,
+        location: Location,
+        torv : bool,
+        source_symbol : TokenWithLocation,
+        target_term : TokenWithLocation,
+        asterisk: bool):
+        super().__init__(location)
+        self.torv = torv
+        self.source_symbol = source_symbol
+        self.target_term = target_term
+        self.asterisk = asterisk
+
+    @classmethod
+    def from_environment(cls, e: Environment) -> Optional[TassignIntermediateParseTree]:
+        match = TassignIntermediateParseTree.PATTERN.fullmatch(e.env_name)
+        if match is None:
+            return None
+        if len(e.rargs) != 2:
+            raise CompilerError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+        source_symbol = TokenWithLocation.from_node(e.rargs[0])
+        target_term = TokenWithLocation.from_node(e.rargs[1])
+        if len(e.oargs) > 0:
+            raise CompilerError(f'Unexpected optional arguments.')
+        return TassignIntermediateParseTree(
+            location=e.location,
+            torv = match.group('at'),
+            source_symbol = source_symbol,
+            target_term = target_term,
+            asterisk=match.group('asterisk') is not None,
+        )

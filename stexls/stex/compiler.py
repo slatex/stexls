@@ -416,6 +416,16 @@ class Compiler:
             log.exception('%s: Failed to compile module %s.', module.location.format_link(), module.id.text)
         return None
 
+    def _compile_tassign(self, obj: StexObject, context: Symbol, tassign: TassignIntermediateParseTree):
+        if not isinstance(tassign.parent, ViewSigIntermediateParseTree):
+            obj.errors.setdefault(tassign.location.range, []).append(CompilerError('tassign is only allowed inside a gviewsig'))
+            return
+        view : ViewSigIntermediateParseTree = tassign.parent
+
+        obj.add_reference(Reference(tassign.source_symbol.range, context, [view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
+        if tassign.torv == 'v':
+            obj.add_reference(Reference(tassign.target_term.range, context, [view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
+
     def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
         if trefi.drefi:
             module: ModuleSymbol = context.get_current_module()
@@ -559,10 +569,38 @@ class Compiler:
         # Hint: Da view nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
-    def _compile_viewsig(self, obj: StexObject, context: Symbol, tree: ViewSigIntermediateParseTree):
-        # TODO: Compile viewsig and return either a Scope symbol or create a new ViewSigSymbol class. 
+    def _compile_viewsig(self, obj: StexObject, context: Symbol, viewsig: ViewSigIntermediateParseTree):
+        if context.name != _ROOT_:
+            # TODO: Semantic location check
+            obj.errors.setdefault(viewsig.location.range, []).append(
+                CompilerError(f'Invalid viewsig location: Parent is not root'))
 
-        # Hint: Da viewsig nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+        if viewsig.module.text != obj.file.stem:
+            obj.errors.setdefault(viewsig.module.location.range, []).append(
+                CompilerWarning(f'Expected name "{viewsig.module.text}" but found "{obj.file.stem}"'))
+
+        source_dep = Dependency(
+            range=viewsig.source_module.range,
+            scope=context,
+            module_name=viewsig.source_module.text,
+            module_type_hint=ModuleType.MODSIG,  # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
+            export=True)
+        obj.add_dependency(source_dep)
+        ref = Reference(source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        obj.add_reference(ref)
+
+        target_dep = Dependency(
+            range=viewsig.target_module.range,
+            scope=context,
+            module_name=viewsig.target_module.text,
+            module_type_hint=ModuleType.MODSIG,
+            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root, viewsig.location.path, viewsig.torepos.text if viewsig.torepos else None, viewsig.target_module.text),
+            export=True)
+        obj.add_dependency(target_dep)
+        ref = Reference(target_dep.range, context, [target_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        obj.add_reference(ref)
+
         return None
 
     def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
@@ -582,6 +620,8 @@ class Compiler:
             next_context = self._compile_modnl(obj, current_context, tree)
         elif isinstance(tree, ModuleIntermediateParseTree):
             next_context = self._compile_module(obj, current_context, tree)
+        elif isinstance(tree, TassignIntermediateParseTree):
+            self._compile_tassign(obj, current_context, tree)
         elif isinstance(tree, TrefiIntermediateParseTree):
             self._compile_trefi(obj, current_context, tree)
         elif isinstance(tree, DefiIntermediateParseTree):

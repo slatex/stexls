@@ -158,7 +158,7 @@ class Linker:
                 # TODO: Suggestions maybe should always be handled by the global_step of the linter
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)
                 if not resolved:
-                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type, ref.scope), last='or')
+                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
                     if suggestions:
                         err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
                             f'Did you maybe mean {suggestions}?')

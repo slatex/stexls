@@ -37,8 +37,6 @@ from . import util
 
 __all__ = ['Compiler', 'StexObject', 'Dependency', 'Reference', 'ReferenceType']
 
-_ROOT_: str = '__root__'
-
 class Dependency:
     def __init__(
         self,
@@ -113,7 +111,7 @@ class ReferenceType(Flag):
 
 class Reference:
     ' Container that contains information about which symbol is referenced by name. '
-    def __init__(self, range: Range, scope: Symbol, name: Iterable[str], reference_type: ReferenceType):
+    def __init__(self, range: Range, scope: Symbol, name: List[str], reference_type: ReferenceType):
         """ Initializes the reference container.
 
         Parameters:
@@ -131,13 +129,8 @@ class Reference:
         self.name = name
         self.reference_type: ReferenceType = reference_type
 
-    @property
-    def qualified_name(self) -> Iterable[str]:
-        ' Creates a qualified name for the symbol relative to the root of the scope. '
-        return (*self.scope.qualified, *self.name)
-
     def __repr__(self):
-        return f'[Reference  {".".join(self.qualified_name)} of type {self.reference_type} at {self.range.start.format()}]'
+        return f'[Reference  "{"?".join(self.name)}" of type {self.reference_type.format_enum()} at {self.range.start.format()}]'
 
 
 class StexObject:
@@ -154,7 +147,7 @@ class StexObject:
         self.file = file
         # Root symbol tabel. All new symbols are added first to this.
         # TODO: Root location range should be the whole file.
-        self.symbol_table: Symbol = Symbol(Location(file.as_uri(), Position(0, 0)), _ROOT_)
+        self.symbol_table: RootSymbol = RootSymbol(Location(file.as_uri(), Position(0, 0)))
         # List of dependencies this file has. There may exist multiple scopes with the same module/file as dependency.
         self.dependencies: List[Dependency] = list()
         # List of references. A reference consists of a range relative to the file that owns the reference and the symbol identifier that is referenced.
@@ -164,32 +157,23 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def copy(self) -> StexObject:
-        ' Creates a full copy of the original. Any objects that are not directly referenced by the copy are expected to be constant. '
-        cpy = StexObject(self.file)
-        cpy.symbol_table = self.symbol_table.copy()
-        cpy.dependencies = self.dependencies.copy()
-        cpy.references = self.references.copy()
-        cpy.errors = {r: l.copy() for r, l in self.errors.items()}
-        return cpy
-
     def is_symbol_exported(self, symbol: Symbol) -> bool:
         ' Returns true if the symbol is exported by the object. E.g.: It and all parents of it are public. '
         while symbol and symbol.access_modifier == AccessModifier.PUBLIC:
             symbol = symbol.parent
         return not symbol or symbol.access_modifier == AccessModifier.PUBLIC
 
-    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType, scope: Symbol = None) -> List[str]:
-        ' Find simlar symbols with reference to a qualified name and an expected symbol type.  If scope is specified only symbols from that scope will be looked at. '
+    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
+        ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
         names = []
-        def f(ref_type: ReferenceType, names: List[str], symbol: Symbol):
+        def f(symbol: Symbol):
             if isinstance(symbol, DefSymbol):
                 if ReferenceType.DEF in ref_type:
-                    names.append('?'.join(symbol.qualified[1:][-2:]))
+                    names.append('?'.join(symbol.qualified))
             elif isinstance(symbol, ModuleSymbol):
                 if ReferenceType.MODSIG in ref_type or ReferenceType.MODULE in ref_type:
-                    names.append('?'.join(symbol.qualified[1:][-2:]))
-        (scope or self.symbol_table).traverse(lambda s: f(ref_type, names, s))
+                    names.append('?'.join(symbol.qualified))
+        self.symbol_table.traverse(lambda s: f(s))
         return difflib.get_close_matches('?'.join(qualified), names)
 
     def format(self) -> str:
@@ -202,7 +186,7 @@ class StexObject:
                 loc = Location(self.file.as_uri(), dep.range).format_link()
                 f += f'\n\t{loc}: {dep.module_name} from "{dep.file_hint}"'
         else:
-            f += 'n\tNo dependencies.'
+            f += '\n\tNo dependencies.'
         f += '\nReferences:'
         if self.references:
             for ref in self.references:
@@ -217,7 +201,7 @@ class StexObject:
                 for err in errs:
                     f += f'\n\t{loc}: {err}'
         else:
-            f += '\n\tNo errors.'
+                   f += '\n\tNo errors.'
         f += '\nSymbol Table:'
         l = []
         def enter(l, s):
@@ -350,7 +334,7 @@ class Compiler:
         return object
 
     def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
-        if context.name != _ROOT_:
+        if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
             obj.errors.setdefault(modsig.location.range, []).append(
                 CompilerError(f'Invalid modsig location: Parent is not root'))
@@ -370,7 +354,7 @@ class Compiler:
         return None
 
     def _compile_modnl(self, obj: StexObject, context: Symbol, modnl: ModnlIntermediateParseTree):
-        if context.name != _ROOT_:
+        if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
             obj.errors.setdefault(modnl.location.range, []).append(
                 CompilerError(f'Invalid modnl location: Parent is not root'))
@@ -399,7 +383,7 @@ class Compiler:
         return binding
 
     def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
-        if context.name != _ROOT_:
+        if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
             obj.errors.setdefault(module.location.range, []).append(
                 CompilerError(f'Invalid module location: Parent is not root'))
@@ -417,14 +401,19 @@ class Compiler:
 
     def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
         if trefi.drefi:
+            # TODO: Semantic location check
             module: ModuleSymbol = context.get_current_module()
             if not module:
                 obj.errors.setdefault(trefi.location.range, []).append(
-                    # TODO: Semantic location check
                     CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
             else:
                 try:
-                    module.add_child(DefSymbol(DefType.DREF, trefi.location, trefi.name), alternative=True)
+                    symbol = DefSymbol(
+                        DefType.DREF,
+                        trefi.location,
+                        trefi.name,
+                        access_modifier=context.get_visible_access_modifier())
+                    module.add_child(symbol, alternative=True)
                 except InvalidSymbolRedifinitionException as err:
                     obj.errors.setdefault(trefi.location.range, []).append(err)
         if trefi.module:
@@ -444,12 +433,17 @@ class Compiler:
                     CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
 
     def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
-        if isinstance(defi.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
+        current_module = context.get_current_module()
+        if current_module:
             # TODO: Semantic location check
-            symbol = DefSymbol(DefType.DEF, defi.location, defi.name)
+            symbol = DefSymbol(
+                DefType.DEF,
+                defi.location,
+                defi.name,
+                access_modifier=context.get_visible_access_modifier())
             try:
                 # TODO: alternative definition possibly allowed here?
-                context.add_child(symbol)
+                current_module.add_child(symbol)
             except DuplicateSymbolDefinedException as err:
                 obj.errors.setdefault(symbol.location.range, []).append(err)
         else:
@@ -467,29 +461,40 @@ class Compiler:
                     reference_type=ReferenceType.DEF))
 
     def _compile_sym(self, obj: StexObject, context: Symbol, sym: SymIntermediateParserTree):
-        if not sym.find_parent_module_parse_tree():
+        current_module = context.get_current_module()
+        if not current_module:
             # TODO: Semantic location check
             obj.errors.setdefault(sym.location.range, []).append(
                 CompilerError(f'Invalid location: "{sym.name}" does not have a module.'))
-        symbol = DefSymbol(DefType.SYM, sym.location, sym.name, noverb=sym.noverb.is_all, noverbs=sym.noverb.langs)
+            return
+        symbol = DefSymbol(
+            DefType.SYM,
+            sym.location,
+            sym.name,
+            noverb=sym.noverb.is_all,
+            noverbs=sym.noverb.langs,
+            access_modifier=context.get_visible_access_modifier())
         try:
-            context.add_child(symbol)
+            current_module.add_child(symbol)
         except DuplicateSymbolDefinedException as err:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):
-        if not symdef.find_parent_module_parse_tree():
+        current_module = context.get_current_module()
+        if not current_module:
             # TODO: Semantic location check
             obj.errors.setdefault(symdef.location.range, []).append(
                 CompilerError(f'Invalid location: "{symdef.name.text}" does not have a module.'))
+            return
         symbol = DefSymbol(
             DefType.SYMDEF,
             symdef.location,
             symdef.name.text,
             noverb=symdef.noverb.is_all,
-            noverbs=symdef.noverb.langs)
+            noverbs=symdef.noverb.langs,
+            access_modifier=context.get_visible_access_modifier())
         try:
-            context.add_child(symbol, alternative=True)
+            current_module.add_child(symbol, alternative=True)
         except InvalidSymbolRedifinitionException as err:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 

@@ -927,6 +927,7 @@ class SymbolTag(SerializableEnum):
 
 class DocumentSymbol:
     def __init__(self, name: str, detail: str, kind: SymbolKind, range: Range, selectionRange: Range):
+        self.name = name
         self.children: List[DocumentSymbol] = []
         self.detail: str = detail
         self.kind: SymbolKind = kind

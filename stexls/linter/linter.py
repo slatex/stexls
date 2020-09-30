@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, Dict
+from typing import Callable, Iterable, Dict, Optional
 from pathlib import Path
 from multiprocessing import Pool
 from stexls.vscode import Location
@@ -17,7 +17,7 @@ class Linter:
         enable_global_reference_counting: bool = False,
         enable_global_name_suggestions: bool = False,
         num_jobs: int = 1,
-        on_progress_fun: Callable[[Iterable, int], None] = None):
+        on_progress_fun: Callable[[Iterable, int, Optional[str]], None] = None):
         self.workspace = workspace
         self.outdir = outdir or (Path.cwd() / 'objects')
         self.format_parsable = format_parseable
@@ -28,6 +28,14 @@ class Linter:
         self.on_progress_fun = on_progress_fun
         self.compiler = Compiler(self.workspace.root, self.outdir)
         self.linker = Linker(self.outdir)
+        self.objects: Dict[Path, StexObject] = dict()
+        if self._global_step:
+            with Pool(num_jobs) as pool:
+                files = list(self.workspace.files)
+                it = pool.imap(self.compiler.load_from_objectfile, files)
+                if on_progress_fun:
+                    it = on_progress_fun(it, files, 'Loading objects')
+                self.objects.update(dict(zip(files, it)))
 
     def compile_related(self, file: Path) -> Dict[Path, StexObject]:
         queue = [file]
@@ -53,14 +61,15 @@ class Linter:
 
     def compile_workspace(self):
         files = list(filter(self.compiler.recompilation_required, self.workspace.files))
-        if not files: return
         with Pool(self.num_jobs) as pool:
+            it = pool.imap(self.compiler.compile, files)
             if self.on_progress_fun:
-                self.on_progress_fun(pool.imap(self.compiler.compile, files), len(files))
-            else:
-                pool.map(self.compiler.compile, files)
+                it = self.on_progress_fun(it, files, 'Compiling')
+            for f, o in zip(files, it):
+                self.objects[f] = o
 
-    def lint(self, file: Path) -> int:
+
+    def lint(self, file: Path) -> StexObject:
         if self._global_step:
             self.compile_workspace()
         objects = self.compile_related(file)
@@ -70,7 +79,7 @@ class Linter:
             self._format_parseable(ln)
         else:
             self._format_messages(ln)
-        return ln, len(ln.errors)
+        return ln
 
     def _format_messages(self, obj: StexObject):
         for range, errors in obj.errors.items():

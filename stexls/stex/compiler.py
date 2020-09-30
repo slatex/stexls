@@ -157,12 +157,6 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def is_symbol_exported(self, symbol: Symbol) -> bool:
-        ' Returns true if the symbol is exported by the object. E.g.: It and all parents of it are public. '
-        while symbol and symbol.access_modifier == AccessModifier.PUBLIC:
-            symbol = symbol.parent
-        return not symbol or symbol.access_modifier == AccessModifier.PUBLIC
-
     def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
         ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
         names = []

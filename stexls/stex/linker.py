@@ -6,7 +6,8 @@ The ln command takes a list of c++ objects and resolves the symbol references in
 from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
 from stexls.vscode import *
-from stexls.stex.compiler import StexObject, Compiler, Dependency, Reference, ReferenceType
+from stexls.stex.compiler import StexObject, Dependency
+from .references import ReferenceType
 from stexls.stex.symbols import *
 from stexls.stex.exceptions import *
 from stexls.stex import util
@@ -55,8 +56,8 @@ class Linker:
 
     def link(
         self,
-        objects: Dict[Path, StexObject],
         file: Path,
+        objects: Dict[Path, StexObject],
         required_symbol_names: List[str] = None,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
@@ -116,8 +117,6 @@ class Linker:
                 assert imported, "Invalid state: Cached file not found even though it should be present."
             # Link the single dependency to the current object
             self.link_dependency(obj, dep, imported)
-        # Validate some stuff about the object after all dependencies have been linked.
-        self.validate_linked_object(obj)
         return obj
 
     def _relink_required(self, compiled_objects: Dict[Path, StexObject], file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
@@ -150,7 +149,7 @@ class Linker:
         ' Store an obj in cache. '
         self.cache[usemodule_on_stack].setdefault(str(file), {})[module] = (time(), obj)
 
-    def validate_linked_object(self, linked: StexObject):
+    def validate_object_references(self, linked: StexObject, more_objects: Dict[Path, StexObject] = None):
         for ref in linked.references:
             # TODO: Prevent validating references of modules that are not compiled yet? Use link(required_module)?
             refname = "?".join(ref.name)
@@ -170,12 +169,10 @@ class Linker:
                 linked.errors.setdefault(ref.range, []).append(
                     LinkError(f'Invalid reference to non-unique symbol "{refname}" of type {ref.reference_type.format_enum()}'))
             for symbol in resolved:
+                if symbol.reference_type not in ref.reference_type:
+                    linked.errors.setdefault(ref.range, []).append(
+                        LinkError(f'Expected symbol type is "{ref.reference_type.format_enum()}" but the resolved symbol is of type "{symbol.reference_type.format_enum()}"'))
                 if isinstance(symbol, DefType):
-                    if ReferenceType.DEF not in ref.reference_type:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkError(
-                                f'Referenced verb "{refname}" wrong type:'
-                                f' Found {ref.reference_type.format_enum()}, expected {ReferenceType.DEF.format_enum()}'))
                     defs: DefSymbol = symbol
                     if defs.noverb:
                         linked.errors.setdefault(ref.range, []).append(
@@ -186,19 +183,6 @@ class Linker:
                             LinkWarning(
                                 f'Referenced symbol "{refname}" is marked as "noverb"'
                                 f' for the language {binding.lang}.'))
-                elif isinstance(symbol, ModuleSymbol):
-                    module: ModuleSymbol = symbol
-                    if module.module_type == ModuleType.MODSIG and ReferenceType.MODSIG not in ref.reference_type:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced modsig "{refname}" wrong type: Expected {ref.reference_type.format_enum()}'))
-                    elif module.module_type == ModuleType.MODULE and ReferenceType.MODULE not in ref.reference_type:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced module "{refname}" wrong type: Expected {ref.reference_type.format_enum()}'))
-                elif isinstance(symbol, BindingSymbol):
-                    binding: BindingSymbol = symbol
-                    if ReferenceType.BINDING not in ref.reference_type:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkError(f'Referenced symbol "{refname}" of wrong type: Expected "binding", found {ref.reference_type.format_enum()}'))
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
         """ Finds definitions at the current cursor position.

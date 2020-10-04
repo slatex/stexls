@@ -14,7 +14,7 @@ resolved here. In order to get global information the dependencies need to be li
 using the linker from the linker module and then the linter from the linter package.
 """
 from __future__ import annotations
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 from hashlib import sha1
 import datetime
@@ -29,13 +29,13 @@ log = logging.getLogger(__name__)
 
 from stexls.vscode import Position, Range, Location
 from stexls.util.format import format_enumeration
-
+from .references import Reference, ReferenceType
 from .parser import *
 from .symbols import *
 from .exceptions import *
 from . import util
 
-__all__ = ['Compiler', 'StexObject', 'Dependency', 'Reference', 'ReferenceType']
+__all__ = ['Compiler', 'StexObject', 'Dependency']
 
 class Dependency:
     def __init__(
@@ -87,52 +87,6 @@ class Dependency:
         return f'[Dependency at={self.range} module={self.module_name} type={self.module_type_hint} file="{self.file_hint}" export={self.export}]'
 
 
-class ReferenceType(Flag):
-    """ The reference type is the expected type of the symbol pointed to by a reference.
-
-    The statement used to generate the reference usually knows which types of symbols
-    are expected. After the reference is resolved the symbol type and expected reference
-    type can be compared in order to detect errors.
-    """
-    MODULE=1
-    MODSIG=2
-    DEF=4
-    BINDING=8
-
-    def format_enum(self):
-        ' Formats the flag as a list in case multiple are possible like: "module" or "modsig" for ReferenceType.MODULE|MODSIG '
-        l = []
-        for exp in range(0, 3):
-            mask = 2**exp
-            if self.value & mask:
-                l.append(ReferenceType(mask).name.lower())
-        return format_enumeration(l, last='or')
-
-
-class Reference:
-    ' Container that contains information about which symbol is referenced by name. '
-    def __init__(self, range: Range, scope: Symbol, name: List[str], reference_type: ReferenceType):
-        """ Initializes the reference container.
-
-        Parameters:
-            range: Location at which the reference is created.
-            scope: The parent symbol which contains range. Used to create error messages.
-            name: Path to the symbol.
-            reference_type: Expected type of the resolved symbol.
-                Hint: The reference type can be or'd together to create more complex references.
-        """
-        assert range is not None
-        assert name is not None
-        assert all(isinstance(i, str) for i in name)
-        self.range = range
-        self.scope = scope
-        self.name = name
-        self.reference_type: ReferenceType = reference_type
-
-    def __repr__(self):
-        return f'[Reference  "{"?".join(self.name)}" of type {self.reference_type.format_enum()} at {self.range.start.format()}]'
-
-
 class StexObject:
     """ Stex objects contain all the local information about dependencies, symbols and references in one file,
     as well as a list of errors that occured during parsing and compiling.
@@ -161,12 +115,8 @@ class StexObject:
         ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
         names = []
         def f(symbol: Symbol):
-            if isinstance(symbol, DefSymbol):
-                if ReferenceType.DEF in ref_type:
-                    names.append('?'.join(symbol.qualified))
-            elif isinstance(symbol, ModuleSymbol):
-                if ReferenceType.MODSIG in ref_type or ReferenceType.MODULE in ref_type:
-                    names.append('?'.join(symbol.qualified))
+            if ref_type.contains_any_of(symbol.reference_type):
+                names.append('?'.join(symbol.qualified))
         self.symbol_table.traverse(lambda s: f(s))
         return difflib.get_close_matches('?'.join(qualified), names)
 
@@ -214,6 +164,8 @@ class StexObject:
             dep: Information about the dependency.
         """
         for dep0 in self.dependencies:
+            # TODO: this check probably means, that something was indirectly imported and can be ignored
+            # TODO: this same error occurs in Symbol.import_from(): Fix both
             if dep0.check_if_same_module_imported(dep):
                 # Skip adding this dependency
                 location = Location(self.file.as_uri(), dep0.range)
@@ -234,7 +186,7 @@ class StexObject:
 class Compiler:
     """ This is the compiler class that mirrors a gcc command.
 
-    The idea is that "c++ main.cpp -c -o outdir/main.o" is equal to "Compiler(., outdir).compile(main.tex)"
+    The idea is that "c++ main.cpp -c -o outdir/main.o" is equal to "Compiler(cwd, outdir).compile(main.tex)"
     Important is the -c flag, as linking is seperate in our case.
     """
     def __init__(self, root: Path, outdir: Path):
@@ -413,11 +365,11 @@ class Compiler:
         if trefi.module:
             # TODO: Semantic location check
             obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
-            obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.DEF))
+            obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
         else:
             # TODO: Semantic location check
             module_name: str = trefi.find_parent_module_name()
-            obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.DEF))
+            obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
         if trefi.m:
             obj.errors.setdefault(trefi.location.range, []).append(
                 DeprecationWarning('mtref environments are deprecated.'))
@@ -452,7 +404,7 @@ class Compiler:
                     range=defi.location.range,
                     scope=context,
                     name=[defi.find_parent_module_name(), defi.name],
-                    reference_type=ReferenceType.DEF))
+                    reference_type=ReferenceType.ANY_DEFINITION))
 
     def _compile_sym(self, obj: StexObject, context: Symbol, sym: SymIntermediateParserTree):
         current_module = context.get_current_module()

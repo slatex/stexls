@@ -6,6 +6,7 @@ from pathlib import Path
 from stexls.vscode import Location, Range, DocumentSymbol, Position
 from stexls.stex.exceptions import DuplicateSymbolDefinedException, InvalidSymbolRedifinitionException
 from stexls.util.format import format_enumeration
+from .references import ReferenceType
 
 
 __all__ = [
@@ -24,7 +25,7 @@ __all__ = [
 class AccessModifier(Flag):
     PUBLIC=0
     PROTECTED=1
-    PRIVATE=3
+    PRIVATE=3 # private is 3 so that it can be treaded as stronger than protected and public in comparisions
 
 
 class ModuleType(Enum):
@@ -61,6 +62,11 @@ class Symbol:
         self.children: Dict[str, List[Symbol]] = dict()
         self.location = location
         self.access_modifier: AccessModifier = AccessModifier.PUBLIC
+
+    @property
+    def reference_type(self) -> ReferenceType:
+        ' Returns the valid type of a reference that addresses this symbol. '
+        return ReferenceType.UNDEFINED
 
     def import_from(self, module: Symbol):
         ' Imports the symbols from <source> into this symbol table. '
@@ -264,6 +270,13 @@ class ModuleSymbol(Symbol):
             self.access_modifier = AccessModifier.PRIVATE
         self.module_type = module_type
 
+    @property
+    def reference_type(self) -> ReferenceType:
+        if ModuleType.MODSIG == self.module_type:
+            return ReferenceType.MODSIG
+        if ModuleType.MODULE == self.module_type:
+            return ReferenceType.MODULE
+
     def shallow_copy(self) -> ModuleSymbol:
         cpy = ModuleSymbol(self.module_type, self.location.copy(), self.name)
         cpy.access_modifier = self.access_modifier
@@ -299,6 +312,17 @@ class DefSymbol(Symbol):
         self.noverbs = noverbs or set()
         self.access_modifier = access_modifier
 
+    @property
+    def reference_type(self) -> ReferenceType:
+        if self.def_type == DefType.DEF:
+            return ReferenceType.DEF
+        if self.def_type == DefType.DREF:
+            return ReferenceType.DREF
+        if self.def_type == DefType.SYM:
+            return ReferenceType.SYM
+        if self.def_type == DefType.SYMDEF:
+            return ReferenceType.SYMDEF
+
     def __repr__(self):
         return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name} at {self.location.range.start.format()}]'
 
@@ -312,6 +336,10 @@ class BindingSymbol(Symbol):
     def __init__(self, location: Location, module: str, lang: str):
         super().__init__(location, module)
         self.lang = lang
+
+    @property
+    def reference_type(self) -> ReferenceType:
+        return ReferenceType.BINDING
 
     def get_current_binding(self) -> BindingSymbol:
         return self

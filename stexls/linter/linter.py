@@ -29,19 +29,31 @@ class Linter:
     def __init__(self,
         workspace: Workspace,
         outdir: Path = None,
-        format_parseable: bool = False,
         enable_global_validation: bool = False,
         num_jobs: int = 1,
         on_progress_fun: Callable[[Iterable, Optional[str], Optional[List[str]]], Iterable] = None):
+        """ Initializes a linter object.
+
+        Parameters:
+            workspace: Workspace this linter works on.
+            outdir: Output directory to where the compiler will store it's output at.
+            enable_global_validation: If enabled, will compile the whole workspace and use all symbols for validation purposes.
+            num_jobs: Number of processes to use for compilation.
+            on_progress_fun: Function that creates a new iterable from a give input iterable, enabling progress tracking.
+                Arguments of the progress function are the input iterator, a string with information about
+                what the input iterable is used for and an optional list of strings with information each element
+                of the input iterable.
+        """
         self.workspace = workspace
         self.outdir = outdir or (Path.cwd() / 'objects')
-        self.format_parsable = format_parseable
         self.enable_global_validation = enable_global_validation
         self.num_jobs = num_jobs
         self.on_progress_fun = on_progress_fun
         self.compiler = Compiler(self.workspace.root, self.outdir)
         self.linker = Linker(self.outdir)
+        # The objectbuffer stores all compiled objects
         self._object_buffer: Dict[Path, StexObject] = dict()
+        # THe linked object buffer bufferes all linked objects
         self._linked_object_buffer: Dict[Path, StexObject] = dict()
         if self.enable_global_validation:
             self._compile_workspace()

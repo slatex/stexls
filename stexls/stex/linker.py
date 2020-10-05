@@ -150,11 +150,11 @@ class Linker:
         self.cache[usemodule_on_stack].setdefault(str(file), {})[module] = (time(), obj)
 
     def validate_object_references(self, linked: StexObject, more_objects: Dict[Path, StexObject] = None):
+        # TODO: Use more_objects to create global reference suggestions and missing module imports
+        # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches
         for ref in linked.references:
-            # TODO: Prevent validating references of modules that are not compiled yet? Use link(required_module)?
             refname = "?".join(ref.name)
             try:
-                # TODO: Suggestions maybe should always be handled by the global_step of the linter
                 resolved: List[Symbol] = ref.scope.lookup(ref.name)
                 if not resolved:
                     suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')

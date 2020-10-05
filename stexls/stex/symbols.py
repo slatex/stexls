@@ -4,7 +4,7 @@ from typing import Set, Optional, Dict, List, Union, Tuple, Iterator
 from enum import Enum, Flag
 from pathlib import Path
 from stexls.vscode import Location, Range, DocumentSymbol, Position
-from stexls.stex.exceptions import DuplicateSymbolDefinedException, InvalidSymbolRedifinitionException
+from stexls.stex.exceptions import DuplicateSymbolDefinedError, InvalidSymbolRedifinitionException
 from stexls.util.format import format_enumeration
 from .references import ReferenceType
 
@@ -73,7 +73,7 @@ class Symbol:
         cpy = module.shallow_copy()
         try:
             self.add_child(cpy)
-        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
             # TODO: Currently already imported modules are ignored, what's the right procedure here?
             # TODO: Propagate import error, but probably not useful here
             # TODO: Solution: Report Indirect import errors.
@@ -89,7 +89,7 @@ class Symbol:
                     # TODO: Correct add_child behaviour depending on the context the symbol was imported under
                     try:
                         cpy.add_child(child.shallow_copy(), len(alts) > 1)
-                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
                         # TODO: What to do in case of error? Should this be impossible?
                         pass
 
@@ -162,14 +162,14 @@ class Symbol:
             alternative: If set to true, allows for duplicate definitions.
 
         Raises:
-            If the child already has a parent or rises DuplicateSymbolDefinedException
+            If the child already has a parent or rises DuplicateSymbolDefinedError
             if a symbol with the same name is already defined and alternatives are not allowed.
         """
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
             if not alternative:
-                raise DuplicateSymbolDefinedException(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
+                raise DuplicateSymbolDefinedError(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
             for prev_child in self.children[child.name]:
                 if not isinstance(prev_child, type(child)):
                     raise InvalidSymbolRedifinitionException(f'Symbol types do not match to previous definition: {type(child)} vs. {type(prev_child)}')

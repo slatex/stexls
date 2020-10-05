@@ -15,11 +15,33 @@ class LintingResult:
     def __init__(self, obj: StexObject):
         self.object = obj
 
-    def format_messages(self):
+    def format_messages(self, format: str = '{file}:{line}:{column} {severity} - {message}', diagnosticlevel: str = 'error'):
         for range, errors in self.object.errors.items():
             loc = Location(self.object.file.as_uri(), range)
             for err in errors:
-                print(loc.format_link(), err)
+                t = type(err).__name__.lower()
+                severity = 'undefined'
+                if 'info' in t:
+                    severity = 'info'
+                    if 'warning' in diagnosticlevel or 'error' in diagnosticlevel:
+                        continue
+                if 'warning' in t:
+                    severity = 'warning'
+                    if 'error' in diagnosticlevel:
+                        continue
+                if 'error' in t:
+                    severity = 'error'
+                try:
+                    path = loc.path.relative_to(Path.cwd())
+                except:
+                    path = loc.path
+                msg = format.format(
+                    file=path,
+                    line=loc.range.start.line + 1,
+                    column=loc.range.start.character + 1,
+                    severity=severity.upper(),
+                    message=str(err))
+                print(msg)
 
     def format_parseable(self):
         pass

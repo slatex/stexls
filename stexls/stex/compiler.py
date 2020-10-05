@@ -316,7 +316,7 @@ class Compiler:
         try:
             context.add_child(module)
             return module
-        except DuplicateSymbolDefinedException:
+        except DuplicateSymbolDefinedError:
             log.exception('%s: Failed to compile modsig %s.', module.location.format_link(), module.name)
         return None
 
@@ -330,7 +330,7 @@ class Compiler:
         binding = BindingSymbol(modnl.location, modnl.name.text, modnl.lang)
         try:
             context.add_child(binding)
-        except DuplicateSymbolDefinedException:
+        except DuplicateSymbolDefinedError:
             log.exception('%s: Failed to compile language binding of %s.', modnl.location.format_link(), modnl.name.text)
             return None
         # Important, the context must be changed here to the binding, else the dependency and reference won't be resolved correctly
@@ -362,7 +362,7 @@ class Compiler:
         try:
             context.add_child(symbol)
             return symbol
-        except DuplicateSymbolDefinedException:
+        except DuplicateSymbolDefinedError:
             log.exception('%s: Failed to compile module %s.', module.location.format_link(), module.id.text)
         return None
 
@@ -411,7 +411,7 @@ class Compiler:
             try:
                 # TODO: alternative definition possibly allowed here?
                 current_module.add_child(symbol)
-            except DuplicateSymbolDefinedException as err:
+            except DuplicateSymbolDefinedError as err:
                 obj.errors.setdefault(symbol.location.range, []).append(err)
         else:
             if not defi.find_parent_module_name():
@@ -443,7 +443,7 @@ class Compiler:
             access_modifier=context.get_visible_access_modifier())
         try:
             current_module.add_child(symbol)
-        except DuplicateSymbolDefinedException as err:
+        except DuplicateSymbolDefinedError as err:
             obj.errors.setdefault(symbol.location.range, []).append(err)
 
     def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):

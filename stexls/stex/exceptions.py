@@ -24,7 +24,7 @@ class Info(Exception):
     pass
 
 
-class DuplicateSymbolDefinedException(CompilerError):
+class DuplicateSymbolDefinedError(CompilerError):
     pass
 
 

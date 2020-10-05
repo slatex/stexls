@@ -23,7 +23,6 @@ import pickle
 import functools
 import logging
 from time import time
-from enum import Flag
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +34,12 @@ from .symbols import *
 from .exceptions import *
 from . import util
 
-__all__ = ['Compiler', 'StexObject', 'Dependency']
+__all__ = ['Compiler', 'StexObject', 'Dependency', 'ObjectfileNotFound']
+
+
+class ObjectfileNotFound(FileNotFoundError):
+    pass
+
 
 class Dependency:
     def __init__(
@@ -206,10 +210,10 @@ class Compiler:
         return self.outdir / sha / (file.name + '.stexobj')
 
     def load_from_objectfile(self, file: Path) -> Optional[StexObject]:
-        ' Loads the cached objectfile for <file> if it exists. '
+        ' Loads the cached objectfile for <file> if it exists. Raises ObjectfileNotFound if not compiled yet. '
         objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
-            return None
+            raise ObjectfileNotFound(file)
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
             if not isinstance(obj, StexObject):

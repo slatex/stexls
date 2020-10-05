@@ -1,6 +1,6 @@
+from stexls.stex.compiler import ObjectfileNotFound
 from typing import Callable, Iterable, Dict, Optional, List
 from pathlib import Path
-import functools
 from multiprocessing import Pool
 from stexls.vscode import Location
 from stexls.stex import *
@@ -54,11 +54,14 @@ class Linter:
                 return self.compiler.compile(file, content=content)
             except FileNotFoundError:
                 return None
-        buffered = self._object_buffer.get(file)
-        objectfile = self.compiler.get_objectfile_path(file)
-        if buffered and objectfile.is_file() and objectfile.lstat().st_mtime < buffered.creation_time:
-            return buffered
-        return self.compiler.load_from_objectfile(file)
+        try:
+            return self.compiler.load_from_objectfile(file)
+        except ObjectfileNotFound:
+            buffered = self._object_buffer.get(file)
+            objectfile = self.compiler.get_objectfile_path(file)
+            if buffered and objectfile.is_file() and objectfile.lstat().st_mtime < buffered.creation_time:
+                return buffered
+        return None
 
     def _compile_workspace(self):
         ' Compiles or loads all files in the workspace and bufferes them in ram. '

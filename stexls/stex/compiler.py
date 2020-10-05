@@ -34,10 +34,10 @@ from .symbols import *
 from .exceptions import *
 from . import util
 
-__all__ = ['Compiler', 'StexObject', 'Dependency', 'ObjectfileNotFound']
+__all__ = ['Compiler', 'StexObject', 'Dependency', 'ObjectfileNotFoundError']
 
 
-class ObjectfileNotFound(FileNotFoundError):
+class ObjectfileNotFoundError(FileNotFoundError):
     pass
 
 
@@ -204,27 +204,44 @@ class Compiler:
         self.outdir = outdir.expanduser().resolve().absolute()
 
     def get_objectfile_path(self, file: Path) -> Path:
-        ' Returns the path to where the objectfile should be cached. '
-        # TODO: This maybe should not be part of the compiler class, but instead some kind of manager class, that manages storage of objectfiles
+        ''' Gets the correct path the objectfile for the input file should be stored at.
+
+        Parameters:
+            file: Path to sourcefile.
+
+        Returns:
+            Path to the objectfile.
+        '''
         sha = sha1(file.parent.as_posix().encode()).hexdigest()
         return self.outdir / sha / (file.name + '.stexobj')
 
     def load_from_objectfile(self, file: Path) -> Optional[StexObject]:
-        ' Loads the cached objectfile for <file> if it exists. Raises ObjectfileNotFound if not compiled yet. '
+        ''' Loads the cached objectfile for <file> if it exists.
+
+        Parameters:
+            file: Path to source file.
+
+        Returns:
+            The precompiled objectfile.
+
+        Raises:
+            ObjectfileNotFoundError If the objectfile does not exist.
+            RuntimeError: If the loaded object file can not be deserialized.
+        '''
         objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
-            raise ObjectfileNotFound(file)
+            raise ObjectfileNotFoundError(file)
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
             if not isinstance(obj, StexObject):
-                raise Exception(f'Objectfile for "{file}" is corrupted.')
+                raise RuntimeError(f'Objectfile for "{file}" is corrupted.')
             return obj
 
     def recompilation_required(self, file: Path, time_modified: float = None):
         ''' Tests if compilation required by checking if the objectfile is up to date.
 
         Parameters:
-            file: Path to sourcefile
+            file: Valid path to a source file.
             time_modified: Some external time of last modification that overrides the objectfile's time. (Range of time.time())
 
         Returns:
@@ -236,7 +253,7 @@ class Compiler:
         mtime = objectfile.lstat().st_mtime
         if time_modified and mtime < time_modified:
             return True
-        if file.is_file() and mtime < file.lstat().st_mtime:
+        if mtime < file.lstat().st_mtime:
             return True
         return False
 

@@ -15,7 +15,13 @@ class LintingResult:
     def __init__(self, obj: StexObject):
         self.object = obj
 
-    def format_messages(self, format: str = '{file}:{line}:{column} {severity} - {message}', diagnosticlevel: str = 'error'):
+    def format_messages(self, format: str = '{file}:{line}:{column} {severity} - {message}', diagnosticlevel: str = 'info'):
+        """ Prints error messages
+
+        Parameters:
+            format: A str.format format. Available variables are file, line, column, severity and message.
+            diagnosticlevel: A string with the level of diagnostics to be printet. Available levels are: info, warning and error.
+        """
         for range, errors in self.object.errors.items():
             loc = Location(self.object.file.as_uri(), range)
             for err in errors:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 import os
 from typing import Set, Optional, Dict, List, Union, Tuple, Iterator
-from enum import Enum
+from enum import Enum, Flag
 from pathlib import Path
-from stexls.vscode import Location, Range, DocumentSymbol
-from stexls.stex.exceptions import DuplicateSymbolDefinedException, InvalidSymbolRedifinitionException
+from stexls.vscode import Location, Range, DocumentSymbol, Position
+from stexls.stex.exceptions import DuplicateSymbolDefinedError, InvalidSymbolRedifinitionException
 from stexls.util.format import format_enumeration
+from .references import ReferenceType
 
 
 __all__ = [
@@ -16,15 +17,15 @@ __all__ = [
     'ModuleSymbol',
     'BindingSymbol',
     'DefSymbol',
+    'RootSymbol',
     'ScopeSymbol',
 ]
 
 
-class AccessModifier(Enum):
-    PUBLIC='public'
-    PRIVATE='private'
-    # TODO: Unused?
-    PROTECTED='protected'
+class AccessModifier(Flag):
+    PUBLIC=0
+    PROTECTED=1
+    PRIVATE=3 # private is 3 so that it can be treaded as stronger than protected and public in comparisions
 
 
 class ModuleType(Enum):
@@ -55,23 +56,30 @@ class Symbol:
             name: Identifier of this symbol relative to it's parent.
         """
         assert location is not None, "Invalid symbol location"
-        assert name is not None, "Invalid symbol name"
+        assert isinstance(name, str), "Member 'name' is not of type str"
         self.name = name
         self.parent: Optional[Symbol] = None
         self.children: Dict[str, List[Symbol]] = dict()
         self.location = location
-        self.access_modifier = AccessModifier.PUBLIC
+        self.access_modifier: AccessModifier = AccessModifier.PUBLIC
+
+    @property
+    def reference_type(self) -> ReferenceType:
+        ' Returns the valid type of a reference that addresses this symbol. '
+        return ReferenceType.UNDEFINED
 
     def import_from(self, module: Symbol):
         ' Imports the symbols from <source> into this symbol table. '
-        cpy = module.copy()
+        cpy = module.shallow_copy()
         try:
             self.add_child(cpy)
-        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
             # TODO: Currently already imported modules are ignored, what's the right procedure here?
             # TODO: Propagate import error, but probably not useful here
+            # TODO: Solution: Report Indirect import errors.
             return
         for alts in module.children.values():
+            # TODO: Import behaviour of 'import scopes' like 'frame' and 'omtext' --> What to do with defis inside these?
             for child in alts:
                 if child.access_modifier != AccessModifier.PUBLIC:
                     continue
@@ -80,13 +88,20 @@ class Symbol:
                 elif isinstance(child, DefSymbol):
                     # TODO: Correct add_child behaviour depending on the context the symbol was imported under
                     try:
-                        cpy.add_child(child.copy(), len(alts) > 1)
-                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedException):
+                        cpy.add_child(child.shallow_copy(), len(alts) > 1)
+                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
                         # TODO: What to do in case of error? Should this be impossible?
                         pass
 
+    def get_visible_access_modifier(self) -> AccessModifier:
+        ' Gets the access modifier visible from the symbol tree root. '
+        if self.parent and self.access_modifier != AccessModifier.PRIVATE:
+            return self.parent.get_visible_access_modifier() | self.access_modifier
+        return self.access_modifier
+
     def __iter__(self) -> Iterator[Symbol]:
         ' Iterates over all child symbols. '
+        # TODO: Remove this because its unsafe -> Add explicit .flat() method
         for alts in self.children.values():
             for child in alts:
                 yield child
@@ -101,14 +116,9 @@ class Symbol:
             parent = parent.parent
         return False
 
-    def copy(self) -> Symbol:
-        ' Creates a copy. '
-        symbol = Symbol(self.location.copy() if self.location else None, self.name)
-        symbol.access_modifier = self.access_modifier
-        for children in self.children.values():
-            for child in children:
-                symbol.add_child(child.copy(), alternative=len(children)>1)
-        return symbol
+    def shallow_copy(self) -> Symbol:
+        ' Creates a shallow copy of this symbol and it\'s parameterization. Does not create a copy of the symbol table! '
+        raise NotImplementedError
 
     @property
     def depth(self) -> int:
@@ -152,14 +162,14 @@ class Symbol:
             alternative: If set to true, allows for duplicate definitions.
 
         Raises:
-            If the child already has a parent or rises DuplicateSymbolDefinedException
+            If the child already has a parent or rises DuplicateSymbolDefinedError
             if a symbol with the same name is already defined and alternatives are not allowed.
         """
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
             if not alternative:
-                raise DuplicateSymbolDefinedException(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
+                raise DuplicateSymbolDefinedError(f'Symbol with name "{child.name}" already added: {self.location.format_link()}')
             for prev_child in self.children[child.name]:
                 if not isinstance(prev_child, type(child)):
                     raise InvalidSymbolRedifinitionException(f'Symbol types do not match to previous definition: {type(child)} vs. {type(prev_child)}')
@@ -177,65 +187,67 @@ class Symbol:
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
-    def lookup(self, qualified_identifier: Union[str, List[str]]) -> List[Symbol]:
-        """ Symbol lookup searches for symbols with a given qualified identifier.
-        Special about the lookup operation is, that the first identifier must be in the symbol table
-        of a parent, while all others must be part of the children.
+    def lookup(self, identifier: Union[str, List[str]]) -> List[Symbol]:
+        """ Symbol lookup searches for symbols with a given identifier.
+        A "lookup" is search operation that can change the root to a parent.
+        After a root has been found, the normal "find" operation will take over and only
+        look through a child sub-tree.
 
         Parameters:
-            qualified_identifier: Qualified identifier of the symbol.
+            identifier: Symbol identifier.
 
         Returns:
-            All symbols with the specified qualified id.
-
-        Raises:
-            Raises ValueError if any identifier before the last in the list, result in
-            non-unique symbols.
+            All symbols with the specified id.
         """
-        if isinstance(qualified_identifier, str):
-            qualified_identifier = [qualified_identifier]
-        children = self.children.get(qualified_identifier[0], [])
-        if len(qualified_identifier) > 1:
-            if len(children) > 1:
-                raise ValueError(f'Unable to resolve {qualified_identifier}: Id not unique.')
-            for child in children:
-                # for-loop, but only the first is relevant
-                return child.find(qualified_identifier[1:])
-        if children:
-            return children
-        if self.parent and not isinstance(self, (ModuleSymbol, BindingSymbol)):
-            # Parent lookup only allowed through non-modules
-            # TODO: Is preventing lookup through modules enough? Or is there a more generic way to describe this lookup behaviour?
-            return self.parent.lookup(qualified_identifier)
-        return []
+        # Force id to be a list
+        if isinstance(identifier, str):
+            identifier = [identifier]
+        # Find the other identifiers in the subbranches of the children
+        resolved_symbols = [
+            symbol
+            # Lookup the root identifier
+            for resolved_root in self.children.get(identifier[0], [])
+            # Resolve the rest of the identifier
+            for symbol in resolved_root.find(identifier[1:])
+        ]
+        # If nothing was resolved yet, try to search for the first symbol inside the parents
+        if not resolved_symbols:
+            # Lookup the identifier in parent tree
+            if self.parent and not isinstance(self, (ModuleSymbol, BindingSymbol)):
+                # TODO: Is preventing lookup through modules enough? Or is there a more generic way to describe this lookup behaviour?
+                return self.parent.lookup(identifier)
+            # This is a failsafe in case the current module is referenced inside itself
+            # This is needed because else referencing another module inside the same file might be possible
+            # depending on the order of declaration, but not allowed!
+            # This also must be the last check else referencing nested symbols with the same name is impossible
+            if self.name == identifier[0]:
+                return self.find(identifier[1:])
+        return resolved_symbols
 
-    def find(self, qualified_identifier: Union[str, List[str]]) -> List[Symbol]:
-        """ Searches for a child symbol with a given name inside this symbol table and all symbol tables resolved on the way.
-        Parent lookup is not performed.
+    def find(self, identifier: Union[str, List[str]]) -> List[Symbol]:
+        """ Searches the identified symbol in sub-trees of this symbols' children.
 
         Parameters:
-            qualified_identifier: Qualified identifier of the child symbol.
+            identifier: Identifier of the child symbol.
 
         Returns:
-            Symbol with the specified qualified identifier.
-
-        Raises:
-            Raises ValueError if a identifier that is not the last identifier resolves to multiple symbols.
+            All symbols with the specified identifier.
         """
-        if isinstance(qualified_identifier, str):
-            qualified_identifier = [qualified_identifier]
-        children = self.children.get(qualified_identifier[0])
-        if not children:
-            return []
-        if len(qualified_identifier) > 1:
-            if len(children) > 1:
-                raise ValueError(f'Unable to resolve {qualified_identifier}: Id not unique.')
-            for child in children:
-                return child.find(qualified_identifier[1:])
+        if not identifier:
+            return [self]
+        if isinstance(identifier, str):
+            identifier = [identifier]
+        children = self.children.get(identifier[0], [])
+        if len(identifier) > 1:
+            return [
+                resolved
+                for child in children
+                for resolved in child.find(identifier[1:])
+            ]
         return children
 
     def __repr__(self):
-        return f'[{self.access_modifier.value} Symbol {self.name}]'
+        return f'[{self.access_modifier.name} Symbol {self.name}]'
 
 
 class ModuleSymbol(Symbol):
@@ -244,20 +256,28 @@ class ModuleSymbol(Symbol):
         self,
         module_type: ModuleType,
         location: Location,
-        name: str):
+        name: str = None):
         """ New module signature symbol.
 
         Parameters:
             module_type: The latex environment type used to define this symbol.
+            location: Location at which the module symbol is created.
+            name: Name of the module. If no name is provided, a name will be atomatically created.
         """
-        super().__init__(location, name or f'__UNNAMED_MODULE_{ModuleSymbol.UNNAMED_MODULE_COUNT}__')
+        super().__init__(location, name or f'__MODULESYMBOL#{ModuleSymbol.UNNAMED_MODULE_COUNT}__')
         if not name:
             ModuleSymbol.UNNAMED_MODULE_COUNT += 1
             self.access_modifier = AccessModifier.PRIVATE
         self.module_type = module_type
 
-    def copy(self) -> ModuleSymbol:
-        ' Copies this module symbol excluding parent and child structure. '
+    @property
+    def reference_type(self) -> ReferenceType:
+        if ModuleType.MODSIG == self.module_type:
+            return ReferenceType.MODSIG
+        if ModuleType.MODULE == self.module_type:
+            return ReferenceType.MODULE
+
+    def shallow_copy(self) -> ModuleSymbol:
         cpy = ModuleSymbol(self.module_type, self.location.copy(), self.name)
         cpy.access_modifier = self.access_modifier
         return cpy
@@ -266,7 +286,7 @@ class ModuleSymbol(Symbol):
         return self
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} ModuleSymbol "{self.name}"/{self.module_type.name}]'
+        return f'[{self.access_modifier.name} ModuleSymbol "{self.name}"/{self.module_type.name} at {self.location.range.start.format()}]'
 
 
 class DefSymbol(Symbol):
@@ -276,7 +296,8 @@ class DefSymbol(Symbol):
         location: Location,
         name: str,
         noverb: bool = False,
-        noverbs: Set[str] = None):
+        noverbs: Set[str] = None,
+        access_modifier: AccessModifier = AccessModifier.PUBLIC):
         """ New Verb symbol.
 
         Parameters:
@@ -289,12 +310,23 @@ class DefSymbol(Symbol):
         self.def_type = def_type
         self.noverb = noverb
         self.noverbs = noverbs or set()
+        self.access_modifier = access_modifier
+
+    @property
+    def reference_type(self) -> ReferenceType:
+        if self.def_type == DefType.DEF:
+            return ReferenceType.DEF
+        if self.def_type == DefType.DREF:
+            return ReferenceType.DREF
+        if self.def_type == DefType.SYM:
+            return ReferenceType.SYM
+        if self.def_type == DefType.SYMDEF:
+            return ReferenceType.SYMDEF
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name}]'
+        return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name} at {self.location.range.start.format()}]'
 
-    def copy(self) -> DefSymbol:
-        ' Shallow copy of this symbol without parent and child structure. '
+    def shallow_copy(self) -> DefSymbol:
         cpy = DefSymbol(self.def_type, self.location.copy(), self.name, self.noverb, self.noverbs.copy())
         cpy.access_modifier = self.access_modifier
         return cpy
@@ -305,26 +337,45 @@ class BindingSymbol(Symbol):
         super().__init__(location, module)
         self.lang = lang
 
+    @property
+    def reference_type(self) -> ReferenceType:
+        return ReferenceType.BINDING
+
     def get_current_binding(self) -> BindingSymbol:
         return self
 
-    def copy(self) -> BindingSymbol:
+    def shallow_copy(self) -> BindingSymbol:
         cpy = BindingSymbol(self.location.copy(), self.name, self.lang)
         cpy.access_modifier = self.access_modifier
         return cpy
 
     def __repr__(self):
-        return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang}]'
+        return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang} at {self.location.range.start.format()}]'
 
+class RootSymbol(Symbol):
+    NAME = '__root__'
+    def __init__(self, location: Location):
+        super().__init__(location, RootSymbol.NAME)
+
+    @property
+    def qualified(self) -> List[str]:
+        return ()
+
+    def shallow_copy(self):
+        raise ValueError('Root symbols should never be copied, but created explicitly!')
 
 class ScopeSymbol(Symbol):
     COUNTER=0
-    def __init__(self, location: Location):
-        super().__init__(location, f'__ANONYMOUS_SCOPE{ScopeSymbol.COUNTER}__')
+    def __init__(self, location: Location, name: str = 'UNNAMED_SCOPE'):
+        super().__init__(location, f'__{name}#{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
+        self._name = name
+        self.access_modifier = AccessModifier.PRIVATE
 
-    def copy(self) -> ScopeSymbol:
-        ' Creates a shallow copy without parent and child information. '
-        cpy = ScopeSymbol(self.location.copy())
+    def __repr__(self):
+        return f'[{self.access_modifier.name} Scope "{self.name}" at {self.location.range.start.format()}]'
+
+    def shallow_copy(self) -> ScopeSymbol:
+        cpy = ScopeSymbol(self.location.copy(), name=self._name)
         cpy.access_modifier = self.access_modifier
         return cpy

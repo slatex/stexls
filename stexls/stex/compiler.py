@@ -536,7 +536,7 @@ class Compiler:
         return None
 
     def _compile_view(self, obj: StexObject, context: Symbol, view: ViewIntermediateParseTree):
-        if context.name != _ROOT_:
+        if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
             obj.errors.setdefault(view.location.range, []).append(
                 CompilerError(f'Invalid view location: Parent is not root'))
@@ -549,14 +549,14 @@ class Compiler:
                 )
 
         if view.env == 'gviewnl':
-            source_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+            source_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir,
                 view.location.path, view.fromrepos.text if view.fromrepos else None, view.source_module.text)
-            target_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+            target_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir,
                 view.location.path, view.torepos.text if view.torepos else None, view.target_module.text)
         elif view.env == 'mhview':
-            source_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+            source_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.root_dir,
                 view.location.path, view.fromrepos.text if view.fromrepos else None, view.frompath.text if view.frompath else None, None, None, view.source_module.text)
-            target_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+            target_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.root_dir,
                 view.location.path, view.torepos.text if view.torepos else None, view.topath.text if view.topath else None, None, None, view.target_module.text)
         else:
             raise CompilerError(f'Unexpected environment: "{view.env}"')
@@ -586,7 +586,7 @@ class Compiler:
         return None
 
     def _compile_viewsig(self, obj: StexObject, context: Symbol, viewsig: ViewSigIntermediateParseTree):
-        if context.name != _ROOT_:
+        if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
             obj.errors.setdefault(viewsig.location.range, []).append(
                 CompilerError(f'Invalid viewsig location: Parent is not root'))
@@ -600,7 +600,7 @@ class Compiler:
             scope=context,
             module_name=viewsig.source_module.text,
             module_type_hint=ModuleType.MODSIG,  # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
-            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
+            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
             export=True)
         obj.add_dependency(source_dep)
         ref = Reference(source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
@@ -611,7 +611,7 @@ class Compiler:
             scope=context,
             module_name=viewsig.target_module.text,
             module_type_hint=ModuleType.MODSIG,
-            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root, viewsig.location.path, viewsig.torepos.text if viewsig.torepos else None, viewsig.target_module.text),
+            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir, viewsig.location.path, viewsig.torepos.text if viewsig.torepos else None, viewsig.target_module.text),
             export=True)
         obj.add_dependency(target_dep)
         ref = Reference(target_dep.range, context, [target_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)

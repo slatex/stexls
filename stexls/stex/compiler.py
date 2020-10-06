@@ -563,10 +563,54 @@ class Compiler:
         # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
-    def _compile_view(self, obj: StexObject, context: Symbol, tree: ViewIntermediateParseTree):
-        # TODO: Compile view and return either a Scope symbol or create a new ViewSymbol class. 
+    def _compile_view(self, obj: StexObject, context: Symbol, view: ViewIntermediateParseTree):
+        if context.name != _ROOT_:
+            # TODO: Semantic location check
+            obj.errors.setdefault(view.location.range, []).append(
+                CompilerError(f'Invalid view location: Parent is not root'))
 
-        # Hint: Da view nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+        if view.env == 'gviewnl':
+            expected_name = f'{view.module.text}.{view.lang.text}'
+            if expected_name != obj.file.stem:
+                obj.errors.setdefault(view.module.location.range, []).append(
+                    CompilerWarning(f'Expected file name "{expected_name}" but found "{obj.file.stem}"')
+                )
+
+        if view.env == 'gviewnl':
+            source_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+                view.location.path, view.fromrepos.text if view.fromrepos else None, view.source_module.text)
+            target_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+                view.location.path, view.torepos.text if view.torepos else None, view.target_module.text)
+        elif view.env == 'mhview':
+            source_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+                view.location.path, view.fromrepos.text if view.fromrepos else None, view.frompath.text if view.frompath else None, None, None, view.source_module.text)
+            target_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.workspace.root,
+                view.location.path, view.torepos.text if view.torepos else None, view.topath.text if view.topath else None, None, None, view.target_module.text)
+        else:
+            raise CompilerError(f'Unexpected environment: "{view.env}"')
+
+        source_dep = Dependency(
+            range=view.source_module.range,
+            scope=context,
+            module_name=view.source_module.text,
+            module_type_hint=ModuleType.MODSIG, # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            file_hint=source_file_hint,
+            export=True)
+        obj.add_dependency(source_dep)
+        ref = Reference(source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        obj.add_reference(ref)
+
+        target_dep = Dependency(
+            range=view.target_module.range,
+            scope=context,
+            module_name=view.target_module.text,
+            module_type_hint=ModuleType.MODSIG, # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            file_hint=target_file_hint,
+            export=True)
+        obj.add_dependency(target_dep)
+        ref = Reference(target_dep.range, context, [target_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        obj.add_reference(ref)
+
         return None
 
     def _compile_viewsig(self, obj: StexObject, context: Symbol, viewsig: ViewSigIntermediateParseTree):

@@ -336,23 +336,30 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
 
 
 class ViewIntermediateParseTree(IntermediateParseTree):
+    # TODO: possibly mhview should be separate -- the same way as module is separated from mhmodnl
     PATTERN = re.compile(r'mhview|gviewnl')
     def __init__(
         self,
         location: Location,
         env: str,
-        module: TokenWithLocation,
+        module: Optional[TokenWithLocation],  # mhview can be anonymous, TODO: check option 'id' field
         lang: Optional[TokenWithLocation],
-        imports: List[TokenWithLocation],
         fromrepos: Optional[TokenWithLocation],
-        frompath: Optional[TokenWithLocation]):
+        frompath: Optional[TokenWithLocation],
+        torepos: Optional[TokenWithLocation],
+        topath: Optional[TokenWithLocation],
+        source_module: TokenWithLocation,
+        target_module: TokenWithLocation):
         super().__init__(location)
         self.env = env
         self.module = module
         self.lang = lang
-        self.imports = imports
         self.fromrepos = fromrepos
         self.frompath = frompath
+        self.torepos = torepos
+        self.topath = topath
+        self.source_module = source_module
+        self.target_module = target_module
 
     def find_parent_module_name(self):
         return self.module.text
@@ -363,31 +370,33 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         if not match:
             return None
         _, named = TokenWithLocation.parse_oargs(e.oargs)
+        module = None
         lang = None
         if e.env_name == 'gviewnl':
-            if len(e.rargs) < 2:
-                raise CompilerError(f'Argument count mismatch: gviewnl requires at least 2 arguments, found {len(e.rargs)}.')
-            if 'frompath' in named:
-                raise CompilerError('frompath argument not allowed in gviewnl.')
-            lang = e.rargs[1]
-            imports = e.rargs[2:]
+            if len(e.rargs) < 4:
+                raise CompilerError(f'Argument count mismatch: gviewnl requires 4 arguments, found {len(e.rargs)}.')
+            for illegal_arg in ['frompath', 'topath']:
+                if illegal_arg in named:
+                    raise CompilerError(f'{illegal_arg} argument not allowed in gviewnl.')
+            module = TokenWithLocation.from_node(e.rargs[0])
+            lang = TokenWithLocation.from_node(e.rargs[1])
         elif e.env_name == 'mhview':
-            if len(e.rargs) < 1:
-                raise CompilerError(f'Argument count mismatch: mhview requires at least 1 argument, found {len(e.rargs)}.')
-            if 'fromrepos' in named:
-                raise CompilerError('fromrepos argument not allowed in mhview.')
-            imports = e.rargs[1:]
+            if len(e.rargs) < 2:
+                raise CompilerError(f'Argument count mismatch: mhview requires 2 arguments, found {len(e.rargs)}.')
         else:
             raise CompilerError(f'Invalid environment name "{e.env_name}"')
-        module = e.rargs[0]
         return ViewIntermediateParseTree(
             location=e.location,
             env=e.env_name,
             module=module,
             lang=lang,
-            imports=imports,
             fromrepos=named.get('fromrepos'),
-            frompath=named.get('frompath'))
+            frompath=named.get('frompath'),
+            torepos=named.get('torepos'),
+            topath=named.get('topath'),
+            source_module=TokenWithLocation.from_node(e.rargs[-2]),
+            target_module=TokenWithLocation.from_node(e.rargs[-1]),
+            )
 
 
 class ViewSigIntermediateParseTree(IntermediateParseTree):

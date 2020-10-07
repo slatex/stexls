@@ -164,6 +164,8 @@ class Symbol:
         Raises:
             If the child already has a parent or rises DuplicateSymbolDefinedError
             if a symbol with the same name is already defined and alternatives are not allowed.
+            If alternatives are allowed: Raises InvalidSymbolRedifinitionException if the alternative's signature
+            does not match all previous definitions (e.g. once with noverb and one time without noverb annotation)
         """
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')

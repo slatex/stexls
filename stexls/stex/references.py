@@ -1,5 +1,6 @@
 from typing import List
 from enum import Flag
+import stexls
 from stexls.vscode import Range
 from stexls.util.format import format_enumeration
 
@@ -62,7 +63,7 @@ class ReferenceType(Flag):
 
 class Reference:
     ' Container that contains information about which symbol is referenced by name. '
-    def __init__(self, range: Range, scope: 'Symbol', name: List[str], reference_type: ReferenceType):
+    def __init__(self, range: Range, scope: 'stexls.symbols.Symbol', name: List[str], reference_type: ReferenceType):
         """ Initializes the reference container.
 
         Parameters:

@@ -26,13 +26,14 @@ from time import time
 
 log = logging.getLogger(__name__)
 
-from stexls.vscode import Position, Range, Location
+from stexls.vscode import Diagnostic, DiagnosticSeverity, Position, Range, Location
 from stexls.util.format import format_enumeration
 from .references import Reference, ReferenceType
 from .parser import *
 from .symbols import *
 from .exceptions import *
 from . import util
+from .diagnostics import Diagnostics
 
 __all__ = ['Compiler', 'StexObject', 'Dependency', 'ObjectfileNotFoundError']
 
@@ -110,8 +111,8 @@ class StexObject:
         self.dependencies: List[Dependency] = list()
         # List of references. A reference consists of a range relative to the file that owns the reference and the symbol identifier that is referenced.
         self.references: List[Reference] = list()
-        # Accumulator for errors that occured at <range> of this file.
-        self.errors: Dict[Range, List[Exception]] = dict()
+        # Handler for diagnostics
+        self.diagnostics: Diagnostics = Diagnostics(self.file)
         # Stores creation time
         self.creation_time = time()
 
@@ -142,14 +143,12 @@ class StexObject:
                 f += f'\n\t{loc}: {"?".join(ref.name)} of type {ref.reference_type}'
         else:
             f += '\n\tNo references.'
-        f += '\nErrors:'
-        if self.errors:
-            for r, errs in self.errors.items():
-                loc = Location(self.file.as_uri(), r).format_link()
-                for err in errs:
-                    f += f'\n\t{loc}: {err}'
+        f += '\nDiagnostics:'
+        if self.diagnostics:
+            for diagnostic in self.diagnostics:
+                f += f'\n\t{Location(self.file.as_uri(), diagnostic.range).format_link()} {diagnostic.severity.name} - {diagnostic.message} ({diagnostic.code})'
         else:
-                   f += '\n\tNo errors.'
+            f += '\n\tNo diagnostics.'
         f += '\nSymbol Table:'
         l = []
         def enter(l, s):
@@ -172,9 +171,8 @@ class StexObject:
             # TODO: this same error occurs in Symbol.import_from(): Fix both
             if dep0.check_if_same_module_imported(dep):
                 # Skip adding this dependency
-                location = Location(self.file.as_uri(), dep0.range)
-                self.errors.setdefault(dep.range, []).append(
-                    Warning(f'Redundant import of module "{dep.module_name}" at "{location.format_link()}"'))
+                previously_imported_at = Location(self.file.as_uri(), dep0.range)
+                self.diagnostics.redundant_import_check(dep.range, dep.module_name, previously_imported_at)
                 return
         self.dependencies.append(dep)
 
@@ -282,7 +280,7 @@ class Compiler:
         object = StexObject(file)
         parser = IntermediateParser(file)
         for loc, err in parser.errors:
-            object.errors[loc.range] = err
+            object.diagnostics.report_parser_error(loc.range, err)
         parser.parse(content)
         for root in parser.roots:
             root: IntermediateParseTree
@@ -303,12 +301,11 @@ class Compiler:
     def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            obj.errors.setdefault(modsig.location.range, []).append(
-                CompilerError(f'Invalid modsig location: Parent is not root'))
+            message = f'Invalid modsig location: Parent is not root'
+            obj.diagnostics.report_semantic_location_error(modsig.location.range, message)
         name_location = modsig.location.replace(positionOrRange=modsig.name.range)
-        if obj.file.name != f'{modsig.name.text}.tex':
-            obj.errors.setdefault(name_location.range, []).append(
-                CompilerWarning(f'Invalid modsig filename: Expected "{modsig.name.text}.tex"'))
+        if obj.file.stem != modsig.name.text:
+            obj.diagnostics.file_name_mismatch(modsig.location.range, modsig.name.text, obj.file.stem)
         module = ModuleSymbol(
             module_type=ModuleType.MODSIG,
             location=name_location,
@@ -323,10 +320,10 @@ class Compiler:
     def _compile_modnl(self, obj: StexObject, context: Symbol, modnl: ModnlIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            obj.errors.setdefault(modnl.location.range, []).append(
-                CompilerError(f'Invalid modnl location: Parent is not root'))
-        if obj.file.name != f'{modnl.name.text}.{modnl.lang.text}.tex':
-            obj.errors.setdefault(modnl.location.range, []).append(CompilerWarning(f'Invalid modnl filename: Expected "{modnl.name.text}.{modnl.lang.text}.tex"'))
+            obj.diagnostics.parent_must_be_root_semantic_location_check(modnl.location.range, 'modnl')
+        expected_file_stem = f'{modnl.name.text}.{modnl.lang.text}'
+        if obj.file.stem != expected_file_stem:
+            obj.diagnostics.file_name_mismatch(modnl.location.range, expected_file_stem, obj.file.stem)
         binding = BindingSymbol(modnl.location, modnl.name.text, modnl.lang)
         try:
             context.add_child(binding)
@@ -352,8 +349,7 @@ class Compiler:
     def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            obj.errors.setdefault(module.location.range, []).append(
-                CompilerError(f'Invalid module location: Parent is not root'))
+            obj.diagnostics.parent_must_be_root_semantic_location_check(module.location.range, 'module')
         if module.id:
             name_location = module.location.replace(positionOrRange=module.id.range)
             symbol = ModuleSymbol(ModuleType.MODULE, name_location, module.id.text)
@@ -368,7 +364,7 @@ class Compiler:
 
     def _compile_tassign(self, obj: StexObject, context: Symbol, tassign: TassignIntermediateParseTree):
         if not isinstance(tassign.parent, ViewSigIntermediateParseTree):
-            obj.errors.setdefault(tassign.location.range, []).append(CompilerError('tassign is only allowed inside a gviewsig'))
+            obj.diagnostics.semantic_location_check(tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "gviewsig"')
             return
         view : ViewSigIntermediateParseTree = tassign.parent
 
@@ -381,8 +377,7 @@ class Compiler:
             # TODO: Semantic location check
             module: ModuleSymbol = context.get_current_module()
             if not module:
-                obj.errors.setdefault(trefi.location.range, []).append(
-                    CompilerWarning('Invalid drefi location: Parent module symbol not found.'))
+                obj.diagnostics.module_not_found_semantic_location_check(trefi.location.range, 'drefi')
             else:
                 try:
                     symbol = DefSymbol(
@@ -392,7 +387,7 @@ class Compiler:
                         access_modifier=context.get_visible_access_modifier())
                     module.add_child(symbol, alternative=True)
                 except InvalidSymbolRedifinitionException as err:
-                    obj.errors.setdefault(trefi.location.range, []).append(err)
+                    obj.diagnostics.invalid_redefinition(trefi.location.range, err.other_location, err.info)
         if trefi.module:
             # TODO: Semantic location check
             obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
@@ -402,12 +397,10 @@ class Compiler:
             module_name: str = trefi.find_parent_module_name()
             obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
         if trefi.m:
-            obj.errors.setdefault(trefi.location.range, []).append(
-                DeprecationWarning('mtref environments are deprecated.'))
+            obj.diagnostics.mtref_deprecated_check(trefi.location.range)
             has_q = trefi.target_annotation and '?' in trefi.target_annotation.text
             if not has_q:
-                obj.errors.setdefault(trefi.location.range, []).append(
-                    CompilerError('Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'))
+                obj.diagnostics.mtref_questionmark_syntax_check(trefi.location.range)
 
     def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
         current_module = context.get_current_module()
@@ -422,13 +415,12 @@ class Compiler:
                 # TODO: alternative definition possibly allowed here?
                 current_module.add_child(symbol)
             except DuplicateSymbolDefinedError as err:
-                obj.errors.setdefault(symbol.location.range, []).append(err)
+                obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
         else:
             if not defi.find_parent_module_name():
                 # TODO: Semantic location check
                 # A defi without a parent module doesn't generate a reference
-                obj.errors.setdefault(defi.location.range, []).append(
-                    CompilerError(f'Invalid defi: "{defi.name}" does not have a module.'))
+                obj.diagnostics.module_not_found_semantic_location_check(defi.location.range, 'defi')
                 return
             obj.add_reference(
                 Reference(
@@ -441,8 +433,7 @@ class Compiler:
         current_module = context.get_current_module()
         if not current_module:
             # TODO: Semantic location check
-            obj.errors.setdefault(sym.location.range, []).append(
-                CompilerError(f'Invalid location: "{sym.name}" does not have a module.'))
+            obj.diagnostics.module_not_found_semantic_location_check(sym.location.range, 'sym')
             return
         symbol = DefSymbol(
             DefType.SYM,
@@ -454,14 +445,13 @@ class Compiler:
         try:
             current_module.add_child(symbol)
         except DuplicateSymbolDefinedError as err:
-            obj.errors.setdefault(symbol.location.range, []).append(err)
+            obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
 
     def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):
         current_module = context.get_current_module()
         if not current_module:
             # TODO: Semantic location check
-            obj.errors.setdefault(symdef.location.range, []).append(
-                CompilerError(f'Invalid location: "{symdef.name.text}" does not have a module.'))
+            obj.diagnostics.module_not_found_semantic_location_check(symdef.location.range, 'symdef')
             return
         symbol = DefSymbol(
             DefType.SYMDEF,
@@ -473,13 +463,12 @@ class Compiler:
         try:
             current_module.add_child(symbol, alternative=True)
         except InvalidSymbolRedifinitionException as err:
-            obj.errors.setdefault(symbol.location.range, []).append(err)
+            obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
 
     def _compile_importmodule(self, obj: StexObject, context: Symbol, importmodule: ImportModuleIntermediateParseTree):
         if not isinstance(importmodule.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
             # TODO: Semantic location check: importmodule only allowed inside begin{module}?
-            obj.errors.setdefault(importmodule.location.range, []).append(
-                CompilerError(f'Invalid importmodule location: module environment not found.'))
+            obj.diagnostics.module_not_found_semantic_location_check(importmodule.location.range, 'importmodule')
         dep = Dependency(
             range=importmodule.location.range,
             scope=context,
@@ -491,23 +480,18 @@ class Compiler:
         ref = Reference(importmodule.location.range, context, [importmodule.module.text], ReferenceType.MODULE)
         obj.add_reference(ref)
         if importmodule.repos:
-            obj.errors.setdefault(importmodule.repos.range, []).append(
-                DeprecationWarning('Argument "repos" is deprecated and should be replaced with "mhrepos".'))
+            obj.diagnostics.replace_repos_with_mhrepos(importmodule.repos.range)
         if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
-            obj.errors.setdefault(importmodule.mhrepos.range, []).append(
-                Warning(f'Redundant mhrepos key: "{importmodule.mhrepos.text}" is the current repository.'))
+            obj.diagnostics.is_current_dir_check(importmodule.mhrepos.range, importmodule.mhrepos.text)
         if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
-            obj.errors.setdefault(importmodule.path.range, []).append(
-                Warning(f'Redundant path key: "{importmodule.path.text}" is the current path.'))
+            obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
         if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
-            obj.errors.setdefault(importmodule.location.range, []).append(
-                Warning(f'Targeted dir "{importmodule.dir.text}" is the current dir.'))
+            obj.diagnostics.is_current_dir_check(importmodule.location.range, importmodule.dir.text)
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
         if not isinstance(gimport.find_parent_module_parse_tree(), (ModuleIntermediateParseTree, ModsigIntermediateParseTree)):
             # TODO: Semantic location check
-            obj.errors.setdefault(gimport.location.range, []).append(
-                CompilerError(f'Invalid gimport location: module or modsig environment not found.'))
+            obj.diagnostics.module_not_found_semantic_location_check(gimport.location.range, 'gimport')
         dep = Dependency(
             range=gimport.location.range,
             scope=context,
@@ -519,8 +503,7 @@ class Compiler:
         ref = Reference(dep.range, context, [dep.module_name], ReferenceType.MODSIG)
         obj.add_reference(ref)
         if gimport.repository and gimport.repository.text == util.get_repository_name(self.root_dir, gimport.location.path):
-            obj.errors.setdefault(gimport.repository.range, []).append(
-                Warning(f'Redundant repository specified: "{gimport.repository.text}" is the current repository.'))
+            obj.diagnostics.is_current_dir_check(gimport.repository.range, gimport.repository.text)
 
     def _compile_scope(self, obj: StexObject, context: Symbol, tree: ScopeIntermediateParseTree):
         # TODO: Semantic location check
@@ -538,15 +521,12 @@ class Compiler:
     def _compile_view(self, obj: StexObject, context: Symbol, view: ViewIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            obj.errors.setdefault(view.location.range, []).append(
-                CompilerError(f'Invalid view location: Parent is not root'))
+            obj.diagnostics.parent_must_be_root_semantic_location_check(view.location.range, 'view')
 
         if view.env == 'gviewnl':
             expected_name = f'{view.module.text}.{view.lang.text}'
             if expected_name != obj.file.stem:
-                obj.errors.setdefault(view.module.location.range, []).append(
-                    CompilerWarning(f'Expected file name "{expected_name}" but found "{obj.file.stem}"')
-                )
+                obj.diagnostics.file_name_mismatch(view.module.range, expected_name, obj.file.stem)
 
         if view.env == 'gviewnl':
             source_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir,
@@ -588,12 +568,10 @@ class Compiler:
     def _compile_viewsig(self, obj: StexObject, context: Symbol, viewsig: ViewSigIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            obj.errors.setdefault(viewsig.location.range, []).append(
-                CompilerError(f'Invalid viewsig location: Parent is not root'))
+            obj.diagnostics.parent_must_be_root_semantic_location_check(viewsig.location.range)
 
         if viewsig.module.text != obj.file.stem:
-            obj.errors.setdefault(viewsig.module.location.range, []).append(
-                CompilerWarning(f'Expected name "{viewsig.module.text}" but found "{obj.file.stem}"'))
+            obj.diagnostics.file_name_mismatch(viewsig.module.range, viewsig.module.text, obj.file.stem)
 
         source_dep = Dependency(
             range=viewsig.source_module.range,

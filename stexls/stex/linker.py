@@ -37,19 +37,16 @@ class Linker:
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
         ' Links <imported> to <obj> at the scope specified in <dependency> '
-        alts = imported.symbol_table.lookup(dependency.module_name)
-        if len(alts) > 1:
-            obj.errors.setdefault(dependency.range, []).append(
-                LinkError(f'Module "{dependency.module_name}" not unique in "{imported.file}".'))
+        resolved = imported.symbol_table.lookup(dependency.module_name)
+        if len(resolved) > 1:
+            obj.diagnostics.unable_to_link_with_non_unique_module(dependency.range, dependency.module_name, imported.file)
             return
-        if not alts:
-            obj.errors.setdefault(dependency.range, []).append(
-                LinkError(f'Module "{dependency.module_name}" not defined in file "{imported.file}".'))
+        if not resolved:
+            obj.diagnostics.undefined_module_not_exported_by_file(dependency.range, dependency.module_name, imported.file)
             return
-        for module in alts:
+        for module in resolved:
             if module.access_modifier != AccessModifier.PUBLIC:
-                obj.errors.setdefault(dependency.range, []).append(
-                    LinkError(f'Module "{dependency.module_name}" can\'t be imported because it is marked private.'))
+                obj.diagnostics.attempt_access_private_symbol(dependency.range, dependency.module_name)
                 return
             # TODO: Maybe let import_from raise all it's exception, then capture them here, add them to the obj for display
             dependency.scope.import_from(module)
@@ -85,14 +82,12 @@ class Linker:
             if (dep.file_hint, dep.module_name) in _stack:
                 # if same current context of file_hint and module_name is on stack, a cyclic dependency occurs
                 cyclic_obj, cyclic_dep = _stack[(dep.file_hint, dep.module_name)]
-                cyclic_obj.errors.setdefault(cyclic_dep.range, []).append(
-                    LinkError(
-                        f'Dependency to module "{cyclic_dep.module_name}"'
-                        f' creates cycle at "{Location(file.as_uri(), dep.range).format_link()}"'))
+                cyclic_location = Location(file.as_uri(), dep.range)
+                obj.diagnostics.cyclic_dependency(cyclic_dep.range, cyclic_dep.module_name, cyclic_location)
                 continue
             update_usemodule_on_stack = _usemodule_on_stack or not dep.export
             if not dep.file_hint in objects:
-                obj.errors.setdefault(dep.range, []).append(NotCompiledError(f'Dependency "{dep.file_hint}" not found or not compiled.'))
+                obj.diagnostics.file_not_found(dep.range, dep.file_hint)
                 continue
             if self._relink_required(objects, dep.file_hint, dep.module_name, update_usemodule_on_stack):
                 # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
@@ -106,9 +101,6 @@ class Linker:
                         _toplevel_module=_toplevel_module or dep.scope.get_current_module(),
                         _usemodule_on_stack=update_usemodule_on_stack)
                     self._store_linked(update_usemodule_on_stack, dep.file_hint, dep.module_name, imported)
-                except Exception as err:
-                    obj.errors.setdefault(dep.range, []).append(err)
-                    continue
                 finally:
                     del _stack[(dep.file_hint, dep.module_name)]
             else:
@@ -154,35 +146,21 @@ class Linker:
         # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches
         for ref in linked.references:
             refname = "?".join(ref.name)
-            try:
-                resolved: List[Symbol] = ref.scope.lookup(ref.name)
-                if not resolved:
-                    suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
-                    if suggestions:
-                        err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}: '
-                            f'Did you maybe mean {suggestions}?')
-                    else:
-                        err = LinkError(f'Undefined symbol "{refname}" of type {ref.reference_type.format_enum()}')
-                    linked.errors.setdefault(ref.range, []).append(err)
-            except ValueError:
-                resolved = []
-                linked.errors.setdefault(ref.range, []).append(
-                    LinkError(f'Invalid reference to non-unique symbol "{refname}" of type {ref.reference_type.format_enum()}'))
+            resolved: List[Symbol] = ref.scope.lookup(ref.name)
+            if not resolved:
+                # TODO: Maybe get locations of suggested symbol definition in order to create "related" tags to let the user preview where the definition is.
+                suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
+                linked.diagnostics.undefined_symbol(ref.range, refname, ref.reference_type.format_enum(), suggestions)
             for symbol in resolved:
                 if symbol.reference_type not in ref.reference_type:
-                    linked.errors.setdefault(ref.range, []).append(
-                        LinkError(f'Expected symbol type is "{ref.reference_type.format_enum()}" but the resolved symbol is of type "{symbol.reference_type.format_enum()}"'))
+                    linked.diagnostics.referenced_symbol_type_check(ref.range, ref.reference_type, symbol.reference_type)
                 if isinstance(symbol, DefType):
                     defs: DefSymbol = symbol
                     if defs.noverb:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkWarning(f'Referenced DefSymbol "{refname}" is marked as "noverb".'))
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname)
                     binding: BindingSymbol = defs.get_current_binding()
                     if binding and binding.lang in defs.noverbs:
-                        linked.errors.setdefault(ref.range, []).append(
-                            LinkWarning(
-                                f'Referenced symbol "{refname}" is marked as "noverb"'
-                                f' for the language {binding.lang}.'))
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang)
 
     def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
         """ Finds definitions at the current cursor position.

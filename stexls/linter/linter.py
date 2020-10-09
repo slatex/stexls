@@ -2,7 +2,7 @@ from stexls.stex.compiler import ObjectfileNotFoundError
 from typing import Callable, Iterable, Dict, Optional, List
 from pathlib import Path
 from multiprocessing import Pool
-from stexls.vscode import Location
+from stexls.vscode import DiagnosticSeverity, Location
 from stexls.stex import *
 from stexls.util.workspace import Workspace
 import logging
@@ -15,39 +15,36 @@ class LintingResult:
     def __init__(self, obj: StexObject):
         self.object = obj
 
-    def format_messages(self, format: str = '{file}:{line}:{column} {severity} - {message}', diagnosticlevel: str = 'info'):
-        """ Prints error messages
+    def format_messages(self, format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})', diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information):
+        """ Prints all errors according to the provided @format_string and @diagnosticlevel.
 
         Parameters:
-            format: A str.format format. Available variables are file, line, column, severity and message.
-            diagnosticlevel: A string with the level of diagnostics to be printet. Available levels are: info, warning and error.
+            format_string: A str.format format. Available variables are uri, file, filename, relative_file, line, column, code, severity and message.
+            diagnosticlevel: The max severity level printet.
         """
-        for range, errors in self.object.errors.items():
-            loc = Location(self.object.file.as_uri(), range)
-            for err in errors:
-                t = type(err).__name__.lower()
-                severity = 'undefined'
-                if 'info' in t:
-                    severity = 'info'
-                    if 'warning' in diagnosticlevel or 'error' in diagnosticlevel:
-                        continue
-                if 'warning' in t:
-                    severity = 'warning'
-                    if 'error' in diagnosticlevel:
-                        continue
-                if 'error' in t:
-                    severity = 'error'
-                try:
-                    path = loc.path.relative_to(Path.cwd())
-                except:
-                    path = loc.path
-                msg = format.format(
-                    file=path,
-                    line=loc.range.start.line + 1,
-                    column=loc.range.start.character + 1,
-                    severity=severity.upper(),
-                    message=str(err))
-                print(msg)
+        file = self.object.file
+        filename = file.name
+        uri = file.as_uri()
+        try:
+            relative_file = file.relative_to(Path.cwd())
+        except:
+            relative_file = file
+        for diagnostic in self.object.diagnostics:
+            if diagnostic.severity.value > diagnosticlevel.value:
+                continue
+            line = diagnostic.range.start.line + 1
+            column = diagnostic.range.start.character + 1
+            msg = format_string.format(
+                uri=uri,
+                file=file,
+                filename=filename,
+                relative_file=relative_file,
+                line=line,
+                column=column,
+                severity=diagnostic.severity.name,
+                code=diagnostic.code,
+                message=diagnostic.message)
+            print(msg)
 
     def format_parseable(self):
         pass
@@ -107,7 +104,10 @@ class Linter:
         ' Compiles or loads all files in the workspace and bufferes them in ram. '
         with Pool(self.num_jobs) as pool:
             files = list(self.workspace.files)
-            it = pool.imap(self._compile_file_with_respect_to_workspace, files)
+            if self.num_jobs <= 1:
+                it = map(self._compile_file_with_respect_to_workspace, files)
+            else:
+                it = pool.imap(self._compile_file_with_respect_to_workspace, files)
             if self.on_progress_fun:
                 it = self.on_progress_fun(it, 'Loading Workspace', files)
             self._object_buffer.update(dict(zip(files, it)))

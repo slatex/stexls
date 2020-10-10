@@ -149,7 +149,8 @@ class Linker:
             resolved: List[Symbol] = ref.scope.lookup(ref.name)
             if not resolved:
                 # TODO: Maybe get locations of suggested symbol definition in order to create "related" tags to let the user preview where the definition is.
-                suggestions = format_enumeration(linked.find_similar_symbols(ref.name, ref.reference_type), last='or')
+                similar_symbols = linked.find_similar_symbols(ref.name, ref.reference_type)
+                suggestions = format_enumeration(similar_symbols, last='or')
                 linked.diagnostics.undefined_symbol(ref.range, refname, ref.reference_type.format_enum(), suggestions)
             for symbol in resolved:
                 if symbol.reference_type not in ref.reference_type:

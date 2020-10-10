@@ -257,10 +257,10 @@ class Compiler:
         objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
             return True
-        mtime = objectfile.lstat().st_mtime
-        if time_modified and mtime < time_modified:
+        time_compiled = objectfile.lstat().st_mtime
+        if time_modified and time_compiled < time_modified:
             return True
-        if mtime < file.lstat().st_mtime:
+        if time_compiled < file.lstat().st_mtime:
             return True
         return False
 

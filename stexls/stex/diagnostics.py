@@ -47,8 +47,13 @@ class DiagnosticCodeName(Enum):
 
 
 class Diagnostics:
-    def __init__(self, file: Path) -> None:
+    def __init__(self) -> None:
         self.diagnostics: List[Diagnostic] = []
+
+    def copy(self) -> 'Diagnostics':
+        cpy = Diagnostics()
+        cpy.diagnostics.extend(self.diagnostics)
+        return cpy
 
     def __iter__(self) -> Iterator[Diagnostic]:
         yield from self.diagnostics
@@ -170,7 +175,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def undefined_module_not_exported_by_file(self, range: Range, module_name: str, file: Path):
-        message = f'Undefined module "{module_name}" symbol not exported from file "{file}"'
+        message = f'Undefined module "{module_name}" symbol not exported from file: "{file}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNDEFINED_MODULE_NOT_EXPORTED.value
         diagnostic = Diagnostic(range, message, severity, code)

@@ -6,12 +6,10 @@ The ln command takes a list of c++ objects and resolves the symbol references in
 from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
 from stexls.vscode import *
+from stexls.stex.compiler import Compiler, ObjectfileNotFoundError
 from stexls.stex.compiler import StexObject, Dependency
-from .references import ReferenceType
 from stexls.stex.symbols import *
 from stexls.stex.exceptions import *
-from stexls.stex import util
-from stexls.util.format import format_enumeration
 from time import time
 
 __all__ = ['Linker']
@@ -55,14 +53,18 @@ class Linker:
         self,
         file: Path,
         objects: Dict[Path, StexObject],
+        compiler: Compiler,
         required_symbol_names: List[str] = None,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
         # load the objectfile
-        obj = objects.get(file)
-        if not obj:
-            raise NotCompiledError(f'Sourcefile is not compiled and no objectfile was found: "{file}"')
+        try:
+            # The object must be loaded from file because a deep copy (especially of the dependencies) is required
+            obj = compiler.load_from_objectfile(file)
+            obj.creation_time = time()
+        except ObjectfileNotFoundError as err:
+            raise NotCompiledError(f'Sourcefile is not compiled and no objectfile was found: "{file}"') from err
         # initialize the stack if not already initialized
         _stack = {} if _stack is None else _stack
         # Cache initialization is a little bit more complicated
@@ -96,6 +98,7 @@ class Linker:
                     imported = self.link(
                         objects=objects,
                         file=dep.file_hint,
+                        compiler=compiler,
                         required_symbol_names=[dep.module_name],
                         _stack=_stack,
                         _toplevel_module=_toplevel_module or dep.scope.get_current_module(),

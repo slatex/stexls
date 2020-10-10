@@ -14,7 +14,8 @@ resolved here. In order to get global information the dependencies need to be li
 using the linker from the linker module and then the linter from the linter package.
 """
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional, Set
+from stexls.util.workspace import Workspace
+from typing import Dict, Iterable, List, Tuple, Optional, Set
 from pathlib import Path
 from hashlib import sha1
 import datetime
@@ -112,9 +113,47 @@ class StexObject:
         # List of references. A reference consists of a range relative to the file that owns the reference and the symbol identifier that is referenced.
         self.references: List[Reference] = list()
         # Handler for diagnostics
-        self.diagnostics: Diagnostics = Diagnostics(self.file)
+        self.diagnostics: Diagnostics = Diagnostics()
         # Stores creation time
         self.creation_time = time()
+
+    def is_source_modified(self, time_modified: float = None) -> bool:
+        ''' Checks if the source was modified.
+
+        Parameters:
+            time_modified: An optional time_modified in case the file.lstat.st_mtime is overwritten by a buffered source.
+
+        Returns:
+            True if the source was modified after this object was created.
+        '''
+        if time_modified and time_modified > self.creation_time:
+            return True
+        return not self.file.is_file() or self.file.lstat().st_mtime > self.creation_time
+
+    def check_if_any_related_file_is_newer_than_this_object(self, workspace: Workspace = None) -> bool:
+        ''' Checks if any file given by self.related_files has a newer modified time than this object\'s creation time.
+
+        Parameters:
+            workspace: Workspace which is used to inspect time modified of a buffered file.
+
+        Returns:
+            True if the file is younger than the creation time.
+        '''
+        for file in set(self.related_files):
+            if workspace and workspace.get_time_buffer_modified(file) > self.creation_time:
+                return True
+            elif file.is_file() and file.lstat().st_mtime > self.creation_time:
+                return True
+        return False
+
+    @property
+    def related_files(self) -> Iterable[Path]:
+        ' Iterable of all files that are somehow referenced inside this object. '
+        yield self.file
+        for dep in self.dependencies:
+            yield dep.file_hint
+        for symbol in self.symbol_table.flat():
+            yield symbol.location.path
 
     def find_similar_symbols(self, scope: Symbol, qualified: List[str], ref_type: ReferenceType) -> Dict[str, Set[Location]]:
         ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
@@ -495,6 +534,8 @@ class Compiler:
         if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
             obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
         if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
+            # TODO: importmhmodule[dir=...] seems to work differently: "dir=" is required if we want to address
+            # a different file in the same directory the current file is inside of --> NOT AN ERROR
             obj.diagnostics.is_current_dir_check(importmodule.location.range, importmodule.dir.text)
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):

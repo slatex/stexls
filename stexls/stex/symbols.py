@@ -63,6 +63,14 @@ class Symbol:
         self.location = location
         self.access_modifier: AccessModifier = AccessModifier.PUBLIC
 
+    def copy(self, parent: Symbol) -> Symbol:
+        ' Creates a full copy of this symbol. Including private and not-exported symbols. '
+        cpy = self.shallow_copy()
+        cpy.parent = parent
+        for name, symbols in self.children.items():
+            cpy.children[name] = [symbol.copy(self) for symbol in symbols]
+        return cpy
+
     @property
     def reference_type(self) -> ReferenceType:
         ' Returns the valid type of a reference that addresses this symbol. '
@@ -99,13 +107,17 @@ class Symbol:
             return self.parent.get_visible_access_modifier() | self.access_modifier
         return self.access_modifier
 
-    def __iter__(self) -> Iterator[Symbol]:
-        ' Iterates over all child symbols. '
-        # TODO: Remove this because its unsafe -> Add explicit .flat() method
+    def flat(self) -> Iterator[Symbol]:
+        ' Returns a flattened iterator over all symbols inside this symbol table. '
         for alts in self.children.values():
             for child in alts:
                 yield child
                 yield from child
+
+    def __iter__(self) -> Iterator[Symbol]:
+        ' Iterates over all child symbols. '
+        # TODO: Remove this because its unsafe -> Add explicit .flat() method
+        return self.flat()
 
     def is_parent_of(self, other: Symbol) -> bool:
         ' Returns true if this symbol is a parent of the other symbol. '
@@ -364,7 +376,7 @@ class RootSymbol(Symbol):
         return ()
 
     def shallow_copy(self):
-        raise ValueError('Root symbols should never be copied, but created explicitly!')
+        return RootSymbol(self.location.copy())
 
 class ScopeSymbol(Symbol):
     COUNTER=0
@@ -372,7 +384,7 @@ class ScopeSymbol(Symbol):
         super().__init__(location, f'__{name}#{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
         self._name = name
-        self.access_modifier = AccessModifier.PRIVATE
+        self.access_modifier = AccessModifier.PUBLIC
 
     def __repr__(self):
         return f'[{self.access_modifier.name} Scope "{self.name}" at {self.location.range.start.format()}]'

@@ -20,6 +20,7 @@ class Workspace:
         and additionally can keep track of the state of modified files.
         """
         self.root = Path(root).expanduser().resolve().absolute()
+        # Map of files to a tuple of file time modified and content
         self._open_files: Dict[Path, (float, str)] = {}
         self._ignore: Optional[List[Pattern]] = None
         self._include: Optional[List[Pattern]] = None
@@ -28,10 +29,18 @@ class Workspace:
         ' Returns true if a modified version of this file that can be queried with read_file() is in memory. '
         return file in self._open_files
 
-    def get_time_live_modified(self, file: Path) -> float:
-        ' Retrieves the timestamp since the last edit to the opened file. Returns 0 if the file is not open. '
+    def get_time_buffer_modified(self, file: Path) -> float:
+        ' Retrieves the timestamp since the last edit to the buffered file. Returns 0 if the file is not open. '
         mtime, _content = self._open_files.get(file, (0, None))
         return mtime
+
+    def get_time_modified(self, file: Path) -> float:
+        ' Get the time the file was last modified either in buffer or on disk. '
+        if file in self._open_files:
+            return self.get_time_buffer_modified()
+        if file.is_file():
+            return file.lstat().st_mtime
+        return 0
 
     def open_file(self, path: Path, content: str) -> bool:
         """ Opens a file in the current workspace.

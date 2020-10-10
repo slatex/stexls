@@ -1,5 +1,5 @@
 from stexls.stex.compiler import ObjectfileNotFoundError
-from typing import Callable, Iterable, Dict, Optional, List
+from typing import Callable, Iterable, Dict, Iterator, Optional, Set, Tuple
 from pathlib import Path
 from multiprocessing import Pool
 from stexls.vscode import DiagnosticSeverity, Location
@@ -55,37 +55,30 @@ class Linter:
         workspace: Workspace,
         outdir: Path = None,
         enable_global_validation: bool = False,
-        num_jobs: int = 1,
-        on_progress_fun: Callable[[Iterable, Optional[str], Optional[List[str]]], Iterable] = None):
+        num_jobs: int = 1):
         """ Initializes a linter object.
 
         Parameters:
             workspace: Workspace this linter works on.
             outdir: Output directory to where the compiler will store it's output at.
-            enable_global_validation: If enabled, will compile the whole workspace and use all symbols for validation purposes.
+            enable_global_validation: If enabled, will look at every cached compiled file in order to create better
+                diagnostics related to references and other things.
             num_jobs: Number of processes to use for compilation.
-            on_progress_fun: Function that creates a new iterable from a give input iterable, enabling progress tracking.
-                Arguments of the progress function are the input iterator, a string with information about
-                what the input iterable is used for and an optional list of strings with information each element
-                of the input iterable.
         """
         self.workspace = workspace
         self.outdir = outdir or (Path.cwd() / 'objects')
         self.enable_global_validation = enable_global_validation
         self.num_jobs = num_jobs
-        self.on_progress_fun = on_progress_fun
         self.compiler = Compiler(self.workspace.root, self.outdir)
         self.linker = Linker(self.outdir)
         # The objectbuffer stores all compiled objects
         self._object_buffer: Dict[Path, StexObject] = dict()
         # THe linked object buffer bufferes all linked objects
         self._linked_object_buffer: Dict[Path, StexObject] = dict()
-        if self.enable_global_validation:
-            self._compile_workspace()
 
     def _compile_file_with_respect_to_workspace(self, file: Path) -> Optional[StexObject]:
         ' Compiles or loads the file using external information from the linter\'s workspace member. '
-        if self.compiler.recompilation_required(file, self.workspace.get_time_live_modified(file)):
+        if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
             content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
             try:
                 return self.compiler.compile(file, content=content)
@@ -100,38 +93,89 @@ class Linter:
         except ObjectfileNotFoundError:
             return None
 
-    def _compile_workspace(self):
-        ' Compiles or loads all files in the workspace and bufferes them in ram. '
-        with Pool(self.num_jobs) as pool:
-            files = list(self.workspace.files)
-            if self.num_jobs <= 1:
-                it = map(self._compile_file_with_respect_to_workspace, files)
-            else:
-                it = pool.imap(self._compile_file_with_respect_to_workspace, files)
-            if self.on_progress_fun:
-                it = self.on_progress_fun(it, 'Loading Workspace', files)
-            self._object_buffer.update(dict(zip(files, it)))
+    def compile_workspace(self) -> Iterable[StexObject]:
+        ''' Compiles or loads all files in the workspace and bufferes them in ram.
 
-    def compile_related(self, file: Path) -> Dict[Path, StexObject]:
-        ' Compiles all dependencies of the file, the file itself and updates the buffer. The dict with compiled files is returned. '
-        queue = [file]
-        visited = {}
+        This should be called after creating a linter with the @enable_global_validation flag on.
+        Doings so will enable the linter to take every single file in the workspace and create better diagnostics.
+
+        Every file present in self.workspace.files will be iterated over.
+        '''
+        class WorkspaceCompileIter:
+            def __init__(self, linter: Linter) -> None:
+                self.linter = linter
+                self.files = list(self.linter.workspace.files)
+                self._len = len(self.linter.workspace.files)
+
+            def __iter__(self) -> Iterator[StexObject]:
+                dict_update_buffer: Dict[Path, StexObject] = {}
+                with Pool(self.linter.num_jobs) as pool:
+                    mapfn = map if self.linter.num_jobs < 1 else pool.imap
+                    it = mapfn(self.linter._compile_file_with_respect_to_workspace, self.files)
+                    for file, obj in zip(self.files, it):
+                        # Need to buffer the dict update because of multiprocessing pickling the whole linter
+                        dict_update_buffer[file] = obj
+                        yield obj
+                self.linter._object_buffer.update(dict_update_buffer)
+
+            def __len__(self) -> int:
+                return self._len
+        return WorkspaceCompileIter(self)
+
+    def compile_related(self, file: Path, on_progress_fun: Callable[[str, int, int], None] = None) -> Dict[Path, StexObject]:
+        ''' Compiles all dependencies of the file, the file itself and updates the buffer.
+
+        Parameters:
+            file: The file which will be compiled and from which the related files will be extracted.
+
+        Returns:
+            Index of objects with their file path as key.
+        '''
+        queue = { file }
+        visited: Dict[Path, StexObject] = { }
         while queue:
             file = queue.pop()
             if file in visited:
                 continue
+            if on_progress_fun: on_progress_fun(file, len(visited))
             obj = self._compile_file_with_respect_to_workspace(file)
             visited[file] = obj
             self._object_buffer[file] = obj
             for dep in obj.dependencies:
-                if dep.file_hint in queue:
+                if dep.file_hint in visited or dep.file_hint in queue:
                     continue
-                queue.append(dep.file_hint)
+                queue.add(dep.file_hint)
         return visited
 
-    def lint(self, file: Path) -> LintingResult:
-        objects = self.compile_related(file)
-        ln = self.linker.link(file, objects)
-        more_objects = self._object_buffer if self.enable_global_validation else {}
-        self.linker.validate_object_references(ln, more_objects=more_objects)
+    def lint(self, file: Path, on_progress_fun: Callable[[str, int, bool], None] = None) -> LintingResult:
+        ''' Lints the provided @file.
+
+        An optional progress tracking function can be supplied.
+        The arguments are current step information (str), number of steps done (int).
+        The last argument is a bool flag indicating that the process is done if set to True.
+
+        Parameters:
+            file: The file to lint.
+            on_progress_fun: Optional progress tracking function which takes step information, steps done
+                and a flag indicating that the process is done if True.
+
+        Returns:
+            The result of the linting process for the provided @file path.
+        '''
+        # TODO: Maybe on_progress_fun is overkill here, as its genereally really fast anyway
+        if on_progress_fun: on_progress_fun('Preparing', 0, False)
+        if file in self._linked_object_buffer and not self._linked_object_buffer[file].check_if_any_related_file_is_newer_than_this_object(self.workspace):
+            ln = self._linked_object_buffer[file]
+            if on_progress_fun: on_progress_fun('Done', 1, True)
+        else:
+            objects: Dict[Path, StexObject] = self.compile_related(
+                file=file,
+                on_progress_fun=lambda *args: on_progress_fun(*args, False) if on_progress_fun else None)
+            if on_progress_fun: on_progress_fun('Linking', len(objects), False)
+            ln = self.linker.link(file, objects, self.compiler)
+            self._linked_object_buffer[file] = ln
+            more_objects = self._object_buffer if self.enable_global_validation else {}
+            if on_progress_fun: on_progress_fun('Validating', len(objects) + 1, False)
+            self.linker.validate_object_references(ln, more_objects=more_objects)
+            if on_progress_fun: on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)

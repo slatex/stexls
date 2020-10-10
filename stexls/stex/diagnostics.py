@@ -1,5 +1,5 @@
 """ This module provides an uniform way to create and accumulate diagnostics. """
-from typing import List, Iterator
+from typing import List, Iterator, Set, Dict
 from pathlib import Path
 from enum import Enum
 from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, MessageActionItem
@@ -152,16 +152,21 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def undefined_symbol(self, range: Range, symbol_name: str, symbol_type: str = None, suggestions: List[str] = None):
-        if symbol_type:
-            message = f'Undefined symbol "{symbol_name}" of type {symbol_type}'
+    def undefined_symbol(self, range: Range, symbol_name: str, reference_type: ReferenceType = None, similar_symbols: Dict[str, Set[Location]] = None):
+        if reference_type:
+            message = f'Undefined symbol "{symbol_name}" of type {reference_type.format_enum()}'
         else:
             message = f'Undefined symbol "{symbol_name}"'
-        if suggestions:
-            message += ': Did you mean ' + format_enumeration(suggestions, last='or') + '?'
+        if similar_symbols:
+            message += ': Did you mean ' + format_enumeration(similar_symbols, last='or') + '?'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNDEFINED_SYMBOL.value
-        diagnostic = Diagnostic(range, message, severity, code)
+        related_information = [
+            DiagnosticRelatedInformation(location, f'Related symbol: {name}')
+            for name, locations in similar_symbols.items()
+            for location in locations
+        ]
+        diagnostic = Diagnostic(range, message, severity, code, relatedInformation=related_information)
         self.diagnostics.append(diagnostic)
 
     def undefined_module_not_exported_by_file(self, range: Range, module_name: str, file: Path):

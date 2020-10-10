@@ -14,7 +14,7 @@ resolved here. In order to get global information the dependencies need to be li
 using the linker from the linker module and then the linter from the linter package.
 """
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Set
 from pathlib import Path
 from hashlib import sha1
 import datetime
@@ -116,14 +116,23 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def find_similar_symbols(self, qualified: List[str], ref_type: ReferenceType) -> List[str]:
-        ' Find simlar symbols with reference to a qualified name and an expected symbol type. '
-        names = []
+    def find_similar_symbols(self, scope: Symbol, qualified: List[str], ref_type: ReferenceType) -> Dict[str, Set[Location]]:
+        ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
+
+        Parameters:
+            qualified: Qualified identifier of the input symbol.
+            ref_type: Expected type of symbol the id should resolve into
+
+        Returns:
+            Dictionary map of symbol names as strings and the set of locations the symbol names are located at
+        '''
+        names: Dict[str, Set[Location]] = {}
         def f(symbol: Symbol):
             if ref_type.contains_any_of(symbol.reference_type):
-                names.append('?'.join(symbol.qualified))
+                names.setdefault('?'.join(symbol.qualified), set()).add(symbol.location)
         self.symbol_table.traverse(lambda s: f(s))
-        return difflib.get_close_matches('?'.join(qualified), names)
+        close_matches = difflib.get_close_matches('?'.join(qualified), names)
+        return { match: names.get(match, set()) for match in close_matches }
 
     def format(self) -> str:
         ' Simple formatter for debugging, that prints out all information in this object. '

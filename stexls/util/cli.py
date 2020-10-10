@@ -11,9 +11,7 @@
 from typing import Any, List, Dict, Callable
 import sys
 import inspect
-import functools
 import argparse
-import shlex
 
 __all__ = ['Cli', 'Arg', 'command']
 
@@ -77,16 +75,16 @@ class Cli:
         self.parser = argparse.ArgumentParser(
             description=description,
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        
+
         if version:
             self.parser.add_argument('--version', '-v', action='version', version=version)
-        
+
         class ExtendAction(argparse.Action):
             def __call__(self, parser, namespace, values, option_string=None):
                 items = getattr(namespace, self.dest) or []
                 items.extend(values)
                 setattr(namespace, self.dest, items)
-        
+
         self.parser.register('action', 'extend', ExtendAction)
 
         self.command_index = {
@@ -102,7 +100,7 @@ class Cli:
         for command_name, command in self.command_index.items():
             if not hasattr(command, 'cli_cmd_config'):
                 raise ValueError(f'Invalid command: {command_name}')
-            
+
             sub_command = command_subparsers.add_parser(
                 command_name,
                 help=command.__doc__,

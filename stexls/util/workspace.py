@@ -2,16 +2,15 @@ import re
 import glob
 import itertools
 import logging
-import multiprocessing
-import functools
 import time
-from hashlib import sha1
 from pathlib import Path
-from typing import List, Iterator, Pattern, Callable, Iterable, Set, Dict
+from typing import List, Pattern, Iterable, Set, Dict
 
 from stexls.vscode import *
 
 log = logging.getLogger(__name__)
+
+__all__ = ['Workspace']
 
 class Workspace:
     def __init__(self, root: Path):

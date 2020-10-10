@@ -34,13 +34,13 @@ class ReferenceType(Flag):
             True
             >>> ReferenceType.MODULE.contains_any_of(ReferenceType.MODULE)
             True
-            >>> (ReferenceType.MODULE|ReferenceType.MODSIG).contains_any_of(ReferenceType.DEF|ReferenceType.SYM)
+            >>> (ReferenceType.MODULE|ReferenceType.MODSIG).contains_any_of(ReferenceType.DEF|ReferenceType.SYMDEF)
             False
         """
         for exp in range(0, 1+other.value):
             mask = 1<<exp
             if mask > other.value: break
-            if other.value & mask in self:
+            if ReferenceType(other.value & mask) in self:
                 return True
         return False
 

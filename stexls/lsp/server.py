@@ -113,7 +113,6 @@ class Server(Dispatcher):
             enable_global_validation=False,
             num_jobs=1)
         self._completion_engine = CompletionEngine(None)
-        await self._update(all=True)
         log.info('Initialized')
         self._initialized = True
 
@@ -196,26 +195,19 @@ class Server(Dispatcher):
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: TextDocumentItem):
         log.debug('didOpen(%s)', textDocument)
-        self._workspace.open_file(textDocument.path, textDocument.text, textDocument.version)
-        flag = False
-        async with self._compile_lock:
-            if self._workspace.open_file(textDocument.path, textDocument.text):
-                log.info('didOpen: %s', textDocument.uri)
-                flag = True
-        if flag:
-            await self._request_file_update(textDocument.path)
-        else:
-            log.debug('Received didOpen event for invalid file: %s', textDocument.uri)
+        self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text)
 
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[TextDocumentContentChangeEvent]):
         log.debug('updating file "%s" with version %i', textDocument.path, textDocument.version)
-        log.debug('changes: ', contentChanges)
-        for item in contentChanges:
-            status = self._workspace.update_file(textDocument.path, textDocument.version, item.text)
-            if not status:
-                log.warning('Failed to patch file with: %s', item)
+        if self._workspace.is_open(textDocument.path):
+            for item in contentChanges:
+                status = self._workspace.update_file(textDocument.path, textDocument.version, item['text'])
+                if not status:
+                    log.warning('Failed to patch file with: %s', item)
+        else:
+            log.warning('did_change event for non-opened document: "%s"', textDocument.path)
 
 
     @method

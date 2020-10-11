@@ -535,7 +535,7 @@ class Compiler:
         if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
             obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
         if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
-            obj.diagnostics.is_current_dir_check(importmodule.location.range, importmodule.dir.text)
+            obj.diagnostics.is_current_dir_check(importmodule.dir.range, importmodule.dir.text)
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
         if not isinstance(gimport.find_parent_module_parse_tree(), (ModuleIntermediateParseTree, ModsigIntermediateParseTree)):

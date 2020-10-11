@@ -34,7 +34,16 @@ class Linker:
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {True: dict(), False: dict()}
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
-        ' Links <imported> to <obj> at the scope specified in <dependency> '
+        ''' Links the module specified in @dependency from @imported with @obj at the scope declared in the
+        dependency.
+
+        The module and it's public child symbols will be copied into the scope specified in the dependency.
+
+        Parameters:
+            obj: Object that has the @dependency to @imported
+            dependency: Dependency of the object @obj
+            imported: The Object that contains the file and module specified in @dependency
+        '''
         resolved = imported.symbol_table.lookup(dependency.module_name)
         if len(resolved) > 1:
             obj.diagnostics.unable_to_link_with_non_unique_module(dependency.range, dependency.module_name, imported.file)

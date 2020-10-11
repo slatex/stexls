@@ -143,6 +143,7 @@ async def lsp(
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
+    server, connection = None, None
     if transport_kind == 'ipc':
         server, connection = await Server.open_ipc_connection()
     elif transport_kind == 'tcp':

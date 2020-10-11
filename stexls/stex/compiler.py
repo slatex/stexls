@@ -117,6 +117,11 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
+    def get_definitions_at(self, position: Position) -> List[Symbol]:
+        ' Queries symbol definitions at the given @position. '
+        # TODO
+        raise NotImplementedError
+
     def is_source_modified(self, time_modified: float = None) -> bool:
         ''' Checks if the source was modified.
 

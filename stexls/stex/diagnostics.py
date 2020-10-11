@@ -50,16 +50,19 @@ class Diagnostics:
     def __init__(self) -> None:
         self.diagnostics: List[Diagnostic] = []
 
-    def copy(self) -> 'Diagnostics':
+    def copy(self) -> Diagnostic:
+        ' Creates a copy of this object. '
         cpy = Diagnostics()
         cpy.diagnostics.extend(self.diagnostics)
         return cpy
 
     def __iter__(self) -> Iterator[Diagnostic]:
+        ' Iterates through added diagnostics. '
         yield from self.diagnostics
 
     @staticmethod
     def _parse_severity_string(string: str) -> DiagnosticSeverity:
+        ' Returns a DiagnosticSeverity object from string. '
         string = string.lower()
         if 'hint' in string:
             return DiagnosticSeverity.Hint
@@ -70,12 +73,15 @@ class Diagnostics:
         return DiagnosticSeverity.Error
 
     def module_not_found_semantic_location_check(self, range: Range, env_name: str):
+        ' Used when an environment is used at locations where a module can\'t be deduced. E.g. outside of modsig or module environments. '
         self.semantic_location_check(range, env_name, 'Parent module info not found')
 
     def parent_must_be_root_semantic_location_check(self, range: Range, env_name: str):
+        ' Used when the parent of an environment is something different than root. '
         self.semantic_location_check(range, env_name, 'Parent must be root')
 
     def semantic_location_check(self, range: Range, env_name: str, extra: str = None):
+        ' Generic semantic location check failed message: Use @extra to give more information to why the location is invalid. '
         if extra:
             message = f'Invalid location for {env_name}: {extra}'
         else:
@@ -86,6 +92,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def is_current_dir_check(self, range: Range, dir: str):
+        ' Used when environments can specify paths and the specified path is the same as the default path -> Path can be removed hint. '
         message = f'Already located inside directory "{dir}"'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.IS_CURRENT_DIR_CHECK.value
@@ -94,6 +101,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def replace_repos_with_mhrepos(self, range: Range):
+        ' Used when the deprecated "repos=" optional argument is used. '
         message = 'Argument "repos" is deprecated and should be replaced with "mhrepos".'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.REPOS_DEPRECATION_CHECK.value
@@ -102,6 +110,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def invalid_redefinition(self, range: Range, other_location: Location, info: str):
+        ' Used when redefinitions are allowed (symdef), but the redefeined symbol\'s signature is incompatible (noverb tags different) '
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.INVALID_REDEFINITION.value
         related = DiagnosticRelatedInformation(other_location, 'Previous definition')
@@ -109,6 +118,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def mtref_deprecated_check(self, range: Range):
+        ' Used when deprecated "mtref" environment used. '
         message = '"mtref" environments are deprecated'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.MTREF_DEPRECATION_CHECK.value
@@ -116,6 +126,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def mtref_questionmark_syntax_check(self, range: Range):
+        ' If a "mtref" is used, it must use the questionmark syntax. '
         message = 'Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.MTREF_QUESTIONMARK_CHECK.value
@@ -123,6 +134,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def file_name_mismatch(self, range: Range, expected_name: str, actual_name: str):
+        ' Used when an environment that has authority over the filename (e.g. gmodule) mismatches the actual filename. '
         message = f'Expected the this file name "{expected_name}", but found "{actual_name}"'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.MODULE_FILE_NAME_MISMATCH.value
@@ -130,6 +142,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def duplicate_symbol_definition(self, range: Range, symbol_name: str, previous_def: Location):
+        ' Used when duplicate symbol definitions are not allowed. '
         message = f'Symbol "{symbol_name}" previously defined at "{previous_def}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.DUPLICATE_SYMBOL.value
@@ -137,6 +150,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def parser_exception(self, range: Range, exception: Exception):
+        ' Used for all errors caught during parsing. '
         message = str(exception)
         severity = Diagnostics._parse_severity_string(type(exception).__name__)
         code = DiagnosticCodeName.PARSER_EXCEPTION.value
@@ -144,6 +158,7 @@ class Diagnostics:
         self.diagnostics.append(diag)
 
     def exception(self, range: Range, exception: Exception, severity: DiagnosticSeverity = None):
+        ' Generic exception occured. '
         message = str(exception)
         severity = severity or Diagnostics._parse_severity_string(type(exception).__name__)
         code = DiagnosticCodeName.GENERIC_EXCEPTION.value
@@ -151,6 +166,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def unable_to_link_with_non_unique_module(self, range: Range, module_name: str, file: Path):
+        ' Error that should be impossible, but raised when a module is defined multiple times and some module attempts to import it. '
         message = f'Module "{module_name}" not unique in "{file}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNIQUE_DEPENDENCY_NAME.value
@@ -158,6 +174,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def undefined_symbol(self, range: Range, symbol_name: str, reference_type: ReferenceType = None, similar_symbols: Dict[str, Set[Location]] = None):
+        ' Generic undefined symbol encountered error. '
         if reference_type:
             message = f'Undefined symbol "{symbol_name}" of type {reference_type.format_enum()}'
         else:
@@ -175,6 +192,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def undefined_module_not_exported_by_file(self, range: Range, module_name: str, file: Path):
+        ' Used when a module attempts to import a module that is not exported because it is not defined in the first place. '
         message = f'Undefined module "{module_name}" symbol not exported from file: "{file}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNDEFINED_MODULE_NOT_EXPORTED.value
@@ -182,6 +200,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def attempt_access_private_symbol(self, range: Range, symbol_name: str):
+        ' Private symbol accessed. '
         message = f'Accessed symbol "{symbol_name}" is marked as private'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.SYMBOL_ACCESS_CHECK.value
@@ -189,6 +208,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def cyclic_dependency(self, range: Range, module_name: str, location_of_cyclic_import: Location):
+        ' Cyclic dependency encountered during import resolution. '
         message = f'Cyclic dependency create at import of "{module_name}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.CYCLIC_DEPENDENCY_CHECK.value
@@ -197,6 +217,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def file_not_found(self, range: Range, file: Path):
+        ' Generic file not found message. '
         message = f'File not found: "{file}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.FILE_NOT_FOUND.value
@@ -204,6 +225,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def referenced_symbol_type_check(self, range: Range, expected: ReferenceType, actual: ReferenceType):
+        ' Used when the expected type given by a reference mismatches with the actually resolved symbol. '
         message = f'Expected symbol type is "{expected.format_enum()}" but the resolved symbol is of type "{actual.format_enum()}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.REFERENCE_TYPE_CHECK.value
@@ -211,6 +233,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def symbol_is_noverb_check(self, range: Range, symbol_name: str, lang: str = None):
+        ' Used when a reference to a symbol tagged with "noverb={langs...}" is made. '
         if lang:
             message = f'Symbol "{symbol_name}" is marked as noverb for the language "{lang}"'
         else:
@@ -221,6 +244,7 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def redundant_import_check(self, range: Range, module_name: str, previously_at: Location):
+        ' Used when a module is already imported by another module and can be removed. '
         message = f'Redundant import of module "{module_name}"'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.REDUNDANT_IMPORT_STATEMENT_CHECK.value

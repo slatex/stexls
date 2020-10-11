@@ -125,9 +125,7 @@ class Linker:
             return True
         try:
             # Check whether any file referenced by a dependency or symbol is newer than this link
-            paths = set(symbol.location.path for symbol in obj.symbol_table)
-            paths |= set(dep.file_hint for dep in obj.dependencies)
-            for path in paths:
+            for path in set(obj.related_files):
                 if path in compiled_objects and mtime < compiled_objects[path].creation_time:
                     # The object of a dependency has been recompiled
                     return True

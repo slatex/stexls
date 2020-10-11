@@ -1,4 +1,5 @@
-from typing import Union
+from time import time
+from typing import Union, Awaitable, Set
 import logging
 import asyncio
 import pkg_resources
@@ -24,12 +25,38 @@ class Server(Dispatcher):
         self._workspace: Workspace = None
         self._linter: Linter = None
         self._completion_engine: CompletionEngine = None
+        self._update_requests: Set[Path] = set()
+        self._update_request_finished_event: asyncio.Event = None
+        self._timeout_start_time: float = None
+
+    async def _request_update(self, file: Path):
+        ' Requests an update for the file. '
+        log.debug('Update request: "%s"', file)
+        self._update_requests.add(file)
+        self._timeout_start_time = time()
+        if not self._update_request_finished_event:
+            log.debug('Creating request timer')
+            self._update_request_finished_event = asyncio.Event()
+            while time() - self._timeout_start_time < 1.5:
+                log.debug('Waiting for timer to run out...')
+                await asyncio.sleep(1.5)
+            log.debug('Linting %i files', len(self._update_requests))
+            for file in self._update_requests:
+                ln = self._linter.lint(file, on_progress_fun=lambda info, count, done: log.debug('%s %s %s', info, count, done))
+                self.publish_diagnostics(uri=ln.uri, diagnostics=ln.diagnostics)
+            self._update_requests.clear()
+            self._update_request_finished_event.set()
+            self._update_request_finished_event = None
+        else:
+            log.debug('Update request timer already running: Waiting for result for "%s"', file)
+            await self._update_request_finished_event.wait()
 
     async def __aenter__(self):
         log.debug('Server async enter')
 
     async def __aexit__(self, *args):
         log.debug('Server async exit args: %s', args)
+        log.info('Waiting for update task to finish...')
 
     @method
     @alias('$/progress')
@@ -195,7 +222,8 @@ class Server(Dispatcher):
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: TextDocumentItem):
         log.debug('didOpen(%s)', textDocument)
-        self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text)
+        if self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
+            await self._request_update(textDocument.path)
 
     @method
     @alias('textDocument/didChange')
@@ -206,6 +234,8 @@ class Server(Dispatcher):
                 status = self._workspace.update_file(textDocument.path, textDocument.version, item['text'])
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
+                else:
+                    await self._request_update(textDocument.path)
         else:
             log.warning('did_change event for non-opened document: "%s"', textDocument.path)
 

@@ -1,8 +1,8 @@
 from stexls.stex.compiler import ObjectfileNotFoundError
-from typing import Callable, Iterable, Dict, Iterator, Optional, Set, Tuple
+from typing import Callable, Iterable, Dict, Iterator, Optional, List
 from pathlib import Path
 from multiprocessing import Pool
-from stexls.vscode import DiagnosticSeverity, Location
+from stexls.vscode import Diagnostic, DiagnosticSeverity, Location
 from stexls.stex import *
 from stexls.util.workspace import Workspace
 import logging
@@ -14,6 +14,14 @@ __all__ = ['LintingResult', 'Linter']
 class LintingResult:
     def __init__(self, obj: StexObject):
         self.object = obj
+
+    @property
+    def uri(self) -> str:
+        return self.object.file.as_uri()
+
+    @property
+    def diagnostics(self) -> List[Diagnostic]:
+        return self.object.diagnostics.diagnostics
 
     def format_messages(self, format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})', diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information):
         """ Prints all errors according to the provided @format_string and @diagnosticlevel.

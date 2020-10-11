@@ -176,37 +176,3 @@ class Linker:
                     binding: BindingSymbol = defs.get_current_binding()
                     if binding and binding.lang in defs.noverbs:
                         linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang)
-
-    def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
-        try:
-            import matplotlib
-        except ImportError:
-            raise ImportError('matplotlib required: "pip install matplotlib" to use this functionality.')
-        try:
-            from graphviz import Digraph
-        except ImportError:
-            raise ImportError('graphviz required: "pip install graphviz" to use this functionality.')
-        G = Digraph()
-        edges = dict()
-        found = False
-        for object in self.objects.get(Path(file), ()):
-            if module_name and (not object.module or object.module != module_name):
-                continue
-            found = True
-            for o in self.build_orders[object]:
-                origin = str(o.module.identifier if o.module else o.path)
-                if origin in edges:
-                    continue
-                G.node(origin)
-                if display_symbols:
-                    for id in o.symbol_table:
-                        edges.setdefault(origin, set()).add(id.identifier + '/symbol')
-                for module in o.dependencies:
-                    edges.setdefault(origin, set()).add(module.identifier)
-        if not found:
-            raise ValueError('No object found.')
-        for origin, targets in edges.items():
-            for target in targets:
-                G.edge(origin, target)
-        G.view(directory='/tmp/stexls')
-

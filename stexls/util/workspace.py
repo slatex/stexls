@@ -63,7 +63,7 @@ class Workspace:
             return file.lstat().st_mtime
         return 0
 
-    def open_file(self, path: Path, version: str, text: str) -> bool:
+    def open_file(self, path: Path, version: int, text: str) -> bool:
         """ Opens a file in the current workspace.
 
             This is needed to be able to handle files which are not saved to disk.
@@ -89,7 +89,7 @@ class Workspace:
         self._open_files[path] = TextDocument(path, version, text)
         return True
 
-    def update_file(self, path: Path, version: str, text: str) -> bool:
+    def update_file(self, path: Path, version: int, text: str) -> bool:
         ' Updates the time_modified, text and version of an already added file. Returns True on success. '
         if not self.is_open(path):
             log.warning('Unable to update file that has not been opened: "%s"', path)

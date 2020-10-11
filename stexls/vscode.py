@@ -915,7 +915,7 @@ class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
 
     @staticmethod
     def from_json(json) -> VersionedTextDocumentIdentifier:
-        return VersionedTextDocumentIdentifier(json['uri'], json['version'])
+        return VersionedTextDocumentIdentifier(json['uri'], int(json['version']))
 
 
 class SymbolKind(SerializableEnum):

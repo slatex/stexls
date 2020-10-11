@@ -177,18 +177,6 @@ class Linker:
                     if binding and binding.lang in defs.noverbs:
                         linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang)
 
-    def definitions(self, file: Path, line: int, column: int) -> List[Tuple[Range, Symbol]]:
-        """ Finds definitions at the current cursor position.
-
-        Returns:
-            List of tuples with (the range used to create the link on mouse hover, The symbol found at the location)
-        """
-        # TODO
-
-    def references(self, symbol: Symbol) -> List[Location]:
-        """ Finds all references to the specified symbol (only if the symbol is properly imported). """
-        # TODO
-
     def view_import_graph(self, file: Path, module_name: str = None, display_symbols: bool = False):
         try:
             import matplotlib

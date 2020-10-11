@@ -25,6 +25,12 @@ class Server(Dispatcher):
         self._linter: Linter = None
         self._completion_engine: CompletionEngine = None
 
+    async def __aenter__(self):
+        log.debug('Server async enter')
+
+    async def __aexit__(self, *args):
+        log.debug('Server async exit args: %s', args)
+
     @method
     @alias('$/progress')
     def receive_progress(

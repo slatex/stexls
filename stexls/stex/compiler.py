@@ -529,13 +529,13 @@ class Compiler:
         obj.add_reference(ref)
         if importmodule.repos:
             obj.diagnostics.replace_repos_with_mhrepos(importmodule.repos.range)
+        # TODO: is-current-dir-check not needed? importmodule{} without any arg --> SAME FILE (not same directory like with gmodule)
+        # importmodule[]{} with any arg (mhrepos, path, dir) --> SAME DIRECTORY (if the arg is the same directory) but not same file
         if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
             obj.diagnostics.is_current_dir_check(importmodule.mhrepos.range, importmodule.mhrepos.text)
         if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
             obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
         if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
-            # TODO: importmhmodule[dir=...] seems to work differently: "dir=" is required if we want to address
-            # a different file in the same directory the current file is inside of --> NOT AN ERROR
             obj.diagnostics.is_current_dir_check(importmodule.location.range, importmodule.dir.text)
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):

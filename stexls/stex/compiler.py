@@ -349,8 +349,7 @@ class Compiler:
     def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
         if not isinstance(context, RootSymbol):
             # TODO: Semantic location check
-            message = f'Invalid modsig location: Parent is not root'
-            obj.diagnostics.report_semantic_location_error(modsig.location.range, message)
+            obj.diagnostics.parent_must_be_root_semantic_location_check(modsig.location.range, 'modsig')
         name_location = modsig.location.replace(positionOrRange=modsig.name.range)
         if obj.file.stem != modsig.name.text:
             obj.diagnostics.file_name_mismatch(modsig.location.range, modsig.name.text, obj.file.stem)

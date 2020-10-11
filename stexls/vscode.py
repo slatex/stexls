@@ -882,6 +882,24 @@ class WorkDoneProgressEnd:
             json.get('message', undefined))
 
 
+class TextDocumentContentChangeEvent:
+    def __init__(self, text: str, range: Range = undefined, rangeLength: int = undefined) -> None:
+        self.text = text
+        self.range = range
+        self.rangeLength = rangeLength
+
+    def __repr__(self) -> str:
+        return f'[TextDocumentContentChangeEvent #chars={len(self.text)} range={self.range} rangeLength={self.rangeLength}]'
+
+    @staticmethod
+    def from_json(json) -> TextDocumentContentChangeEvent:
+        text = json.get('text', undefined)
+        range = undefined
+        if 'range' in json:
+            range = Range.from_json(json['range'])
+        return TextDocumentContentChangeEvent(text, range, json.get('rangeLength', undefined))
+
+
 class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
     def __init__(self, uri: DocumentUri, version: Optional[int]):
         super().__init__(uri)

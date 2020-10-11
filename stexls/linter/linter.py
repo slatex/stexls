@@ -1,8 +1,8 @@
 from stexls.stex.compiler import ObjectfileNotFoundError
-from typing import Callable, Iterable, Dict, Iterator, Optional, List
+from typing import Callable, Iterable, Dict, Iterator, Optional, List, Set
 from pathlib import Path
 from multiprocessing import Pool
-from stexls.vscode import Diagnostic, DiagnosticSeverity, Location
+from stexls.vscode import *
 from stexls.stex import *
 from stexls.util.workspace import Workspace
 import logging
@@ -187,3 +187,15 @@ class Linter:
             self.linker.validate_object_references(ln, more_objects=more_objects)
             if on_progress_fun: on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)
+
+    def definitions(self, file: Path, position: Position) -> List[Location]:
+        ' Finds definitions for the symbol under @position in @file. '
+        obj: StexObject = self._linked_object_buffer.get(file)
+        if not obj:
+            return []
+        return [definition.location for definition in obj.get_definitions_at(position)]
+
+    def references(self, file: Path, position: Position) -> List[Location]:
+        ' Finds references to the symbol under @position in @file. '
+        # TODO
+        return []

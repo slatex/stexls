@@ -17,8 +17,10 @@ log = logging.getLogger(__name__)
 
 
 class Server(Dispatcher):
-    def __init__(self, connection):
+    def __init__(self, connection, num_jobs: int = 1, update_delay_seconds: float = 1.0):
         super().__init__(connection=connection)
+        self.num_jobs = num_jobs
+        self.update_delay_seconds = update_delay_seconds
         self.workDoneProgress: bool = None
         self._root: Path = None
         self._initialized: bool = False
@@ -37,9 +39,9 @@ class Server(Dispatcher):
         if not self._update_request_finished_event:
             log.debug('Creating request timer')
             self._update_request_finished_event = asyncio.Event()
-            while time() - self._timeout_start_time < 1.5:
+            while time() - self._timeout_start_time < self.update_delay_seconds:
                 log.debug('Waiting for timer to run out...')
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(self.update_delay_seconds)
             log.debug('Linting %i files', len(self._update_requests))
             for file in self._update_requests:
                 ln = self._linter.lint(file, on_progress_fun=lambda info, count, done: log.debug('%s %s %s', info, count, done))
@@ -138,7 +140,7 @@ class Server(Dispatcher):
             workspace=self._workspace,
             outdir=outdir,
             enable_global_validation=False,
-            num_jobs=1)
+            num_jobs=self.num_jobs)
         self._completion_engine = CompletionEngine(None)
         log.info('Initialized')
         self._initialized = True
@@ -185,9 +187,10 @@ class Server(Dispatcher):
         position: Position,
         workDoneToken: ProgressToken = undefined,
         **params):
-        # TODO
         log.debug('definitions(%s, %s)', textDocument.path, position.format())
-        return []
+        definitions = self._linter.definitions(textDocument.path, position)
+        log.debug('Found %i definitions: %s', len(definitions), definitions)
+        return definitions
 
     @method
     @alias('textDocument/references')
@@ -198,9 +201,10 @@ class Server(Dispatcher):
         workDoneToken: ProgressToken = undefined,
         context = undefined,
         **params):
-        # TODO
         log.debug('references(%s, %s)', textDocument.path, position.format())
-        return []
+        references = self._linter.references(textDocument.path, position)
+        log.debug('Found %i references: %s', len(references), references)
+        return references
 
     @method
     @alias('textDocument/completion')

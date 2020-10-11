@@ -586,6 +586,9 @@ class TextDocumentItem:
         self.version = version
         self.text = text
 
+    def __repr__(self) -> str:
+        return f'[TextDocumentItem uri="{self.uri}" lang={self.languageId} version={self.version}]'
+
     @property
     def path(self):
         ' Converts the uri to a Path object. '

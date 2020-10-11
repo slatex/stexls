@@ -600,7 +600,12 @@ class TextDocumentItem:
 
     @staticmethod
     def from_json(json: dict) -> TextDocumentItem:
-        return TextDocumentItem(str(json['uri']), languageId=str(json['languageId']), version=int(json['version']), text=str(json['text']))
+        return TextDocumentItem(
+            str(json['uri']),
+            languageId=str(json['languageId']),
+            version=int(json['version']),
+            text=str(json['text']))
+
 
 
 class CompletionTriggerKind(SerializableEnum):

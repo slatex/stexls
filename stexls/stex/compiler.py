@@ -327,9 +327,10 @@ class Compiler:
         objectdir.mkdir(parents=True, exist_ok=True)
         object = StexObject(file)
         parser = IntermediateParser(file)
-        for loc, err in parser.errors:
-            object.diagnostics.report_parser_error(loc.range, err)
         parser.parse(content)
+        for loc, errors in parser.errors.items():
+            for err in errors:
+                object.diagnostics.parser_exception(loc.range, err)
         for root in parser.roots:
             root: IntermediateParseTree
             context: List[Tuple[IntermediateParseTree, Symbol]] = [(None, object.symbol_table)]

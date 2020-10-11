@@ -68,12 +68,10 @@ class Linker:
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
         # load the objectfile
-        try:
-            # The object must be loaded from file because a deep copy (especially of the dependencies) is required
-            obj = compiler.load_from_objectfile(file)
-            obj.creation_time = time()
-        except ObjectfileNotFoundError as err:
-            raise NotCompiledError(f'Sourcefile is not compiled and no objectfile was found: "{file}"') from err
+        # The object must be loaded from file because a deep copy (especially of the dependencies) is required
+        # load_from_objectfile can raise FileNotFound but this should have been caught even before attempting to link the object
+        obj = compiler.load_from_objectfile(file)
+        obj.creation_time = time()
         # initialize the stack if not already initialized
         _stack = {} if _stack is None else _stack
         # Cache initialization is a little bit more complicated

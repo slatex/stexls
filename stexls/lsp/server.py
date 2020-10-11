@@ -17,8 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class Server(Dispatcher):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, connection):
+        super().__init__(connection=connection)
         self.workDoneProgress: bool = None
         self._root: Path = None
         self._initialized: bool = False

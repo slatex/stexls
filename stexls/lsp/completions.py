@@ -22,6 +22,8 @@ _regex_env_trefi = re.compile(r'(?P<flags>[ma]*)(?P<type>t|T|d|D)ref(?P<argcount
 _regex_env_defi = re.compile(r'[ma]*(d|D)ef(?P<argcount>[ivx]+)s?')
 _regex_env_symi = re.compile(r'sym(?P<argcount>[ivx]+)s?')
 
+__all__ = ['CompletionEngine']
+
 class CompletionEngine:
     """ Helper class for compltion item creation.
 

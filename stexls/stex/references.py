@@ -1,4 +1,4 @@
-from typing import List
+from typing import Tuple
 from enum import Flag
 import stexls
 from stexls.vscode import Range
@@ -63,7 +63,7 @@ class ReferenceType(Flag):
 
 class Reference:
     ' Container that contains information about which symbol is referenced by name. '
-    def __init__(self, range: Range, scope: 'stexls.symbols.Symbol', name: List[str], reference_type: ReferenceType):
+    def __init__(self, range: Range, scope: 'stexls.symbols.Symbol', name: Tuple[str, ...], reference_type: ReferenceType):
         """ Initializes the reference container.
 
         Parameters:
@@ -78,7 +78,7 @@ class Reference:
         assert all(isinstance(i, str) for i in name)
         self.range = range
         self.scope = scope
-        self.name = name
+        self.name = tuple(name)
         self.reference_type: ReferenceType = reference_type
 
     def __repr__(self):

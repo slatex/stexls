@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="stexls",
-    version="3.1.1",
+    version="4.0.0",
     author="Marian Plivelic",
     author_email="MarianPlivelic@gmail.com",
     description="Language server and other utilities for STex.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://gl.kwarc.info/Marian6814/trefier-backend",
+    url="https://gl.kwarc.info/Marian6814/stexls",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -25,6 +25,5 @@ setuptools.setup(
     ],
     extras_require = {
         'ml': ['cython', 'numpy', 'scikit-learn', 'nltk', 'tensorflow'],
-        'graphs': ['matplotlib', 'graphviz'],
     }
 )

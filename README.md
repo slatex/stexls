@@ -50,21 +50,15 @@ the root path of imports as well as file (or list of files) as input.
 
 `python -m stexls linter --root ~/MathHub ${file}`
 
+## Help
 
-If you do not run this in an editor who parses the output to generate
-in-editor error annotations you should always use the `--progress-indicator` or `-p`
-flag to visualize the progress, as linting may take a long time if you input a lot of files.
+All commands also support help if needed:
 
+`python -m stexls --help`
 
-Diagnostics are printed only for the files given as arguments.
-You do not need to provide the files imported or otherwise related to the file you are interested in.
-Imports and dependencies are automatically resolved relative to the value of the `--root` argument.
+`python -m stexls linter --help`
 
-
-So the basic command from the command line should be something like the following if you want information
-about the whole workspace.
-
-`python -m stexls linter --progress-indicator --root ~/MathHub **/*.tex`
+`python -m stexls lsp --help`
 
 
 # Cache

@@ -14,6 +14,8 @@ resolved here. In order to get global information the dependencies need to be li
 using the linker from the linker module and then the linter from the linter package.
 """
 from __future__ import annotations
+
+from numpy.lib.arraysetops import isin
 from stexls.util.workspace import Workspace
 from typing import Dict, Iterable, List, Tuple, Optional, Set
 from pathlib import Path
@@ -117,10 +119,36 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def get_definitions_at(self, position: Position) -> List[Symbol]:
+    def get_definitions_at(self, position: Position) -> List[Location]:
         ' Queries symbol definitions at the given @position. '
-        # TODO
-        raise NotImplementedError
+        definitions = []
+        # First step: Gather the symbol definitions which are directly positioned under the cursor
+        for symbol in self.symbol_table.flat():
+            # same file check
+            if symbol.location.path != self.file:
+                continue
+            # ignore non-module and non-def symbols (e.g. scopes)
+            if not isinstance(symbol, (ModuleSymbol, DefSymbol)):
+                continue
+            # Add the symbol if the symbol is positioned under cursor
+            if symbol.location.range.contains(position):
+                definitions.append(symbol.location)
+        # Step 2: Resolve the references under the cursor
+        # Buffer for the smallest reference under the cursor in case there are multiple references at the current position
+        minimal_reference_range_buffer = None
+        for ref in self.references:
+            # check that the reference is positioned under cursor
+            if ref.range.contains(position):
+                # buffer the reference if nothing buffered yet
+                if not minimal_reference_range_buffer:
+                    minimal_reference_range_buffer = ref
+                # if already one added: Select the smaller one
+                elif ref.range.length < minimal_reference_range_buffer.range.length:
+                    minimal_reference_range_buffer = ref
+        if minimal_reference_range_buffer:
+            # Get the definition the smallest reference points to
+            definitions.extend(minimal_reference_range_buffer.resolved_locations)
+        return definitions
 
     def is_source_modified(self, time_modified: float = None) -> bool:
         ''' Checks if the source was modified.

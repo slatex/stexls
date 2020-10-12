@@ -1,7 +1,7 @@
-from typing import Tuple
+from typing import Tuple, List
 from enum import Flag
 import stexls
-from stexls.vscode import Range
+from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 
 __all__ = ['ReferenceType', 'Reference']
@@ -80,6 +80,7 @@ class Reference:
         self.scope = scope
         self.name = tuple(name)
         self.reference_type: ReferenceType = reference_type
+        self.resolved_locations: List[Location] = []
 
     def __repr__(self):
         return f'[Reference  "{"?".join(self.name)}" of type {self.reference_type.format_enum()} at {self.range.start.format()}]'

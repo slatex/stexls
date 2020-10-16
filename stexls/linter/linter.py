@@ -96,6 +96,7 @@ class Linter:
         buffered = self._object_buffer.get(file)
         objectfile = self.compiler.get_objectfile_path(file)
         if buffered and objectfile.is_file() and objectfile.lstat().st_mtime < buffered.creation_time:
+            # TODO: Is returned the buffered object really necessary? And is the condition correct?
             return buffered
         try:
             return self.compiler.load_from_objectfile(file)

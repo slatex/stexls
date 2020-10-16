@@ -60,18 +60,6 @@ class Diagnostics:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
 
-    @staticmethod
-    def _parse_severity_string(string: str) -> DiagnosticSeverity:
-        ' Returns a DiagnosticSeverity object from string. '
-        string = string.lower()
-        if 'hint' in string:
-            return DiagnosticSeverity.Hint
-        if 'info' in string:
-            return DiagnosticSeverity.Information
-        if 'warning' in string:
-            return DiagnosticSeverity.Warning
-        return DiagnosticSeverity.Error
-
     def module_not_found_semantic_location_check(self, range: Range, env_name: str):
         ' Used when an environment is used at locations where a module can\'t be deduced. E.g. outside of modsig or module environments. '
         self.semantic_location_check(range, env_name, 'Parent module info not found')
@@ -152,7 +140,7 @@ class Diagnostics:
     def parser_exception(self, range: Range, exception: Exception):
         ' Used for all errors caught during parsing. '
         message = str(exception)
-        severity = Diagnostics._parse_severity_string(type(exception).__name__)
+        severity = DiagnosticSeverity.from_string(type(exception).__name__)
         code = DiagnosticCodeName.PARSER_EXCEPTION.value
         diag = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diag)
@@ -160,7 +148,7 @@ class Diagnostics:
     def exception(self, range: Range, exception: Exception, severity: DiagnosticSeverity = None):
         ' Generic exception occured. '
         message = str(exception)
-        severity = severity or Diagnostics._parse_severity_string(type(exception).__name__)
+        severity = severity or DiagnosticSeverity.from_string(type(exception).__name__)
         code = DiagnosticCodeName.GENERIC_EXCEPTION.value
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)

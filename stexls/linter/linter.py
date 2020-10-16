@@ -23,16 +23,20 @@ class LintingResult:
     def diagnostics(self) -> List[Diagnostic]:
         return self.object.diagnostics.diagnostics
 
-    def format_messages(self, format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})', diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information):
-        """ Prints all errors according to the provided @format_string and @diagnosticlevel.
+    def format_messages(self, format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})', diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information) -> List[str]:
+        """ Formats all errors according to the provided @format_string and @diagnosticlevel.
 
         Parameters:
             format_string: A str.format format. Available variables are uri, file, filename, relative_file, line, column, code, severity and message.
             diagnosticlevel: The max severity level printet.
+
+        Return:
+            List of messages formatted as strings.
         """
         file = self.object.file
         filename = file.name
         uri = file.as_uri()
+        messages: List[str] = []
         try:
             relative_file = file.relative_to(Path.cwd())
         except:
@@ -52,7 +56,8 @@ class LintingResult:
                 severity=diagnostic.severity.name,
                 code=diagnostic.code,
                 message=diagnostic.message)
-            print(msg)
+            messages.append(msg)
+        return messages
 
     def format_parseable(self):
         pass

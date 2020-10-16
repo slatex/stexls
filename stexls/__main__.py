@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 @command(
     files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
     root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
-    diagnosticlevel=Arg('--diagnosticlevel', '-d', choices=('error', 'warning', 'info'), help='Only diagnostics for the specified level and above are printed.'),
+    diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string, help='Only diagnostics for the specified level and above are printed.'),
     include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
     ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
     verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.'),
@@ -36,13 +36,13 @@ log = logging.getLogger(__name__)
 async def linter(
     files: List[Path],
     root: Path = '.',
-    diagnosticlevel: str = 'info',
+    diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information,
     include: List[Pattern] = None,
     ignore: List[Pattern] = None,
     show_progress: bool = False,
     verbose: bool = False,
     num_jobs: int = 1,
-    format: str = '{file}:{line}:{column} {severity} - {message}',
+    format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
     tagfile: str = None,
     loglevel: str = 'error',
     logfile: Path = Path('/tmp/stexls.log')):
@@ -53,13 +53,13 @@ async def linter(
     Parameters:
         root: Root of stex imports.
         files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
-        diagnosticlevel: Only diagnostics for the specified level and above are printed. Choices are "error", "warning" and "info".
+        diagnosticlevel: Only diagnostics for the specified level and above are printed. (Error: 1, Warning: 2, Info: 3, Hint: 4)
         include: List of regex patterns. Only files that match ANY of these patterns will be included.
         ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
         show_progress: Enables a progress bar being printed to stderr.
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         num_jobs: Number of processes to use for compilation.
-        format: Format string of the diagnostics. Variables are 'file', 'line', 'column', 'severity' and 'message'
+        format: Format string of the diagnostics. Variables are file, relative_file, line, column, severity, message and code.
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
         logfile: File to which logs will be logged.
@@ -98,20 +98,29 @@ async def linter(
         workspace=workspace,
         outdir=outdir,
         enable_global_validation=False,
-        num_jobs=num_jobs,
-        on_progress_fun=progressfn)
+        num_jobs=num_jobs)
 
     if tagfile:
         log.debug('Creating tagfile at "%s"', root / tagfile)
         # TODO: Tagfile
 
+    buffer = []
     for file in progressfn(files, 'Linting', files):
-        ln = linter.lint(file)
-        log.debug('Dumping %s diagnostics in .', len(ln.object.errors), ln.object.file)
+        try:
+            ln = linter.lint(file.absolute())
+        except Exception as err:
+            log.exception('Failed to lint file: %s', file)
+            buffer.append(f'{file} Failed to lint file: {err} ({type(err)})')
+            continue
+        log.debug('Dumping %s diagnostics in .', len(ln.diagnostics))
         if verbose:
-            print(ln.object.format())
+            verbose_format = ln.object.format()
+            buffer.append(verbose_format)
         else:
-            ln.format_messages(format=format, diagnosticlevel=diagnosticlevel)
+            messages = ln.format_messages(format_string=format, diagnosticlevel=diagnosticlevel)
+            buffer.extend(messages)
+
+    print('\n'.join(buffer))
 
 @command(
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),

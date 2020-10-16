@@ -45,6 +45,10 @@ class ObjectfileNotFoundError(FileNotFoundError):
     pass
 
 
+class ObjectfileIsCorruptedError(Exception):
+    pass
+
+
 class Dependency:
     def __init__(
         self,
@@ -305,7 +309,7 @@ class Compiler:
 
         Raises:
             ObjectfileNotFoundError If the objectfile does not exist.
-            RuntimeError: If the loaded object file can not be deserialized.
+            ObjectfileIsCorruptedError: If the loaded object file can not be deserialized.
         '''
         objectfile = self.get_objectfile_path(file)
         if not objectfile.is_file():
@@ -313,7 +317,7 @@ class Compiler:
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
             if not isinstance(obj, StexObject):
-                raise RuntimeError(f'Objectfile for "{file}" is corrupted.')
+                raise ObjectfileIsCorruptedError(f'Objectfile for "{file}" is corrupted.')
             return obj
 
     def recompilation_required(self, file: Path, time_modified: float = None):

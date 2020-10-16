@@ -6,7 +6,7 @@ The ln command takes a list of c++ objects and resolves the symbol references in
 from typing import List, Dict, Tuple, Set, Iterator, Optional
 from pathlib import Path
 from stexls.vscode import *
-from stexls.stex.compiler import Compiler, ObjectfileNotFoundError
+from stexls.stex.compiler import Compiler, ObjectfileIsCorruptedError, ObjectfileNotFoundError
 from stexls.stex.compiler import StexObject, Dependency
 from stexls.stex.symbols import *
 from stexls.stex.exceptions import *
@@ -64,6 +64,7 @@ class Linker:
         objects: Dict[Path, StexObject],
         compiler: Compiler,
         required_symbol_names: List[str] = None,
+        *,
         _stack: Dict[Tuple[Path, str], Tuple[StexObject, Dependency]] = None,
         _toplevel_module: str = None,
         _usemodule_on_stack: bool = False) -> StexObject:
@@ -111,6 +112,9 @@ class Linker:
                         _toplevel_module=_toplevel_module or dep.scope.get_current_module(),
                         _usemodule_on_stack=update_usemodule_on_stack)
                     self._store_linked(update_usemodule_on_stack, dep.file_hint, dep.module_name, imported)
+                except (ObjectfileNotFoundError, ObjectfileIsCorruptedError):
+                    log.exception('Failed to link dependency: %s', file)
+                    continue
                 finally:
                     del _stack[(dep.file_hint, dep.module_name)]
             else:

@@ -506,6 +506,21 @@ class DiagnosticSeverity(SerializableEnum):
     Information: int = 3
     Hint: int = 4
 
+    @staticmethod
+    def from_string(s):
+        ' Constructs the object from either the name of the severity as well as the integer value as a string. Default is DiagnosticSeverity.Error. '
+        return {
+            'error': DiagnosticSeverity.Error,
+            'warning': DiagnosticSeverity.Warning,
+            'information': DiagnosticSeverity.Information,
+            'info': DiagnosticSeverity.Information,
+            'hint': DiagnosticSeverity.Hint,
+            '1': DiagnosticSeverity.Error,
+            '2': DiagnosticSeverity.Warning,
+            '3': DiagnosticSeverity.Information,
+            '4': DiagnosticSeverity.Hint,
+        }.get(s.lower(), DiagnosticSeverity.Error)
+
 
 class DiagnosticRelatedInformation:
     def __init__(

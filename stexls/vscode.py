@@ -635,12 +635,12 @@ class CompletionContext:
         triggerKind: CompletionTriggerKind,
         triggerCharacter: str = undefined):
         self.triggerKind = triggerKind
-        if triggerCharacter != undefined:
+        if triggerCharacter is not undefined:
             self.triggerCharacter = triggerCharacter
 
     def to_json(self) -> dict:
         json = { 'triggerKind': self.triggerKind.to_json() }
-        if getattr(self, 'triggerCharacter', undefined) != undefined:
+        if getattr(self, 'triggerCharacter', undefined) is not undefined:
             json['triggerCharacter'] = self.triggerCharacter
 
     @staticmethod
@@ -720,68 +720,68 @@ class CompletionItem:
         command = undefined,
         data = undefined):
         self.label = label
-        if kind != undefined:
+        if kind is not undefined:
             self.kind = kind
-        if tags != undefined:
+        if tags is not undefined:
             self.tags = tags
-        if detail != undefined:
+        if detail is not undefined:
             self.detail = detail
-        if documentation != undefined:
+        if documentation is not undefined:
             self.documentation = documentation
-        if deprecated != undefined:
+        if deprecated is not undefined:
             self.deprecated = deprecated
-        if preselect != undefined:
+        if preselect is not undefined:
             self.preselect = preselect
-        if sortText != undefined:
+        if sortText is not undefined:
             self.sortText = sortText
-        if filterText != undefined:
+        if filterText is not undefined:
             self.filterText = filterText
-        if insertText != undefined:
+        if insertText is not undefined:
             self.insertText = insertText
-        if insertTextFormat != undefined:
+        if insertTextFormat is not undefined:
             self.insertTextFormat = insertTextFormat
-        if textEdit != undefined:
+        if textEdit is not undefined:
             self.textEdit = textEdit
-        if additionalTextEdtits != undefined:
+        if additionalTextEdtits is not undefined:
             self.additionalTextEdtits = additionalTextEdtits
-        if commitCharacters != undefined:
+        if commitCharacters is not undefined:
             self.commitCharacters = commitCharacters
-        if command != undefined:
+        if command is not undefined:
             self.command  = command
-        if data != undefined:
+        if data is not undefined:
             self.data  = data
 
     def to_json(self) -> dict:
         json = { 'label': self.label }
-        if self.kind != undefined:
+        if self.kind is not undefined:
             json['kind'] = self.kind
-        if self.tags != undefined:
+        if self.tags is not undefined:
             json['tags'] = self.tags
-        if self.detail != undefined:
+        if self.detail is not undefined:
             json['detail'] = self.detail
-        if self.documentation != undefined:
+        if self.documentation is not undefined:
             json['documentation'] = self.documentation
-        if self.deprecated != undefined:
+        if self.deprecated is not undefined:
             json['deprecated'] = self.deprecated
-        if self.preselect != undefined:
+        if self.preselect is not undefined:
             json['preselect'] = self.preselect
-        if self.sortText != undefined:
+        if self.sortText is not undefined:
             json['sortText'] = self.sortText
-        if self.filterText != undefined:
+        if self.filterText is not undefined:
             json['filterText'] = self.filterText
-        if self.insertText != undefined:
+        if self.insertText is not undefined:
             json['insertText'] = self.insertText
-        if self.insertTextFormat != undefined:
+        if self.insertTextFormat is not undefined:
             json['insertTextFormat'] = self.insertTextFormat
-        if self.textEdit != undefined:
+        if self.textEdit is not undefined:
             json['textEdit'] = self.textEdit
-        if self.additionalTextEdtits != undefined:
+        if self.additionalTextEdtits is not undefined:
             json['additionalTextEdtits'] = self.additionalTextEdtits
-        if self.commitCharacters != undefined:
+        if self.commitCharacters is not undefined:
             json['commitCharacters'] = self.commitCharacters
-        if self.command != undefined:
+        if self.command is not undefined:
             json['command'] = self.command
-        if self.data != undefined:
+        if self.data is not undefined:
             json['data'] = self.data
         return json
 
@@ -817,11 +817,11 @@ class WorkDoneProgressBegin:
         cancellable: bool = undefined):
         self.kind = 'begin'
         self.title = title
-        if percentage != undefined:
+        if percentage is not undefined:
             self.percentage = percentage
-        if message != undefined:
+        if message is not undefined:
             self.message = message
-        if cancellable != undefined:
+        if cancellable is not undefined:
             self.cancellable = cancellable
 
     def to_json(self) -> dict:
@@ -829,11 +829,11 @@ class WorkDoneProgressBegin:
             'kind': self.kind,
             'title': self.title,
         }
-        if getattr(self, 'percentage', undefined) != undefined:
+        if getattr(self, 'percentage', undefined) is not undefined:
             json['percentage'] = self.percentage
-        if getattr(self, 'message', undefined) != undefined:
+        if getattr(self, 'message', undefined) is not undefined:
             json['message'] = self.message
-        if getattr(self, 'cancellable', undefined) != undefined:
+        if getattr(self, 'cancellable', undefined) is not undefined:
             json['cancellable'] = self.cancellable
         return json
 
@@ -853,22 +853,22 @@ class WorkDoneProgressReport:
         message: str = undefined,
         cancellable: bool = undefined):
         self.kind = 'report'
-        if percentage != undefined:
+        if percentage is not undefined:
             self.percentage = percentage
-        if message != undefined:
+        if message is not undefined:
             self.message = message
-        if cancellable != undefined:
+        if cancellable is not undefined:
             self.cancellable = cancellable
 
     def __repr__(self): return str(self.to_json())
 
     def to_json(self) -> dict:
         json = { 'kind': self.kind }
-        if getattr(self, 'percentage', undefined) != undefined:
+        if getattr(self, 'percentage', undefined) is not undefined:
             json['percentage'] = self.percentage
-        if getattr(self, 'message', undefined) != undefined:
+        if getattr(self, 'message', undefined) is not undefined:
             json['message'] = self.message
-        if getattr(self, 'cancellable', undefined) != undefined:
+        if getattr(self, 'cancellable', undefined) is not undefined:
             json['cancellable'] = self.cancellable
         return json
 
@@ -885,14 +885,14 @@ class WorkDoneProgressEnd:
         self,
         message: str = undefined):
         self.kind = 'end'
-        if message != undefined:
+        if message is not undefined:
             self.message = message
 
     def to_json(self) -> dict:
         json = {
             'kind': self.kind,
         }
-        if getattr(self, 'message', undefined) != undefined:
+        if getattr(self, 'message', undefined) is not undefined:
             json['message'] = self.message
         return json
 

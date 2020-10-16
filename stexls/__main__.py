@@ -125,6 +125,7 @@ async def linter(
 @command(
     num_jobs=Arg('--num_jobs', '-j', type=int, help="Number of processes used for multiprocessing."),
     update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.'),
+    enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true', help="This will make the server compile every file in the workspace on startup, enabling global validation and diagnostics."),
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
@@ -134,6 +135,7 @@ async def linter(
 async def lsp(
     num_jobs: int = 1,
     update_delay_seconds: float = 1.0,
+    enable_global_validation: bool = False,
     transport_kind: str = 'ipc',
     host: str = 'localhost',
     port: int = 0,
@@ -160,9 +162,9 @@ async def lsp(
         level=getattr(logging, loglevel.upper()))
     server, connection = None, None
     if transport_kind == 'ipc':
-        server, connection = await Server.open_ipc_connection(num_jobs=num_jobs, update_delay_seconds=update_delay_seconds)
+        server, connection = await Server.open_ipc_connection(num_jobs=num_jobs, update_delay_seconds=update_delay_seconds, enable_global_validation=enable_global_validation)
     elif transport_kind == 'tcp':
-        server, connection = await Server.open_connection(host=host, port=port, num_jobs=num_jobs, update_delay_seconds=update_delay_seconds)
+        server, connection = await Server.open_connection(host=host, port=port, num_jobs=num_jobs, update_delay_seconds=update_delay_seconds, enable_global_validation=enable_global_validation)
     async with server:
         await connection
 

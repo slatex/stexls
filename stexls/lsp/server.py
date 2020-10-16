@@ -6,6 +6,7 @@ import pkg_resources
 import sys
 
 from stexls.vscode import *
+from stexls.util import create_random_string
 from stexls.util.workspace import Workspace
 from stexls.linter import Linter
 from stexls.stex import *
@@ -17,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class Server(Dispatcher):
-    def __init__(self, connection, *, num_jobs: int = 1, update_delay_seconds: float = 1.0):
+    def __init__(self, connection, *, num_jobs: int = 1, update_delay_seconds: float = 1.0, enable_global_validation: bool = False):
         """ Creates a server dispatcher.
 
         Parameters:
@@ -26,13 +27,15 @@ class Server(Dispatcher):
         Keyword Arguments:
             num_jobs: Number of processes to use for multiprocessing when compiling.
             update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
+            enable_global_validation: Enables linter global validation.
         """
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
         self.update_delay_seconds = update_delay_seconds
-        self.workDoneProgress: bool = None
+        self.work_done_progress_capability_is_set: bool = None
+        self.enable_global_validation: bool = enable_global_validation
         self._root: Path = None
-        self._initialized: bool = False
+        self._initialized_event: asyncio.Event = asyncio.Event()
         self._workspace: Workspace = None
         self._linter: Linter = None
         self._completion_engine: CompletionEngine = None
@@ -91,11 +94,11 @@ class Server(Dispatcher):
         This method is called by the client that starts the server.
         The server may only respond to other requests after this method successfully returns.
         '''
-        if self._initialized:
+        if self._initialized_event.is_set():
             raise RuntimeError('Server already initialized')
 
-        self.workDoneProgress = params.get('capabilities', {}).get('window', {}).get('workDoneProgress', False)
-        log.info('Progress information enabled: %s', self.workDoneProgress)
+        self.work_done_progress_capability_is_set = params.get('capabilities', {}).get('window', {}).get('workDoneProgress', False)
+        log.info('Progress information enabled: %s', self.work_done_progress_capability_is_set)
 
         if 'rootUri' in params and params['rootUri']:
             self._root = Path(urllib.parse.urlparse(params['rootUri']).path)
@@ -141,18 +144,41 @@ class Server(Dispatcher):
     @method
     async def initialized(self):
         ' Event called by the client after it finished initialization. '
-        if self._initialized:
+        if self._initialized_event.is_set():
             raise RuntimeError('Server already initialized')
         outdir = self._root / '.stexls' / 'objects'
         self._workspace = Workspace(self._root)
         self._linter = Linter(
             workspace=self._workspace,
             outdir=outdir,
-            enable_global_validation=False,
+            enable_global_validation=self.enable_global_validation,
             num_jobs=self.num_jobs)
+        if self._linter.enable_global_validation:
+            token = create_random_string(16)
+            log.info('Linter enable_global_validation is enabled: Progress token is "%s"', token)
+            if self.work_done_progress_capability_is_set:
+                log.info('Client has workDoneProgerss enabled.')
+                await self.window_work_done_progress_create(token=token)
+            else:
+                log.warning('Client does NOT have workDoneProgress enabled: No work done progress info will be sent!')
+            compile_progress_iter = self._linter.compile_workspace()
+            if self.work_done_progress_capability_is_set:
+                begin = WorkDoneProgressBegin('Compiling', message=f'{len(compile_progress_iter)} files in workspace', cancellable=False)
+                await self.send_progress(token=token, value=begin)
+            try:
+                for i, currently_compiling_file in enumerate(compile_progress_iter):
+                    log.debug('Compile workspace progress: "%s" (%i/%i)', currently_compiling_file, i, len(compile_progress_iter))
+                    percentage = int(i*100/len(compile_progress_iter))
+                    if self.work_done_progress_capability_is_set:
+                        report = WorkDoneProgressReport(percentage=percentage, message=currently_compiling_file.name)
+                        await self.send_progress(token=token, value=report)
+            finally:
+                if self.work_done_progress_capability_is_set:
+                    end = WorkDoneProgressEnd('Compiling workspace done')
+                    await self.send_progress(token=token, value=end)
         self._completion_engine = CompletionEngine(None)
         log.info('Initialized')
-        self._initialized = True
+        self._initialized_event.set()
 
     @method
     def shutdown(self):
@@ -190,12 +216,13 @@ class Server(Dispatcher):
 
     @method
     @alias('textDocument/definition')
-    def definition(
+    async def definition(
         self,
         textDocument: TextDocumentIdentifier,
         position: Position,
         workDoneToken: ProgressToken = undefined,
         **params):
+        await self._initialized_event.wait()
         log.debug('definitions(%s, %s)', textDocument.path, position.format())
         definitions = self._linter.definitions(textDocument.path, position)
         log.debug('Found %i definitions: %s', len(definitions), definitions)
@@ -203,13 +230,14 @@ class Server(Dispatcher):
 
     @method
     @alias('textDocument/references')
-    def references(
+    async def references(
         self,
         textDocument: TextDocumentIdentifier,
         position: Position,
         workDoneToken: ProgressToken = undefined,
         context = undefined,
         **params):
+        await self._initialized_event.wait()
         log.debug('references(%s, %s)', textDocument.path, position.format())
         references = self._linter.references(textDocument.path, position)
         log.debug('Found %i references: %s', len(references), references)
@@ -217,12 +245,13 @@ class Server(Dispatcher):
 
     @method
     @alias('textDocument/completion')
-    def completion(
+    async def completion(
         self,
         textDocument: TextDocumentIdentifier,
         position: Position,
         context: CompletionContext = undefined,
         workDoneToken: ProgressToken = undefined):
+        await self._initialized_event.wait()
         log.debug('completion(%s, %s, context=%s)', textDocument.path, position.format(), context)
         return []
 
@@ -234,6 +263,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: TextDocumentItem):
+        await self._initialized_event.wait()
         log.debug('didOpen(%s)', textDocument)
         if self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
             await self._request_update(textDocument.path)
@@ -241,6 +271,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[TextDocumentContentChangeEvent]):
+        await self._initialized_event.wait()
         log.debug('updating file "%s" with version %i', textDocument.path, textDocument.version)
         if self._workspace.is_open(textDocument.path):
             for item in contentChanges:
@@ -256,6 +287,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didClose')
     async def text_document_did_close(self, textDocument: TextDocumentIdentifier):
+        await self._initialized_event.wait()
         log.debug('Closing document: "%s"', textDocument.path)
         status = self._workspace.close_file(textDocument.path)
         if not status:
@@ -264,6 +296,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didSave')
     async def text_document_did_save(self, textDocument: TextDocumentIdentifier, text: str = undefined):
+        await self._initialized_event.wait()
         if self._workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
         else:

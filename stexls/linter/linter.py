@@ -91,6 +91,7 @@ class Linter:
             try:
                 return self.compiler.compile(file, content=content)
             except FileNotFoundError:
+                log.warning('Failed to compile file "%s": FileNotFound', file)
                 return None
         buffered = self._object_buffer.get(file)
         objectfile = self.compiler.get_objectfile_path(file)
@@ -99,6 +100,7 @@ class Linter:
         try:
             return self.compiler.load_from_objectfile(file)
         except ObjectfileNotFoundError:
+            log.warning('ObjectfileNotFound: "%s"', file)
             return None
 
     def compile_workspace(self) -> Iterable[StexObject]:
@@ -121,6 +123,9 @@ class Linter:
                     mapfn = map if self.linter.num_jobs < 1 else pool.imap
                     it = mapfn(self.linter._compile_file_with_respect_to_workspace, self.files)
                     for file, obj in zip(self.files, it):
+                        if not obj:
+                            # failed to compile the file (probably does not exist)
+                            continue
                         # Need to buffer the dict update because of multiprocessing pickling the whole linter
                         dict_update_buffer[file] = obj
                         yield obj
@@ -147,6 +152,8 @@ class Linter:
                 continue
             if on_progress_fun: on_progress_fun(file, len(visited))
             obj = self._compile_file_with_respect_to_workspace(file)
+            if not obj:
+                continue
             visited[file] = obj
             self._object_buffer[file] = obj
             for dep in obj.dependencies:

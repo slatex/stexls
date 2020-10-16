@@ -126,7 +126,7 @@ class Linter:
             def __iter__(self) -> Iterator[StexObject]:
                 dict_update_buffer: Dict[Path, StexObject] = {}
                 with Pool(self.linter.num_jobs) as pool:
-                    mapfn = map if self.linter.num_jobs < 1 else pool.imap
+                    mapfn = map if self.linter.num_jobs <= 1 else pool.imap
                     it = mapfn(self.linter._compile_file_with_respect_to_workspace, self.files)
                     for file, obj in zip(self.files, it):
                         if not obj:

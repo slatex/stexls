@@ -123,6 +123,8 @@ async def linter(
     print('\n'.join(buffer))
 
 @command(
+    num_jobs=Arg('--num_jobs', '-j', type=int, help="Number of processes used for multiprocessing."),
+    update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.'),
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
@@ -130,6 +132,8 @@ async def linter(
     logfile=Arg('--logfile', '-L',  type=Path, help='Logfile name.'),
 )
 async def lsp(
+    num_jobs: int = 1,
+    update_delay_seconds: float = 1.0,
     transport_kind: str = 'ipc',
     host: str = 'localhost',
     port: int = 0,
@@ -138,6 +142,8 @@ async def lsp(
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:
+        num_jobs: The number of processes used for multiprocessing.
+        update_delay_seconds: The number of seconds the server is waiting for more input before proceeding to lint the changed files.
         transport_kind: Mode of transportation to use.
         host: Host for "tcp" transport. Defaults to localhost.
         port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
@@ -154,9 +160,9 @@ async def lsp(
         level=getattr(logging, loglevel.upper()))
     server, connection = None, None
     if transport_kind == 'ipc':
-        server, connection = await Server.open_ipc_connection()
+        server, connection = await Server.open_ipc_connection(num_jobs=num_jobs, update_delay_seconds=update_delay_seconds)
     elif transport_kind == 'tcp':
-        server, connection = await Server.open_connection(host=host, port=port)
+        server, connection = await Server.open_connection(host=host, port=port, num_jobs=num_jobs, update_delay_seconds=update_delay_seconds)
     async with server:
         await connection
 

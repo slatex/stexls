@@ -112,16 +112,20 @@ class Dispatcher:
         port: int = 0,
         encoding: str = 'utf-8',
         charset: str = None,
-        newline: str = '\r\n') -> Tuple[Dispatcher, asyncio.Task]:
+        newline: str = '\r\n',
+        **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens a connection to a tcp server.
 
-        Args:
+        Parameters:
             dispatcher_factory: A Dispatcher type.
             host: Host name to connect to.
             port: Port to connect to.
             encoding: Encoding of the sent binary data.
             charset: Optional encoding of the sent contents.
             newline: Which character terminates lines.
+
+        Keyword Parameters:
+            The variadic keyword parameters are forwarded to the dispatcher_factory call.
 
         Returns:
             Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher instance for this connection
@@ -132,7 +136,7 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn)
+        dispatcher = dispatcher_factory(conn, **kwargs)
         return dispatcher, conn_task
 
     @classmethod
@@ -143,13 +147,14 @@ class Dispatcher:
         encoding: str = 'utf-8',
         charset: str = None,
         newline: str = '\r\n',
-        loop = None) -> Tuple[Dispatcher, asyncio.Task]:
+        loop = None,
+        **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens connection using a pipe or file.
 
         Takes input and output file descriptors and uses
         them as the streams for the json connection.
 
-        Args:
+        Parameters:
             dispatcher_factory: A Dispatcher type.
             input_fd: Input file descriptor of pipe.
                 Can also be a string of "stdin".
@@ -159,6 +164,9 @@ class Dispatcher:
             charset: Optional encoding of the sent contents.
             newline: Which character terminates lines.
             loop: Asyncio event loop.
+
+        Keyword Parameters:
+            The keyword parameters are forwarded to the dispatcher_factory call.
 
         Returns:
             Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher for the connection
@@ -186,5 +194,5 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn)
+        dispatcher = dispatcher_factory(conn, **kwargs)
         return dispatcher, conn_task

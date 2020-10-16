@@ -17,7 +17,16 @@ log = logging.getLogger(__name__)
 
 
 class Server(Dispatcher):
-    def __init__(self, connection, num_jobs: int = 1, update_delay_seconds: float = 1.0):
+    def __init__(self, connection, *, num_jobs: int = 1, update_delay_seconds: float = 1.0):
+        """ Creates a server dispatcher.
+
+        Parameters:
+            connection: The connection object required by asyncio processes from the inherited dispatcher class.
+
+        Keyword Arguments:
+            num_jobs: Number of processes to use for multiprocessing when compiling.
+            update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
+        """
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
         self.update_delay_seconds = update_delay_seconds

@@ -80,7 +80,7 @@ class Reference:
         self.scope = scope
         self.name = tuple(name)
         self.reference_type: ReferenceType = reference_type
-        self.resolved_locations: List[Location] = []
+        self.resolved_symbols: List['stexls.symbols.Symbol'] = []
 
     def __repr__(self):
         return f'[Reference  "{"?".join(self.name)}" of type {self.reference_type.format_enum()} at {self.range.start.format()}]'

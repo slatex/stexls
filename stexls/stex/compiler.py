@@ -123,7 +123,7 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def get_definitions_at(self, position: Position) -> List[Location]:
+    def get_definitions_at(self, position: Position) -> List[Symbol]:
         ' Queries symbol definitions at the given @position. '
         definitions = []
         # First step: Gather the symbol definitions which are directly positioned under the cursor
@@ -136,7 +136,7 @@ class StexObject:
                 continue
             # Add the symbol if the symbol is positioned under cursor
             if symbol.location.range.contains(position):
-                definitions.append(symbol.location)
+                definitions.append(symbol)
         # Step 2: Resolve the references under the cursor
         # Buffer for the smallest reference under the cursor in case there are multiple references at the current position
         minimal_reference_range_buffer = None
@@ -151,7 +151,7 @@ class StexObject:
                     minimal_reference_range_buffer = ref
         if minimal_reference_range_buffer:
             # Get the definition the smallest reference points to
-            definitions.extend(minimal_reference_range_buffer.resolved_locations)
+            definitions.extend(minimal_reference_range_buffer.resolved_symbols)
         return definitions
 
     def is_source_modified(self, time_modified: float = None) -> bool:

@@ -174,8 +174,8 @@ class Linker:
                 if symbol.reference_type not in ref.reference_type:
                     linked.diagnostics.referenced_symbol_type_check(ref.range, ref.reference_type, symbol.reference_type)
                 else:
-                    # Only add to valid resolved location if the reference type matches
-                    ref.resolved_locations.append(symbol.location)
+                    # Only add to valid resolved symbols if the reference type matches
+                    ref.resolved_symbols.append(symbol)
                 if isinstance(symbol, DefType):
                     defs: DefSymbol = symbol
                     if defs.noverb:

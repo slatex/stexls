@@ -126,6 +126,7 @@ async def linter(
     num_jobs=Arg('--num_jobs', '-j', type=int, help="Number of processes used for multiprocessing."),
     update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.'),
     enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true', help="This will make the server compile every file in the workspace on startup, enabling global validation and diagnostics."),
+    lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup', action='store_true', help="Create diagnostics for every file in the workspace on startup."),
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
@@ -136,6 +137,7 @@ async def lsp(
     num_jobs: int = 1,
     update_delay_seconds: float = 1.0,
     enable_global_validation: bool = False,
+    lint_workspace_on_startup: bool = False,
     transport_kind: str = 'ipc',
     host: str = 'localhost',
     port: int = 0,
@@ -146,6 +148,8 @@ async def lsp(
     Parameters:
         num_jobs: The number of processes used for multiprocessing.
         update_delay_seconds: The number of seconds the server is waiting for more input before proceeding to lint the changed files.
+        enable_global_validation: Enables global validation of references.
+        lint_workspace_on_startup: Create diagnostics for every file in the workspace on startup.
         transport_kind: Mode of transportation to use.
         host: Host for "tcp" transport. Defaults to localhost.
         port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
@@ -161,10 +165,16 @@ async def lsp(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
     server, connection = None, None
+    shared_args = {
+        'num_jobs': num_jobs,
+        'update_delay_seconds': update_delay_seconds,
+        'enable_global_validation': enable_global_validation,
+        'lint_workspace_on_startup': lint_workspace_on_startup,
+    }
     if transport_kind == 'ipc':
-        server, connection = await Server.open_ipc_connection(num_jobs=num_jobs, update_delay_seconds=update_delay_seconds, enable_global_validation=enable_global_validation)
+        server, connection = await Server.open_ipc_connection(**shared_args)
     elif transport_kind == 'tcp':
-        server, connection = await Server.open_connection(host=host, port=port, num_jobs=num_jobs, update_delay_seconds=update_delay_seconds, enable_global_validation=enable_global_validation)
+        server, connection = await Server.open_connection(host=host, port=port, **shared_args)
     async with server:
         await connection
 

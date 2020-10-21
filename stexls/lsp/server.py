@@ -1,5 +1,5 @@
 from time import time
-from typing import Union, Awaitable, Set
+from typing import Union, Awaitable, Set, Dict
 import logging
 import asyncio
 import pkg_resources
@@ -18,7 +18,13 @@ log = logging.getLogger(__name__)
 
 
 class Server(Dispatcher):
-    def __init__(self, connection, *, num_jobs: int = 1, update_delay_seconds: float = 1.0, enable_global_validation: bool = False):
+    def __init__(
+        self,
+        connection, *,
+        num_jobs: int = 1,
+        update_delay_seconds: float = 1.0,
+        enable_global_validation: bool = False,
+        lint_workspace_on_startup: bool = False):
         """ Creates a server dispatcher.
 
         Parameters:
@@ -28,12 +34,14 @@ class Server(Dispatcher):
             num_jobs: Number of processes to use for multiprocessing when compiling.
             update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
             enable_global_validation: Enables linter global validation.
+            lint_workspace_on_startup: Create disagnostics for all files in the workspace after initialization.
         """
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
         self.update_delay_seconds = update_delay_seconds
         self.work_done_progress_capability_is_set: bool = None
         self.enable_global_validation: bool = enable_global_validation
+        self.lint_workspace_on_startup: bool = lint_workspace_on_startup
         self._root: Path = None
         self._initialized_event: asyncio.Event = asyncio.Event()
         self._workspace: Workspace = None
@@ -42,6 +50,7 @@ class Server(Dispatcher):
         self._update_requests: Set[Path] = set()
         self._update_request_finished_event: asyncio.Event = None
         self._timeout_start_time: float = None
+        self._cancelable_work_done_progresses: Dict[object, asyncio.Future] = dict()
 
     async def _request_update(self, file: Path):
         ' Requests an update for the file. '
@@ -154,31 +163,77 @@ class Server(Dispatcher):
             enable_global_validation=self.enable_global_validation,
             num_jobs=self.num_jobs)
         if self._linter.enable_global_validation:
-            token = create_random_string(16)
-            log.info('Linter enable_global_validation is enabled: Progress token is "%s"', token)
+            token = None
+            cancel: asyncio.Future = None
             if self.work_done_progress_capability_is_set:
-                log.info('Client has workDoneProgerss enabled.')
-                await self.window_work_done_progress_create(token=token)
-            else:
-                log.warning('Client does NOT have workDoneProgress enabled: No work done progress info will be sent!')
+                token, cancel = await self._begin_work_done_progress(title='Compiling', cancelable=True)
+                log.info('Linter enable_global_validation is enabled: Progress token is "%s"', token)
             compile_progress_iter = self._linter.compile_workspace()
-            if self.work_done_progress_capability_is_set:
-                begin = WorkDoneProgressBegin('Compiling', message=f'{len(compile_progress_iter)} files in workspace', cancellable=False)
-                await self.send_progress(token=token, value=begin)
             try:
                 for i, currently_compiling_file in enumerate(compile_progress_iter):
-                    log.debug('Compile workspace progress: "%s" (%i/%i)', currently_compiling_file, i, len(compile_progress_iter))
+                    log.debug('Compile workspace progress (%i/%i): %s', currently_compiling_file, i, len(compile_progress_iter))
                     percentage = int(i*100/len(compile_progress_iter))
                     if self.work_done_progress_capability_is_set:
+                        if cancel.cancelled():
+                            # Get the exception
+                            await cancel
                         report = WorkDoneProgressReport(percentage=percentage, message=currently_compiling_file.name)
                         await self.send_progress(token=token, value=report)
+            except asyncio.CancelledError:
+                log.info('Cancelled compilation of workspace on startup by user.')
+            except:
+                log.exception('Exception occured during compiling of workspace')
+                raise
             finally:
                 if self.work_done_progress_capability_is_set:
+                    del self._cancelable_work_done_progresses[token]
                     end = WorkDoneProgressEnd('Compiling workspace done')
                     await self.send_progress(token=token, value=end)
         self._completion_engine = CompletionEngine(None)
+        if self.lint_workspace_on_startup:
+            log.info('Linting workspace on startup...')
+            files = list(self._linter.workspace.files)
+            count = len(files)
+            token, cancel = None, None
+            if self.work_done_progress_capability_is_set:
+                token, cancel = await self._begin_work_done_progress(title='Linting', cancelable=True)
+            try:
+                for i, file in enumerate(files):
+                    log.debug('Linting workspace (%i/%i): %s', i, count, file)
+                    if self.work_done_progress_capability_is_set:
+                        if cancel.cancelled():
+                            # Get the cancellation error if is cancelled
+                            await cancel
+                        report = WorkDoneProgressReport(percentage=int(100*i/count), message=file.name)
+                        await self.send_progress(token=token, value=report)
+                    result = self._linter.lint(file)
+                    await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
+            except asyncio.CancelledError:
+                log.exception('Task %s was cancelled by user input', token)
+            except:
+                log.exception('Exception raised during linting of workspace')
+                raise
+            finally:
+                if self.work_done_progress_capability_is_set:
+                    del self._cancelable_work_done_progresses[token]
+                    report = WorkDoneProgressEnd(message=f'Done linting {count} files in workspace')
+                    await self.send_progress(token=token, value=report)
         log.info('Initialized')
         self._initialized_event.set()
+
+    async def _begin_work_done_progress(self, title: str, cancelable: bool = False) -> Tuple[str, asyncio.Future]:
+        " Creates and begins work done progress. Returns the progress token as well as a cancelable future object if cancelable is True. "
+        token = create_random_string(16)
+        log.debug('Creating progress token: %s', token)
+        await self.window_work_done_progress_create(token=token)
+        report = WorkDoneProgressBegin(title=title, cancellable=cancelable)
+        await self.send_progress(token=token, value=report)
+        if cancelable:
+            log.debug('Registering cancelable task: %s', token)
+            future = asyncio.Future()
+            self._cancelable_work_done_progresses[token] = future
+            return token, future
+        return token
 
     @method
     def shutdown(self):
@@ -212,7 +267,14 @@ class Server(Dispatcher):
     @method
     @alias('window/workDoneProgress/cancel')
     def window_work_done_progress_cancel(self, token: ProgressToken):
-        log.warning('Client attempted to cancel token %s, but canceling is not implemented yet', token)
+        log.info('Cancelling work done progress token: %s', token)
+        prog = self._cancelable_work_done_progresses.get(token)
+        if not prog:
+            log.error('Unknown progress token: %s', token)
+        elif not prog.cancelled():
+            prog.cancel()
+        else:
+            log.warning('Token already cancelled: %s', token)
 
     @method
     @alias('textDocument/definition')

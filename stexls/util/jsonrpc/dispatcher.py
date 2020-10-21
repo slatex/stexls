@@ -51,7 +51,7 @@ class Dispatcher:
             Awaitable: Future with the value of the remote method.
         """
         id = next(self.__request_id_generator)
-        log.info('Dispatching request %s(%s) with id %i.', method, params, id)
+        log.debug('Dispatching request %s(%s) with id %i.', method, params, id)
         message = RequestObject(id, method, params)
         return self.connection.send_request(message)
 
@@ -65,7 +65,7 @@ class Dispatcher:
         Returns:
             Dummy awaitable so that the caller can yield and let the server send the notification.
         """
-        log.info('Dispatching notification %s(%s).', method, params)
+        log.debug('Dispatching notification %s(%s).', method, params)
         message = NotificationObject(method, params)
         self.connection.send_notification(message)
         return asyncio.sleep(0)

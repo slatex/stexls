@@ -6,6 +6,7 @@ environment, location and parse tree structure.
 from __future__ import annotations
 import re
 from typing import Optional, Callable, Iterable, List, Iterator, Tuple, Union
+from pathlib import Path
 from stexls.util.latex import parser
 
 __all__ = ['LatexTokenizer', 'LatexToken']
@@ -18,7 +19,7 @@ class LatexToken:
     ''' A lexical token, which inherited the location and environment
         data from it's latex parent token.
     '''
-    def __init__(self, lexeme: str, begin: int, end: int, envs: tuple):
+    def __init__(self, lexeme: str, begin: int, end: int, envs: Tuple[str, ...]):
         ''' Initializes the token.
         Parameters:
             lexeme: Actual string of the token.
@@ -84,10 +85,12 @@ class LatexTokenizer:
                         token.envs)
 
     @staticmethod
-    def from_file(file: Union[str, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
+    def from_file(file: Union[str, Path, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
         ' Creates this tokenizer directly from a file, parsing it beforehand. '
         if not isinstance(file, parser.LatexParser):
             file = parser.LatexParser(file)
+        if not file.parsed:
+            file.parse()
         return LatexTokenizer(file.root, lower=lower)
 
 def _replace_german_characters(text: str) -> str:

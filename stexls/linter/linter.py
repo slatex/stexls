@@ -1,3 +1,4 @@
+from stexls.trefier.models.seq2seq import Seq2SeqModel
 from stexls.stex.compiler import ObjectfileNotFoundError
 from typing import Callable, Iterable, Dict, Iterator, Optional, List, Set
 from pathlib import Path
@@ -68,6 +69,7 @@ class Linter:
         workspace: Workspace,
         outdir: Path = None,
         enable_global_validation: bool = False,
+        path_to_trefier_model: Path = None,
         num_jobs: int = 1):
         """ Initializes a linter object.
 
@@ -76,6 +78,7 @@ class Linter:
             outdir: Output directory to where the compiler will store it's output at.
             enable_global_validation: If enabled, will look at every cached compiled file in order to create better
                 diagnostics related to references and other things.
+            path_to_trefier_model: If given, loads the trefier model and enables trefier tagging when compiling files.
             num_jobs: Number of processes to use for compilation.
         """
         self.workspace = workspace
@@ -83,6 +86,14 @@ class Linter:
         self.enable_global_validation = enable_global_validation
         self.num_jobs = num_jobs
         self.compiler = Compiler(self.workspace.root, self.outdir)
+        if path_to_trefier_model:
+            log.info('Loading trefier model from: %s', path_to_trefier_model)
+            try:
+                self.compiler.model = Seq2SeqModel.load(path_to_trefier_model)
+            except:
+                log.exception('Failed to load seq2seq model')
+        else:
+            log.info('No trefier model has been provided.')
         self.linker = Linker(self.outdir)
         # The objectbuffer stores all compiled objects
         self._object_buffer: Dict[Path, StexObject] = dict()

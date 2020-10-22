@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 
 from stexls.vscode import Diagnostic, DiagnosticSeverity, Position, Range, Location
 from stexls.util.format import format_enumeration
+from stexls import trefier
 from .references import Reference, ReferenceType
 from .parser import *
 from .symbols import *
@@ -285,6 +286,7 @@ class Compiler:
         """
         self.root_dir = root.expanduser().resolve().absolute()
         self.outdir = outdir.expanduser().resolve().absolute()
+        self.model: trefier.models.Model = None
 
     def get_objectfile_path(self, file: Path) -> Path:
         ''' Gets the correct path the objectfile for the input file should be stored at.
@@ -364,7 +366,10 @@ class Compiler:
         objectdir.mkdir(parents=True, exist_ok=True)
         object = StexObject(file)
         parser = IntermediateParser(file)
-        parser.parse(content)
+        parser.parse(content, self.model)
+        if parser.tags:
+            for token, label in parser.tags:
+                object.diagnostics.trefier_tag(token.range, token.text, label)
         for loc, errors in parser.errors.items():
             for err in errors:
                 object.diagnostics.parser_exception(loc.range, err)

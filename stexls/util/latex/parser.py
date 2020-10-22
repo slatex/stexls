@@ -47,7 +47,7 @@ class Node:
                     self.parser.offset_to_position(self.begin),
                     self.parser.offset_to_position(self.end)))
         return self._parent.get_scope(filter)
-    
+
     @property
     def parent(self) -> Optional[Node]:
         return self._parent
@@ -82,7 +82,7 @@ class Node:
     @property
     def text_inside(self) -> str:
         ''' Get text spanned by first and last child nodes.
-        
+
         Equal to self.text if there are no children.
         '''
         if not self.children:
@@ -280,7 +280,7 @@ class InlineEnvironment(Environment):
         environment contain the text.
         Written something like:
         \\name[<oargs>]{<rarg>}{<rarg>}
-        
+
         Tokens yielded from inline environments
         are the tokens from <rarg>s.
     """
@@ -315,13 +315,13 @@ class LatexParser:
         self.root: Optional[Node] = None
         self.syntax_errors: List[Tuple[Location, Exception]] = []
         self.parsed = False
-    
+
     def parse(self, content: str = None) -> Node:
         """ Actually parses the file given in the constructor.
 
         Parameters:
             content: Optional content of the file. If None, then the file is read from disk with open.
-        
+
         Returns:
             The root node of the parsed file.
         """
@@ -379,10 +379,11 @@ class LatexParser:
         Returns:
             Position: Equivalent position.
         """
-        for i, len in enumerate(self._line_lengths):
-            if offset < len:
+        i = 0
+        for i, line_len in enumerate(self._line_lengths):
+            if offset < line_len:
                 break
-            offset -= len
+            offset -= line_len
         return Position(i, offset)
 
     def position_to_offset(self, line: Union[int, Position], character: int = None) -> int:

@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import List
+from stexls.util.latex.parser import LatexParser
+from typing import List, Union
+from pathlib import Path
 from enum import Enum
 import json
 from zipfile import ZipFile
@@ -42,12 +44,12 @@ class Model:
             'class_names': class_names,
             'version': version
         }
-    
+
     def train(self):
         ' Executes the training operation of this model. '
         raise NotImplementedError()
 
-    def predict(self, *files: str) -> List[List[Tag]]:
+    def predict(self, *files: Union[str, Path, LatexParser]) -> List[List[Tag]]:
         ''' Generates predictions from files or text.
         Parameters:
             files: List of files to generate tags for.
@@ -55,7 +57,7 @@ class Model:
             List of tags for every token for each file.
         '''
         raise NotImplementedError()
-    
+
     @classmethod
     def verify_loadable(self, path: str) -> bool:
         ''' Verifies that the given path is loadable as the class of the caller.

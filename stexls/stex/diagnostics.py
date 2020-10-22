@@ -2,6 +2,7 @@
 from typing import List, Iterator, Set, Dict
 from pathlib import Path
 from enum import Enum
+import numpy as np
 from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, MessageActionItem
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
@@ -44,7 +45,8 @@ class DiagnosticCodeName(Enum):
     REFERENCE_TYPE_CHECK = 'reference-type-check'
     ' Used when attempting to import a module into the same scope twice or more times '
     REDUNDANT_IMPORT_STATEMENT_CHECK = 'redundant-import-check'
-
+    ' Generic tag hint created by the trefier model '
+    TREFIER_TAG_HINT = 'generic-trefier-tag-hint'
 
 class Diagnostics:
     def __init__(self) -> None:
@@ -59,6 +61,14 @@ class Diagnostics:
     def __iter__(self) -> Iterator[Diagnostic]:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
+
+    def trefier_tag(self, range: Range, text: str, label: float):
+        ' Create a simple diagnostic for a trefier tag. '
+        message = f'Label for "{text}": {np.round(label, 2)}'
+        severity = DiagnosticSeverity.Information
+        code = DiagnosticCodeName.TREFIER_TAG_HINT.name
+        diagnostic = Diagnostic(range, message=message, severity=severity, code=code)
+        self.diagnostics.append(diagnostic)
 
     def module_not_found_semantic_location_check(self, range: Range, env_name: str):
         ' Used when an environment is used at locations where a module can\'t be deduced. E.g. outside of modsig or module environments. '

@@ -107,7 +107,7 @@ class Seq2SeqModel(base.Model):
             'keyphraseness': keyphraseness_test,
             'pos': pos_test,
         }
-        
+
         return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
     def train(
@@ -125,7 +125,7 @@ class Seq2SeqModel(base.Model):
         test_split: float = 0.2,
         l2: float = 0.01,
         progress: Optional[Callable] = None):
-    
+
         self.settings['seq2seq'] = {
             'epochs': epochs,
             'optimizer': optimizer,
@@ -174,7 +174,7 @@ class Seq2SeqModel(base.Model):
             test_split=test_split,
             cache_dir=cache_dir,
             progress=progress)
-        
+
         class_count_counter = Counter(int(a) for b in y_train for a in b)
         print("Training set class counts", class_count_counter)
 
@@ -223,7 +223,7 @@ class Seq2SeqModel(base.Model):
             filepath = os.path.join(save_dir, filename)
             print('Saving model to', filepath)
             self.save(filepath)
-    
+
     def predict(self, *files: str) -> List[List[tags.Tag]]:
         documents = []
         all_tokens = []
@@ -242,7 +242,7 @@ class Seq2SeqModel(base.Model):
         }
         return [
             [
-                tags.Tag(float(pred[0]), token.begin, token.end)
+                tags.Tag(float(pred[0]), token.begin, token.end, token.envs)
                 for pred, token in zip(doc[-len(tokens):], tokens)
             ]
             for doc, tokens in zip(self.model.predict(inputs), all_tokens)
@@ -309,13 +309,13 @@ if __name__ == '__main__':
             save_dir=save_dir,
             cache_dir=cache_dir,
         )
-    
+
     @command(
         model=Arg('--model', '-m', required=True, help='Path to model to load.'),
         files=Arg(nargs='*', help='List of files to create predictions for.'))
     def predict(model: str, *files: str):
         self = Seq2SeqModel.load(model)
         print(self.predict(*files))
-    
+
     cli = Cli([train, predict], 'Trains a seq2seq model or creates tags for a file.')
     cli.dispatch()

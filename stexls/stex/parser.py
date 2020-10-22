@@ -6,14 +6,20 @@ This parses therefore doesn't just parse the *.tex files but also filters and
 preparses the contents in order to create an intermediate parse tree.
 """
 from __future__ import annotations
+from stexls.trefier.training.datasets.smglom import Label
 from typing import Callable, Optional, Tuple, List, Dict, Set
 from pathlib import Path
 import re
+import numpy as np
 
 from stexls.util import roman_numerals
 from stexls.vscode import *
-from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument
+from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument, Token
 from stexls.util.latex.exceptions import LatexException
+
+from stexls.trefier.models.tags import Tag
+from stexls.trefier.models.seq2seq import Seq2SeqModel
+from stexls import trefier
 
 from .exceptions import *
 from .symbols import *
@@ -92,78 +98,6 @@ class IntermediateParseTree:
             exit(self)
 
 
-class IntermediateParser:
-    " An object contains information about symbols, locations, imports of an stex source file. "
-    def __init__(self, path: Path):
-        ' Creates an empty container without actually parsing the file. '
-        self.path = Path(path)
-        self.roots: List[IntermediateParseTree] = []
-        self.errors: Dict[Location, List[Exception]] = {}
-
-    def parse(self, content: str = None) -> IntermediateParser:
-        ' Parse the file from the in the constructor given path. '
-        if self.roots:
-            raise ValueError('File already parsed.')
-        try:
-            parser = LatexParser(self.path)
-            parser.parse(content)
-            stack: List[Tuple[Environment, Callable]] = [(None, self.roots.append)]
-            parser.walk(
-                lambda env: self._enter(env, stack),
-                lambda env: self._exit(env, stack))
-        except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
-            self.errors.setdefault(self.default_location, []).append(ex)
-        return self
-
-    def _enter(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
-        try:
-            tree = next(filter(None, map(
-                lambda cls_: cls_.from_environment(env),
-                [
-                    ScopeIntermediateParseTree,
-                    ModsigIntermediateParseTree,
-                    ModnlIntermediateParseTree,
-                    ModuleIntermediateParseTree,
-                    TassignIntermediateParseTree,
-                    TrefiIntermediateParseTree,
-                    DefiIntermediateParseTree,
-                    SymIntermediateParserTree,
-                    SymdefIntermediateParseTree,
-                    ImportModuleIntermediateParseTree,
-                    GImportIntermediateParseTree,
-                    GStructureIntermediateParseTree,
-                    ViewIntermediateParseTree,
-                    ViewSigIntermediateParseTree,
-                ]
-            )), None)
-            if tree:
-                if stack_of_add_child_operations[-1]:
-                    stack_of_add_child_operations[-1][1](tree)
-                stack_of_add_child_operations.append((env, tree.add_child))
-                return
-        except CompilerError as e:
-            self.errors.setdefault(env.location, []).append(e)
-
-    def _exit(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
-        if stack_of_add_child_operations[-1][0] == env:
-            stack_of_add_child_operations.pop()
-
-    @property
-    def default_location(self) -> Location:
-        """ Returns a location with a range that contains the whole file
-            or just the range from 0 to 0 if the file can't be openened.
-        """
-        try:
-            with open(self.path) as fd:
-                content = fd.read()
-            lines = content.split('\n')
-            num_lines = len(lines)
-            len_last_line = len(lines[-1])
-            return Location(self.path.as_uri(), Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
-        except:
-            return Location(self.path.as_uri(), Position(0, 0))
-
-
 class TokenWithLocation:
     ' Just some container for the text inside range of the file that owns an instance of this class. '
     def __init__(self, text: str, range: Range):
@@ -229,6 +163,103 @@ class TokenWithLocation:
         tags = map(TokenWithLocation.from_node, nodes)
         values, ranges = zip(*((tok.text, tok.range) for tok in tags))
         return TokenWithLocation(separator.join(values), Range.big_union(ranges))
+
+
+class IntermediateParser:
+    " An object contains information about symbols, locations, imports of an stex source file. "
+    def __init__(self, path: Path):
+        ' Creates an empty container without actually parsing the file. '
+        self.path = Path(path)
+        self.roots: List[IntermediateParseTree] = []
+        self.errors: Dict[Location, List[Exception]] = {}
+        self.tags: List[Tuple[TokenWithLocation, np.ndarray]] = []
+
+    def parse(self, content: str = None, model: trefier.models.Model = None)-> IntermediateParser:
+        ''' Parse the file from the in the constructor given path and create trefier tags if a model is given.
+
+        Parameters:
+            content: Currently buffered content of the file that is supposed to be parsed.
+            model: Optional Model used for trefier tagging.
+
+        Returns:
+            self
+        '''
+        if self.roots:
+            raise ValueError('File already parsed.')
+        try:
+            parser = LatexParser(self.path)
+            parser.parse(content)
+            stack: List[Tuple[Environment, Callable]] = [(None, self.roots.append)]
+            parser.walk(
+                lambda env: self._enter(env, stack),
+                lambda env: self._exit(env, stack))
+            if model is not None:
+                pattern = re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?')
+                for doc in model.predict(parser):
+                    self.tags = [(
+                        TokenWithLocation(
+                            parser.get_text_by_offset(tag.begin, tag.stop),
+                            Range(
+                                start=parser.offset_to_position(tag.begin),
+                                end=parser.offset_to_position(tag.stop),
+                            )
+                        ),
+                        tag.label)
+                        for tag in doc
+                        if not any(map(pattern.fullmatch, tag.envs))
+                        and tag.label > 0.5
+                    ]
+        except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
+            self.errors.setdefault(self.default_location, []).append(ex)
+        return self
+
+    def _enter(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+        try:
+            tree = next(filter(None, map(
+                lambda cls_: cls_.from_environment(env),
+                [
+                    ScopeIntermediateParseTree,
+                    ModsigIntermediateParseTree,
+                    ModnlIntermediateParseTree,
+                    ModuleIntermediateParseTree,
+                    TassignIntermediateParseTree,
+                    TrefiIntermediateParseTree,
+                    DefiIntermediateParseTree,
+                    SymIntermediateParserTree,
+                    SymdefIntermediateParseTree,
+                    ImportModuleIntermediateParseTree,
+                    GImportIntermediateParseTree,
+                    GStructureIntermediateParseTree,
+                    ViewIntermediateParseTree,
+                    ViewSigIntermediateParseTree,
+                ]
+            )), None)
+            if tree:
+                if stack_of_add_child_operations[-1]:
+                    stack_of_add_child_operations[-1][1](tree)
+                stack_of_add_child_operations.append((env, tree.add_child))
+                return
+        except CompilerError as e:
+            self.errors.setdefault(env.location, []).append(e)
+
+    def _exit(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+        if stack_of_add_child_operations[-1][0] == env:
+            stack_of_add_child_operations.pop()
+
+    @property
+    def default_location(self) -> Location:
+        """ Returns a location with a range that contains the whole file
+            or just the range from 0 to 0 if the file can't be openened.
+        """
+        try:
+            with open(self.path) as fd:
+                content = fd.read()
+            lines = content.split('\n')
+            num_lines = len(lines)
+            len_last_line = len(lines[-1])
+            return Location(self.path.as_uri(), Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
+        except:
+            return Location(self.path.as_uri(), Position(0, 0))
 
 
 class ScopeIntermediateParseTree(IntermediateParseTree):

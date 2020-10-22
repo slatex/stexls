@@ -24,7 +24,8 @@ class Server(Dispatcher):
         num_jobs: int = 1,
         update_delay_seconds: float = 1.0,
         enable_global_validation: bool = False,
-        lint_workspace_on_startup: bool = False):
+        lint_workspace_on_startup: bool = False,
+        path_to_trefier_model: Path = None):
         """ Creates a server dispatcher.
 
         Parameters:
@@ -35,6 +36,7 @@ class Server(Dispatcher):
             update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
             enable_global_validation: Enables linter global validation.
             lint_workspace_on_startup: Create disagnostics for all files in the workspace after initialization.
+            path_to_trefier_model: Path to a loadable Seq2Seq model used by the compiler in order to create trefier tags.
         """
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
@@ -42,6 +44,7 @@ class Server(Dispatcher):
         self.work_done_progress_capability_is_set: bool = None
         self.enable_global_validation: bool = enable_global_validation
         self.lint_workspace_on_startup: bool = lint_workspace_on_startup
+        self.path_to_trefier_model = path_to_trefier_model
         self._root: Path = None
         self._initialized_event: asyncio.Event = asyncio.Event()
         self._workspace: Workspace = None
@@ -161,7 +164,8 @@ class Server(Dispatcher):
             workspace=self._workspace,
             outdir=outdir,
             enable_global_validation=self.enable_global_validation,
-            num_jobs=self.num_jobs)
+            num_jobs=self.num_jobs,
+            path_to_trefier_model=self.path_to_trefier_model)
         if self._linter.enable_global_validation:
             token = None
             cancel: asyncio.Future = None

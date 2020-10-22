@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="stexls",
-    version="4.2.0",
+    version="4.3.0",
     author="Marian Plivelic",
     author_email="MarianPlivelic@gmail.com",
     description="Language server and other utilities for STex.",
@@ -25,5 +25,8 @@ setuptools.setup(
     ],
     extras_require = {
         'ml': ['cython', 'numpy', 'scikit-learn', 'nltk', 'tensorflow'],
+    },
+    package_data = {
+        'stexls': ['*.model']
     }
 )

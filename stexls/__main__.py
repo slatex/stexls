@@ -19,19 +19,23 @@ from stexls.lsp import Server
 log = logging.getLogger(__name__)
 
 
+def _get_default_trefier_model_path() -> Path:
+    return Path(__file__).parent / 'seq2seq.model'
+
 @command(
     files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
     root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
     diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string, help='Only diagnostics for the specified level and above are printed.'),
     include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
     ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
-    verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.'),
+    enable_trefier=Arg('--enable_trefier', '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging."),
     show_progress=Arg('--show-progress', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
     num_jobs=Arg('--num-jobs', '-j', type=int, help='Specifies the number of processes to use for compiling.'),
     format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
     tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?', help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
     loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
-    logfile=Arg('--logfile', '-L', type=Path, help='Optional path to a logfile.')
+    logfile=Arg('--logfile', '-L', type=Path, help='Optional path to a logfile.'),
+    verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.')
 )
 async def linter(
     files: List[Path],
@@ -39,13 +43,14 @@ async def linter(
     diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information,
     include: List[Pattern] = None,
     ignore: List[Pattern] = None,
+    enable_trefier: bool = False,
     show_progress: bool = False,
-    verbose: bool = False,
     num_jobs: int = 1,
     format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
     tagfile: str = None,
     loglevel: str = 'error',
-    logfile: Path = Path('/tmp/stexls.log')):
+    logfile: Path = Path('/tmp/stexls.log'),
+    verbose: bool = False):
     """ Run the language server in linter mode.
 
         In this mode only diagnostics and progress are printed to stdout.
@@ -56,6 +61,7 @@ async def linter(
         diagnosticlevel: Only diagnostics for the specified level and above are printed. (Error: 1, Warning: 2, Info: 3, Hint: 4)
         include: List of regex patterns. Only files that match ANY of these patterns will be included.
         ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
+        enable_trefier: Enables machine learning trefier tagging.
         show_progress: Enables a progress bar being printed to stderr.
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         num_jobs: Number of processes to use for compilation.
@@ -98,7 +104,8 @@ async def linter(
         workspace=workspace,
         outdir=outdir,
         enable_global_validation=False,
-        num_jobs=num_jobs)
+        num_jobs=num_jobs,
+        path_to_trefier_model=_get_default_trefier_model_path() if enable_trefier else None)
 
     if tagfile:
         log.debug('Creating tagfile at "%s"', root / tagfile)
@@ -127,6 +134,7 @@ async def linter(
     update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.'),
     enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true', help="This will make the server compile every file in the workspace on startup, enabling global validation and diagnostics."),
     lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup', action='store_true', help="Create diagnostics for every file in the workspace on startup."),
+    enable_trefier=Arg('--enable_trefier', '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging."),
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
@@ -138,6 +146,7 @@ async def lsp(
     update_delay_seconds: float = 1.0,
     enable_global_validation: bool = False,
     lint_workspace_on_startup: bool = False,
+    enable_trefier: bool = False,
     transport_kind: str = 'ipc',
     host: str = 'localhost',
     port: int = 0,
@@ -150,6 +159,7 @@ async def lsp(
         update_delay_seconds: The number of seconds the server is waiting for more input before proceeding to lint the changed files.
         enable_global_validation: Enables global validation of references.
         lint_workspace_on_startup: Create diagnostics for every file in the workspace on startup.
+        enable_trefier: Enables machine learning trefier tagging.
         transport_kind: Mode of transportation to use.
         host: Host for "tcp" transport. Defaults to localhost.
         port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
@@ -171,6 +181,8 @@ async def lsp(
         'enable_global_validation': enable_global_validation,
         'lint_workspace_on_startup': lint_workspace_on_startup,
     }
+    if enable_trefier:
+        shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
         server, connection = await Server.open_ipc_connection(**shared_args)
     elif transport_kind == 'tcp':

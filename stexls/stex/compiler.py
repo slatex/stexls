@@ -479,8 +479,11 @@ class Compiler:
             obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
         else:
             # TODO: Semantic location check
-            module_name: str = trefi.find_parent_module_name()
-            obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
+            module_name: Optional[str] = trefi.find_parent_module_name()
+            if not module_name:
+                obj.diagnostics.cant_infer_ref_module_outside_module(trefi.location.range)
+            else:
+                obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
         if trefi.m:
             obj.diagnostics.mtref_deprecated_check(trefi.location.range)
             has_q = trefi.target_annotation and '?' in trefi.target_annotation.text

@@ -719,12 +719,11 @@ class Compiler:
         elif isinstance(tree, GImportIntermediateParseTree):
             self._compile_gimport(obj, current_context, tree)
         elif isinstance(tree, GStructureIntermediateParseTree):
-            # TODO: Remove "next_context = " in case that gstructure doesn't return a symbol
-            next_context = self._compile_gstructure(obj, current_context, tree)
+            self._compile_gstructure(obj, current_context, tree)
         elif isinstance(tree, ViewIntermediateParseTree):
-            next_context = self._compile_view(obj, current_context, tree)
+            self._compile_view(obj, current_context, tree)
         elif isinstance(tree, ViewSigIntermediateParseTree):
-            next_context = self._compile_viewsig(obj, current_context, tree)
+            self._compile_viewsig(obj, current_context, tree)
         if next_context:
             context.append((tree, next_context))
 

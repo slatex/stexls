@@ -194,7 +194,7 @@ class IntermediateParser:
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
             if model is not None:
-                pattern = re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?')
+                pattern = re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport|import(mh)?module')
                 for doc in model.predict(parser):
                     self.tags = [(
                         TokenWithLocation(

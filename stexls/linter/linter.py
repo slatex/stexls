@@ -225,13 +225,21 @@ class Linter:
         obj: StexObject = self._linked_object_buffer.get(file)
         if not obj:
             return []
-        return obj.get_definitions_at(position)
+        return [symbol.location for symbol in obj.get_definitions_at(position)]
 
     def references(self, file: Path, position: Position) -> List[Location]:
         ' Finds references to the symbol under @position in @file. '
-        # TODO
         obj: StexObject = self._linked_object_buffer.get(file)
         if not obj:
             return []
-        #definitions = obj.get_definitions_at(position)
-        return []
+        definition_locations = set(definition.location for definition in obj.get_definitions_at(position))
+
+        references : List[Location] = []
+        for obj in self._linked_object_buffer.values():
+            for ref in obj.references:
+                for refsymb in ref.resolved_symbols:
+                    if refsymb.location in definition_locations:
+                        references.append(Location(obj.file.as_uri(), ref.range))
+                        break
+
+        return references + list(definition_locations)

@@ -204,7 +204,7 @@ class Workspace:
     def files(self) -> Set[Path]:
         ' Returns the set of .tex files in this workspace after they are filtered using ignore and include patterns. '
         # get all files from the workspace root
-        files = list(glob.glob((self.root / '**' / '*.tex').as_posix(), recursive=True))
+        files = list(glob.glob((self.root / '**' / 'source' / '**' / '*.tex').as_posix(), recursive=True))
         # filter out non-included files
         if isinstance(self._include, Iterable):
             # list of includes is ORed together

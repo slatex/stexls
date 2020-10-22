@@ -124,7 +124,7 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
-    def get_definitions_at(self, position: Position) -> List[Location]:
+    def get_definitions_at(self, position: Position) -> List[Symbol]:
         ' Queries symbol definitions at the given @position. '
         definitions = []
         # First step: Gather the symbol definitions which are directly positioned under the cursor
@@ -137,7 +137,7 @@ class StexObject:
                 continue
             # Add the symbol if the symbol is positioned under cursor
             if symbol.location.range.contains(position):
-                definitions.append(symbol.location)
+                definitions.append(symbol)
         # Step 2: Resolve the references under the cursor
         # Buffer for the smallest reference under the cursor in case there are multiple references at the current position
         minimal_reference_range_buffer = None
@@ -152,7 +152,7 @@ class StexObject:
                     minimal_reference_range_buffer = ref
         if minimal_reference_range_buffer:
             # Get the definition the smallest reference points to
-            definitions.extend(minimal_reference_range_buffer.resolved_locations)
+            definitions.extend(minimal_reference_range_buffer.resolved_symbols)
         return definitions
 
     def is_source_modified(self, time_modified: float = None) -> bool:
@@ -484,8 +484,11 @@ class Compiler:
             obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
         else:
             # TODO: Semantic location check
-            module_name: str = trefi.find_parent_module_name()
-            obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
+            module_name: Optional[str] = trefi.find_parent_module_name()
+            if not module_name:
+                obj.diagnostics.cant_infer_ref_module_outside_module(trefi.location.range)
+            else:
+                obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
         if trefi.m:
             obj.diagnostics.mtref_deprecated_check(trefi.location.range)
             has_q = trefi.target_annotation and '?' in trefi.target_annotation.text
@@ -721,12 +724,11 @@ class Compiler:
         elif isinstance(tree, GImportIntermediateParseTree):
             self._compile_gimport(obj, current_context, tree)
         elif isinstance(tree, GStructureIntermediateParseTree):
-            # TODO: Remove "next_context = " in case that gstructure doesn't return a symbol
-            next_context = self._compile_gstructure(obj, current_context, tree)
+            self._compile_gstructure(obj, current_context, tree)
         elif isinstance(tree, ViewIntermediateParseTree):
-            next_context = self._compile_view(obj, current_context, tree)
+            self._compile_view(obj, current_context, tree)
         elif isinstance(tree, ViewSigIntermediateParseTree):
-            next_context = self._compile_viewsig(obj, current_context, tree)
+            self._compile_viewsig(obj, current_context, tree)
         if next_context:
             context.append((tree, next_context))
 

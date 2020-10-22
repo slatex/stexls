@@ -13,6 +13,8 @@ __all__ = ['Diagnostics']
 class DiagnosticCodeName(Enum):
     ' Enum for uniform diagnostic code names. '
     # TODO: Names should be a little bit more consistent
+    ' The referenced module is not specified and cannot be inferred because the macro (trefi, anything else?) is used outside of any module '
+    CANT_INFER_REF_MODULE_OUTSIDE_MODULE = 'cannot-infer-referenced-module-outside-module'
     ' Duplicate symbol '
     DUPLICATE_SYMBOL = 'duplicate-symbol-check'
     ' For exceptions raised by the parser '
@@ -68,6 +70,13 @@ class Diagnostics:
         severity = DiagnosticSeverity.Information
         code = DiagnosticCodeName.TREFIER_TAG_HINT.name
         diagnostic = Diagnostic(range, message=message, severity=severity, code=code)
+        self.diagnostics.append(diagnostic)
+
+    def cant_infer_ref_module_outside_module(self, range: Range):
+        severity = DiagnosticSeverity.Error
+        code = DiagnosticCodeName.CANT_INFER_REF_MODULE_OUTSIDE_MODULE.value
+        message = f'Cannot infer what module is referenced outside of any module'
+        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def module_not_found_semantic_location_check(self, range: Range, env_name: str):

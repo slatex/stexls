@@ -479,12 +479,12 @@ class Compiler:
             if not module:
                 obj.diagnostics.module_not_found_semantic_location_check(trefi.location.range, 'drefi')
             else:
+                symbol = DefSymbol(
+                    DefType.DREF,
+                    trefi.location,
+                    trefi.name,
+                    access_modifier=context.get_visible_access_modifier())
                 try:
-                    symbol = DefSymbol(
-                        DefType.DREF,
-                        trefi.location,
-                        trefi.name,
-                        access_modifier=context.get_visible_access_modifier())
                     module.add_child(symbol, alternative=True)
                 except InvalidSymbolRedifinitionException as err:
                     obj.diagnostics.invalid_redefinition(trefi.location.range, err.other_location, err.info)

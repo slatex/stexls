@@ -55,6 +55,12 @@ class Linker:
             if module.access_modifier != AccessModifier.PUBLIC:
                 obj.diagnostics.attempt_access_private_symbol(dependency.range, dependency.module_name)
                 continue
+            try:
+                dependency.scope.import_from(module)
+            except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
+                # TODO: I'm not sure that this error here necessarily has a redundant import as consequence
+                # TODO: Theres currently no way of finding out what imported the redundant module.
+                obj.diagnostics.redundant_import_check(dependency.range, dependency.module_name)
 
     def link(
         self,

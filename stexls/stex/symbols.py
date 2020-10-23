@@ -79,20 +79,18 @@ class Symbol:
     def import_from(self, module: Symbol):
         ' Imports the symbols from <source> into this symbol table. '
         cpy = module.shallow_copy()
-        try:
-            self.add_child(cpy)
-        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
-            # TODO: Currently already imported modules are ignored, what's the right procedure here?
-            # TODO: Propagate import error, but probably not useful here
-            # TODO: Solution: Report Indirect import errors.
-            return
+        self.add_child(cpy)
         for alts in module.children.values():
             # TODO: Import behaviour of 'import scopes' like 'frame' and 'omtext' --> What to do with defis inside these?
             for child in alts:
                 if child.access_modifier != AccessModifier.PUBLIC:
                     continue
                 if isinstance(child, ModuleSymbol):
-                    self.import_from(child)
+                    try:
+                        self.import_from(child)
+                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
+                        # TODO: Make sure these errors can be ignored
+                        pass
                 elif isinstance(child, DefSymbol):
                     # TODO: Correct add_child behaviour depending on the context the symbol was imported under
                     try:

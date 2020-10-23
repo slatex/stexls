@@ -270,12 +270,15 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code, relatedInformation=related)
         self.diagnostics.append(diagnostic)
 
-    def redundant_import_check(self, range: Range, module_name: str, previously_at: Location):
+    def redundant_import_check(self, range: Range, module_name: str, previously_at: Location = None):
         ' Used when a module is already imported by another module and can be removed. '
         message = f'Redundant import of module "{module_name}"'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.REDUNDANT_IMPORT_STATEMENT_CHECK.value
-        related = DiagnosticRelatedInformation(previously_at, 'Previously located here')
+        if previously_at:
+            related = [DiagnosticRelatedInformation(previously_at, 'Previously located here')]
+        else:
+            related = []
         tag = DiagnosticTag.Unnecessary
-        diagnostic = Diagnostic(range, message, severity, code, tags=[tag], relatedInformation=[related])
+        diagnostic = Diagnostic(range, message, severity, code, tags=[tag], relatedInformation=related)
         self.diagnostics.append(diagnostic)

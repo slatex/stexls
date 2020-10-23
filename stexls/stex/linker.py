@@ -176,10 +176,10 @@ class Linker:
                 else:
                     # Only add to valid resolved symbols if the reference type matches
                     ref.resolved_symbols.append(symbol)
-                if isinstance(symbol, DefType):
+                if isinstance(symbol, DefSymbol):
                     defs: DefSymbol = symbol
                     if defs.noverb:
-                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname)
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, related_symbol_location=symbol.location)
                     binding: BindingSymbol = defs.get_current_binding()
                     if binding and binding.lang in defs.noverbs:
-                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang)
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang, related_symbol_location=symbol.location)

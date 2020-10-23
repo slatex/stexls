@@ -3,7 +3,7 @@ from typing import List, Iterator, Set, Dict
 from pathlib import Path
 from enum import Enum
 import numpy as np
-from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, MessageActionItem
+from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, MessageActionItem, Undefined
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 from stexls.stex.references import ReferenceType
@@ -50,6 +50,8 @@ class DiagnosticCodeName(Enum):
     REDUNDANT_IMPORT_STATEMENT_CHECK = 'redundant-import-check'
     ' Generic tag hint created by the trefier model '
     TREFIER_TAG_HINT = 'generic-trefier-tag-hint'
+    ' Used when referencing a symdef tagged with noverb '
+    REFERENCE_TO_NOVERB_CHECK = 'referenced-noverb-symbol'
 
 class Diagnostics:
     def __init__(self) -> None:
@@ -254,15 +256,18 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def symbol_is_noverb_check(self, range: Range, symbol_name: str, lang: str = None):
+    def symbol_is_noverb_check(self, range: Range, symbol_name: str, lang: str = None, related_symbol_location: Location = None):
         ' Used when a reference to a symbol tagged with "noverb={langs...}" is made. '
         if lang:
             message = f'Symbol "{symbol_name}" is marked as noverb for the language "{lang}"'
         else:
             message = f'Symbol "{symbol_name}" is marked as noverb'
         severity = DiagnosticSeverity.Warning
-        code = DiagnosticCodeName.NOVERB_CHECK.value
-        diagnostic = Diagnostic(range, message, severity, code)
+        code = DiagnosticCodeName.REFERENCE_TO_NOVERB_CHECK.value
+        related = []
+        if related_symbol_location:
+            related.append(DiagnosticRelatedInformation(related_symbol_location, 'Referenced symbol'))
+        diagnostic = Diagnostic(range, message, severity, code, relatedInformation=related)
         self.diagnostics.append(diagnostic)
 
     def redundant_import_check(self, range: Range, module_name: str, previously_at: Location):

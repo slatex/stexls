@@ -167,10 +167,11 @@ class Diagnostics:
 
     def duplicate_symbol_definition(self, range: Range, symbol_name: str, previous_def: Location):
         ' Used when duplicate symbol definitions are not allowed. '
-        message = f'Symbol "{symbol_name}" previously defined at "{previous_def}"'
+        message = f'Duplicate definition of symbol: "{symbol_name}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.DUPLICATE_SYMBOL.value
-        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code)
+        related = DiagnosticRelatedInformation(previous_def, message=f'Previous definition of "{symbol_name}"')
+        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
     def parser_exception(self, range: Range, exception: Exception):

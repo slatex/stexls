@@ -19,7 +19,7 @@ def find_source_dir(root: Path, file: Path) -> Path:
     """
     rel = file.relative_to(root)
     i = rel.parts.index('source')
-    rel_source = rel.parents[i]
+    rel_source = list(rel.parents)[-2-i]
     return root / rel_source
 
 
@@ -42,7 +42,7 @@ def get_repository_name(root: Path, file: Path) -> str:
     """
     source = find_source_dir(root, file)
     i = source.parents.index(root)
-    return '/'.join(file.parent.parts[-i:])
+    return '/'.join(source.parent.parts[-i:])
 
 def get_path(root: Path, file: Path) -> str:
     """ Extracts the relative path between the source directory of a file and the file itself, INCLUDING the file

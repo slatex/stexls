@@ -54,9 +54,13 @@ class Linker:
         for module in resolved:
             if module.access_modifier != AccessModifier.PUBLIC:
                 obj.diagnostics.attempt_access_private_symbol(dependency.range, dependency.module_name)
-                return
-            # TODO: Maybe let import_from raise all it's exception, then capture them here, add them to the obj for display
-            dependency.scope.import_from(module)
+                continue
+            try:
+                dependency.scope.import_from(module)
+            except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
+                # TODO: I'm not sure that this error here necessarily has a redundant import as consequence
+                # TODO: Theres currently no way of finding out what imported the redundant module.
+                obj.diagnostics.redundant_import_check(dependency.range, dependency.module_name)
 
     def link(
         self,
@@ -176,10 +180,10 @@ class Linker:
                 else:
                     # Only add to valid resolved symbols if the reference type matches
                     ref.resolved_symbols.append(symbol)
-                if isinstance(symbol, DefType):
+                if isinstance(symbol, DefSymbol):
                     defs: DefSymbol = symbol
                     if defs.noverb:
-                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname)
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, related_symbol_location=symbol.location)
                     binding: BindingSymbol = defs.get_current_binding()
                     if binding and binding.lang in defs.noverbs:
-                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang)
+                        linked.diagnostics.symbol_is_noverb_check(ref.range, refname, binding.lang, related_symbol_location=symbol.location)

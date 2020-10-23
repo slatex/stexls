@@ -61,15 +61,20 @@ class Node:
     @property
     def location(self) -> Location:
         " Location of this node in the file. "
+        return Location(Path(self.parser.file).as_uri(), self.range)
+
+    @property
+    def range(self) -> Range:
+        " Converts the begin and end offsets to a vscode.Range "
         begin = self.parser.offset_to_position(self.begin)
         end = self.parser.offset_to_position(self.end)
-        return Location(Path(self.parser.file).as_uri(), Range(begin, end))
+        return Range(begin, end)
 
     @property
     def content_range(self) -> Range:
         " Range of the children of this node. Range of self if there are no children. "
         if not self.children:
-            return self.location.range
+            return self.range
         begin = self.parser.offset_to_position(self.children[0].begin)
         end = self.parser.offset_to_position(self.children[-1].end)
         return Range(begin, end)

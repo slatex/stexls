@@ -79,20 +79,18 @@ class Symbol:
     def import_from(self, module: Symbol):
         ' Imports the symbols from <source> into this symbol table. '
         cpy = module.shallow_copy()
-        try:
-            self.add_child(cpy)
-        except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
-            # TODO: Currently already imported modules are ignored, what's the right procedure here?
-            # TODO: Propagate import error, but probably not useful here
-            # TODO: Solution: Report Indirect import errors.
-            return
+        self.add_child(cpy)
         for alts in module.children.values():
             # TODO: Import behaviour of 'import scopes' like 'frame' and 'omtext' --> What to do with defis inside these?
             for child in alts:
                 if child.access_modifier != AccessModifier.PUBLIC:
                     continue
                 if isinstance(child, ModuleSymbol):
-                    self.import_from(child)
+                    try:
+                        self.import_from(child)
+                    except (InvalidSymbolRedifinitionException, DuplicateSymbolDefinedError):
+                        # TODO: Make sure these errors can be ignored
+                        pass
                 elif isinstance(child, DefSymbol):
                     # TODO: Correct add_child behaviour depending on the context the symbol was imported under
                     try:
@@ -182,22 +180,22 @@ class Symbol:
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
-            if not alternative:
-                raise DuplicateSymbolDefinedError(child.name, child.location)
             for prev_child in self.children[child.name]:
+                if not alternative:
+                    raise DuplicateSymbolDefinedError(child.name, prev_child.location)
                 if not isinstance(prev_child, type(child)):
-                    raise InvalidSymbolRedifinitionException(child.name, child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
+                    raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
                 if isinstance(child, DefSymbol):
                     if child.def_type != prev_child.def_type:
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
                     if child.noverb != prev_child.noverb:
                         a = 'noverb' if child.noverb else 'not noverb'
                         b = 'noverb' if prev_child.noverb else 'not noverb'
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
                     if len(child.noverbs) != len(prev_child.noverbs) or not all(a==b for a, b in zip(child.noverbs, prev_child.noverbs)):
                         a = format_enumeration(child.noverbs, last='and')
                         b = format_enumeration(prev_child.noverbs, last='and')
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 

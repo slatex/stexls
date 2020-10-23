@@ -169,10 +169,14 @@ class IntermediateParser:
     " An object contains information about symbols, locations, imports of an stex source file. "
     def __init__(self, path: Path):
         ' Creates an empty container without actually parsing the file. '
+        # Path to the source file
         self.path = Path(path)
+        # Buffer of all the root environments this file has.
         self.roots: List[IntermediateParseTree] = []
+        # Buffer for exceptions raised during parsing
         self.errors: Dict[Location, List[Exception]] = {}
-        self.tags: List[Tuple[TokenWithLocation, np.ndarray]] = []
+        # List of tagged words
+        self.tags: List[Tag] = []
 
     def parse(self, content: str = None, model: trefier.models.Model = None)-> IntermediateParser:
         ''' Parse the file from the in the constructor given path and create trefier tags if a model is given.
@@ -194,21 +198,9 @@ class IntermediateParser:
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
             if model is not None:
-                pattern = re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport|import(mh)?module')
-                for doc in model.predict(parser):
-                    self.tags = [(
-                        TokenWithLocation(
-                            parser.get_text_by_offset(tag.begin, tag.stop),
-                            Range(
-                                start=parser.offset_to_position(tag.begin),
-                                end=parser.offset_to_position(tag.stop),
-                            )
-                        ),
-                        tag.label)
-                        for tag in doc
-                        if not any(map(pattern.fullmatch, tag.envs))
-                        and tag.label > 0.5
-                    ]
+                for document_tags in model.predict(parser):
+                    # NOTE: Since we only provide a single parser, only one "document_tags" will be generated
+                    self.tags = document_tags
         except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self

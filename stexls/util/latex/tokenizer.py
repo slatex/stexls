@@ -4,10 +4,12 @@ and parses the parse tree into it's more useful tokens, preserving
 environment, location and parse tree structure.
 '''
 from __future__ import annotations
+from ast import parse
 import re
-from typing import Optional, Callable, Iterable, List, Iterator, Tuple, Union
+from typing import List, Iterator, Tuple, Union
 from pathlib import Path
 from stexls.util.latex import parser
+from stexls.vscode import Range, Position
 
 __all__ = ['LatexTokenizer', 'LatexToken']
 
@@ -18,33 +20,26 @@ DEFAULT_FILTER = r'''\s+|\@|\#|\^|\*|\_|\+|\=|\[|\]|\\|\/|\>|\<|\{|\}'''
 class LatexToken:
     ''' A lexical token, which inherited the location and environment
         data from it's latex parent token.
+
+        Why does this exists?
+        Because the Token defined in util.latex contains a reference to the parser which is not needed anymore.
     '''
-    def __init__(self, lexeme: str, begin: int, end: int, envs: Tuple[str, ...]):
+    def __init__(self, range: Range, lexeme: str, envs: Tuple[str, ...]):
         ''' Initializes the token.
         Parameters:
             lexeme: Actual string of the token.
-            begin: 0 indexed begin offset in the original file.
-            end: 0 indexed end offset in the original file.
             envs: Latex environment information at the token's position.
         '''
+        self.range = range
         self.lexeme = lexeme
-        self.begin = begin
-        self.end = end
         self.envs = envs
 
-    def __iter__(self):
-        ' Yields the members, imitating a tuple. '
-        yield self.lexeme
-        yield self.begin
-        yield self.end
-        yield self.envs
-
     def __repr__(self) -> str:
-        return f'[LatexToken lexeme="{self.lexeme}" begin={self.begin} end={self.end} envs={self.envs}]'
+        return f'[LatexToken "{self.lexeme}" at {self.range.start.format()} envs={self.envs}]'
 
 
 class LatexTokenizer:
-    ' Extracts the tokens with their environments from a parsed latex file. '
+    ''' Extracts the tokens with their environments from a parsed latex file. '''
     def __init__(
         self,
         root: parser.Node,
@@ -58,7 +53,7 @@ class LatexTokenizer:
         # buffer the tokens of the root
         self._tokens: List[parser.Token] = list(root.tokens)
 
-    def __iter__(self) -> Iterator[LatexToken]:
+    def tokens(self) -> Iterator[LatexToken]:
         ' Parses the lexical tokens in the file and yields them. '
         for token in self._tokens:
             if token.envs and '$' in token.envs:
@@ -66,9 +61,8 @@ class LatexTokenizer:
                 if self.lower:
                     lexeme = lexeme.lower()
                 yield LatexToken(
+                    token.range,
                     lexeme,
-                    token.begin,
-                    token.end,
                     token.envs)
             else:
                 for word in self._words.finditer(token.lexeme):
@@ -78,10 +72,10 @@ class LatexTokenizer:
                     lexeme = word.group()
                     if self.lower:
                         lexeme = lexeme.lower()
+                    offsetted_token = parser.Token(token.parser, token.begin + begin, token.begin + end, token.envs)
                     yield LatexToken(
+                        offsetted_token.range,
                         lexeme,
-                        token.begin + begin,
-                        token.begin + end,
                         token.envs)
 
     @staticmethod

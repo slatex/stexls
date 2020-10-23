@@ -11,6 +11,7 @@ from stexls.util.workspace import Workspace
 from stexls.linter import Linter
 from stexls.stex import *
 from stexls.util.jsonrpc import Dispatcher, method, alias, notification, request
+from stexls.trefier.models import Seq2SeqModel, Model
 
 from .completions import CompletionEngine
 
@@ -153,6 +154,15 @@ class Server(Dispatcher):
             }
         }
 
+    def _load_tagger_model(self) -> Optional[Model]:
+        log.info('Loading trefier model from: %s', self.path_to_trefier_model)
+        try:
+            return Seq2SeqModel.load(self.path_to_trefier_model)
+        except Exception as err:
+            log.exception('Failed to load seq2seq model')
+            self.show_message(type=MessageType.Error, message=f'{type(err).__name__}: {err}')
+        return None
+
     @method
     async def initialized(self):
         ' Event called by the client after it finished initialization. '
@@ -160,12 +170,17 @@ class Server(Dispatcher):
             raise RuntimeError('Server already initialized')
         outdir = self._root / '.stexls' / 'objects'
         self._workspace = Workspace(self._root)
+        model: Seq2SeqModel = None
+        if self.path_to_trefier_model:
+            model = self._load_tagger_model()
+        else:
+            log.info('No trefier model has been provided.')
         self._linter = Linter(
             workspace=self._workspace,
             outdir=outdir,
             enable_global_validation=self.enable_global_validation,
             num_jobs=self.num_jobs,
-            path_to_trefier_model=self.path_to_trefier_model)
+            tagger_model=model)
         if self._linter.enable_global_validation:
             token = None
             cancel: asyncio.Future = None

@@ -7,6 +7,7 @@ from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSe
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 from stexls.stex.references import ReferenceType
+from stexls.trefier.models.tags import Tag
 
 __all__ = ['Diagnostics']
 
@@ -64,12 +65,26 @@ class Diagnostics:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
 
-    def trefier_tag(self, range: Range, text: str, label: float):
+    def trefier_tag(self, tag: Tag):
         ' Create a simple diagnostic for a trefier tag. '
-        message = f'Label for "{text}": {np.round(label, 2)}'
+        message = f'Label for "{tag.token.lexeme}": {np.round(tag.label, 2)}'
         severity = DiagnosticSeverity.Information
         code = DiagnosticCodeName.TREFIER_TAG_HINT.name
-        diagnostic = Diagnostic(range, message=message, severity=severity, code=code)
+        # TODO: Diagnostics have a "related information" field, allowing them to display references to possible defis.
+        # TODO: Extend the @Diagnostics class to a quick fix provider for the client, that provides quick fixes, that
+        # TODO: ... automatically format these hints into defis or trefis.
+        # TODO: The format operation needs information about the ranges of each token that needs to be included,
+        # TODO: not just one range (which is what is currently available).
+        # TODO: Example Text: "This is a prime number." would need the tags for "prime" and "number",
+        # TODO: Then GROUPING needs to be done with respect to the label and location,
+        # TODO: grouping "prime" and "number" into one "possible defi or trefi" unit, because they have the same label
+        # TODO: and are located next to each other. You can use @itertools.groupby for this.
+        # TODO: This unit is then inspected by the linter which decides using @difflib.get_close_matches and the index
+        # TODO: of defined symbols which defi is being referenced.
+        # TODO: Then we can create a diagnostic with the combined range of "prime" and "number", with related information
+        # TODO: to the location of where \symii{prime}{number} is defined. Also a quick fix that does the follwoing edits
+        # TODO: is created: "This is a prime number" -> "This is a \trefii[primenumber]{prime}{number}"
+        diagnostic = Diagnostic(tag.token.range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def cant_infer_ref_module_outside_module(self, range: Range):

@@ -1,9 +1,11 @@
+from stexls.util.latex.parser import LatexParser
 from typing import Union, Optional, List, Callable
 import json
 import pickle
 import os
 import datetime
 import numpy as np
+from pathlib import Path
 from collections import Counter
 from sklearn.model_selection import train_test_split
 from zipfile import ZipFile
@@ -224,13 +226,13 @@ class Seq2SeqModel(base.Model):
             print('Saving model to', filepath)
             self.save(filepath)
 
-    def predict(self, *files: str) -> List[List[tags.Tag]]:
+    def predict(self, *files: Union[str, Path, LatexParser]) -> List[List[tags.Tag]]:
         documents = []
         all_tokens = []
         for tokenizer, file in zip(map(LatexTokenizer.from_file, files), files):
             if tokenizer is None:
                 continue
-            tokens = list(tokenizer)
+            tokens = list(tokenizer.tokens())
             all_tokens.append(tokens)
             lexemes = [t.lexeme for t in tokens]
             documents.append(lexemes)
@@ -242,7 +244,7 @@ class Seq2SeqModel(base.Model):
         }
         return [
             [
-                tags.Tag(float(pred[0]), token.begin, token.end, token.envs)
+                tags.Tag(float(pred[0]), token)
                 for pred, token in zip(doc[-len(tokens):], tokens)
             ]
             for doc, tokens in zip(self.model.predict(inputs), all_tokens)

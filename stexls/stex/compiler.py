@@ -25,6 +25,7 @@ import difflib
 import pickle
 import functools
 import logging
+import re
 from time import time
 
 log = logging.getLogger(__name__)
@@ -367,9 +368,18 @@ class Compiler:
         object = StexObject(file)
         parser = IntermediateParser(file)
         parser.parse(content, self.model)
-        if parser.tags:
-            for token, label in parser.tags:
-                object.diagnostics.trefier_tag(token.range, token.text, label)
+        pattern = re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?')
+        for tag in parser.tags:
+            # TODO: (This section is better explained in @Diagnostics.trefier_tag)
+            # TODO: Creating diagnostics here is not correct! The tags need to be inspected by at least the linker,
+            # TODO: preferably by the linter in order to properly get global information about
+            # TODO: possible defis in the workspace and decide if the label hint is a "defi" or "trefi".
+            # TODO: Additionally, adding related information to the generated diagnostics about which defi
+            # TODO: is referenced as well as adding quick fix operations that automatically transform the
+            # TODO: text section in question into a grammatically and syntactically correct "trefi" or "defi".
+            # Filter tags that are not labeled or are already inside an environment, that does not need tag hints.
+            if tag.label > 0.5 and not any(map(pattern.fullmatch, tag.token.envs)):
+                object.diagnostics.trefier_tag(tag)
         for loc, errors in parser.errors.items():
             for err in errors:
                 object.diagnostics.parser_exception(loc.range, err)

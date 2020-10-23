@@ -380,5 +380,6 @@ class Server(Dispatcher):
         await self._initialized_event.wait()
         if self._workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
+            await self._request_update(textDocument.path)
         else:
             log.debug('Received didSave event for invalid file: %s', textDocument.uri)

@@ -26,6 +26,7 @@ class Server(Dispatcher):
         update_delay_seconds: float = 1.0,
         enable_global_validation: bool = False,
         lint_workspace_on_startup: bool = False,
+        enable_linting_of_related_files_on_change: bool = True,
         path_to_trefier_model: Path = None):
         """ Creates a server dispatcher.
 
@@ -36,6 +37,7 @@ class Server(Dispatcher):
             num_jobs: Number of processes to use for multiprocessing when compiling.
             update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
             enable_global_validation: Enables linter global validation.
+            enable_linting_of_related_files_on_change: Enables automatic linting requests for files that reference a file that received a didChange event.
             lint_workspace_on_startup: Create disagnostics for all files in the workspace after initialization.
             path_to_trefier_model: Path to a loadable Seq2Seq model used by the compiler in order to create trefier tags.
         """
@@ -45,6 +47,7 @@ class Server(Dispatcher):
         self.work_done_progress_capability_is_set: bool = None
         self.enable_global_validation: bool = enable_global_validation
         self.lint_workspace_on_startup: bool = lint_workspace_on_startup
+        self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
         self.path_to_trefier_model = path_to_trefier_model
         self._root: Path = None
         self._initialized_event: asyncio.Event = asyncio.Event()
@@ -56,10 +59,11 @@ class Server(Dispatcher):
         self._timeout_start_time: float = None
         self._cancelable_work_done_progresses: Dict[object, asyncio.Future] = dict()
 
-    async def _request_update(self, file: Path):
+    async def _request_update(self, files: Set[Path]):
         ' Requests an update for the file. '
-        log.debug('Update request: "%s"', file)
-        self._update_requests.add(file)
+        # TODO: This can be done better, but works for now...
+        log.debug('Update request: %s', files)
+        self._update_requests.update(files)
         self._timeout_start_time = time()
         if not self._update_request_finished_event:
             log.debug('Creating request timer')
@@ -75,7 +79,7 @@ class Server(Dispatcher):
             self._update_request_finished_event.set()
             self._update_request_finished_event = None
         else:
-            log.debug('Update request timer already running: Waiting for result for "%s"', file)
+            log.debug('Update request timer already running: Waiting for result for %s', files)
             await self._update_request_finished_event.wait()
 
     async def __aenter__(self):
@@ -155,6 +159,7 @@ class Server(Dispatcher):
         }
 
     def _load_tagger_model(self) -> Optional[Model]:
+        " Loads the tagger model from the given @self.path_to_trefier_model path and returns it if successful. "
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
             return Seq2SeqModel.load(self.path_to_trefier_model)
@@ -347,7 +352,7 @@ class Server(Dispatcher):
         await self._initialized_event.wait()
         log.debug('didOpen(%s)', textDocument)
         if self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
-            await self._request_update(textDocument.path)
+            await self._request_update({textDocument.path})
 
     @method
     @alias('textDocument/didChange')
@@ -360,7 +365,12 @@ class Server(Dispatcher):
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
                 else:
-                    await self._request_update(textDocument.path)
+                    if self.enable_linting_of_related_files_on_change:
+                        requests = self._linter.find_dependent_files_of(textDocument.path)
+                    else:
+                        requests = set()
+                    requests.add(textDocument.path)
+                    await self._request_update(requests)
         else:
             log.warning('did_change event for non-opened document: "%s"', textDocument.path)
 
@@ -380,6 +390,6 @@ class Server(Dispatcher):
         await self._initialized_event.wait()
         if self._workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
-            await self._request_update(textDocument.path)
+            await self._request_update({textDocument.path})
         else:
             log.debug('Received didSave event for invalid file: %s', textDocument.uri)

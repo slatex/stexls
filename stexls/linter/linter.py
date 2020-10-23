@@ -214,6 +214,15 @@ class Linter:
             if on_progress_fun: on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)
 
+    def find_dependent_files_of(self, file: Path) -> Set[Path]:
+        """ Finds all files that somehow depend on or reference the argument @file, given that their object is buffered. """
+        dependent_files_set = set()
+        for obj in self._object_buffer.values():
+            if file in obj.related_files:
+                dependent_files_set.add(obj.file)
+                continue
+        return dependent_files_set
+
     def definitions(self, file: Path, position: Position) -> List[Location]:
         ' Finds definitions for the symbol under @position in @file. '
         obj: StexObject = self._linked_object_buffer.get(file)

@@ -54,9 +54,7 @@ class Linker:
         for module in resolved:
             if module.access_modifier != AccessModifier.PUBLIC:
                 obj.diagnostics.attempt_access_private_symbol(dependency.range, dependency.module_name)
-                return
-            # TODO: Maybe let import_from raise all it's exception, then capture them here, add them to the obj for display
-            dependency.scope.import_from(module)
+                continue
 
     def link(
         self,

@@ -182,22 +182,22 @@ class Symbol:
         if child.parent:
             raise ValueError('Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
-            if not alternative:
-                raise DuplicateSymbolDefinedError(child.name, child.location)
             for prev_child in self.children[child.name]:
+                if not alternative:
+                    raise DuplicateSymbolDefinedError(child.name, prev_child.location)
                 if not isinstance(prev_child, type(child)):
-                    raise InvalidSymbolRedifinitionException(child.name, child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
+                    raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
                 if isinstance(child, DefSymbol):
                     if child.def_type != prev_child.def_type:
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
                     if child.noverb != prev_child.noverb:
                         a = 'noverb' if child.noverb else 'not noverb'
                         b = 'noverb' if prev_child.noverb else 'not noverb'
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
                     if len(child.noverbs) != len(prev_child.noverbs) or not all(a==b for a, b in zip(child.noverbs, prev_child.noverbs)):
                         a = format_enumeration(child.noverbs, last='and')
                         b = format_enumeration(prev_child.noverbs, last='and')
-                        raise InvalidSymbolRedifinitionException(child.name, child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 

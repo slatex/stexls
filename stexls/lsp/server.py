@@ -195,7 +195,7 @@ class Server(Dispatcher):
             compile_progress_iter = self._linter.compile_workspace()
             try:
                 for i, currently_compiling_file in enumerate(compile_progress_iter):
-                    log.debug('Compile workspace progress (%i/%i): %s', currently_compiling_file, i, len(compile_progress_iter))
+                    log.debug('Compile workspace progress (%i/%i): %s', i, len(compile_progress_iter), currently_compiling_file)
                     percentage = int(i*100/len(compile_progress_iter))
                     if self.work_done_progress_capability_is_set:
                         if cancel.cancelled():

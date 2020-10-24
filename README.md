@@ -14,7 +14,7 @@ I testet it with 3.7, 3.8 and 3.9-dev.
 3. Verify installation with `python -m stexls --version`
 4. Optional: Delete the downloaded repository.
 
-Alternatively use the provided installation script: `.\upgrade`
+Alternatively use the provided installation script: `./upgrade`
 
 
 ## Update & Upgrade
@@ -25,7 +25,7 @@ Update by doing the installation instructions again, but add the `--upgrade` fla
 
 Then remove old cached files located in the directory you opened with VSCode by running `rm -r <root directory>/.stexls`.
 
-To upgrade the pip package you can also use the upgrade script: `.\upgrade`
+To upgrade the pip package you can also use the upgrade script: `./upgrade`
 
 ## Install with extra packages
 
@@ -33,7 +33,7 @@ In order to use the trefier you need to specify that you want to download more d
 
 Add `[ml]` to the directory path: `pip install stexls[ml]` or `pip install stexls[ml] --upgrade` if you want to upgrade.
 
-You can also use the script: `.\upgrade-w-trefier`
+You can also use the script: `./upgrade-w-trefier`
 
 If not all dependencies are installed you will get a "Seq2SeqModel not defined" on startup. This error *can be ignored*.
 
@@ -41,7 +41,7 @@ If not all dependencies are installed you will get a "Seq2SeqModel not defined" 
 
 Uninstall using pip: `pip uninstall stexls`
 
-Alternatively use the provided uninstallation script: `.\uninstall`
+Alternatively use the provided uninstallation script: `./uninstall`
 
 # Features
 

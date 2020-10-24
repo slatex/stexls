@@ -147,7 +147,7 @@ class Symbol:
             exit(self)
 
     @property
-    def qualified(self) -> Tuple[str]:
+    def qualified(self) -> Tuple[str, ...]:
         if self.parent:
             return (*self.parent.qualified, self.name)
         return (self.name,)

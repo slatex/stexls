@@ -49,38 +49,51 @@ class Server(Dispatcher):
         self.lint_workspace_on_startup: bool = lint_workspace_on_startup
         self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
         self.path_to_trefier_model = path_to_trefier_model
+        # Path to the root directory
         self._root: Path = None
+        # Event used to prevent the server from answering requests before the server finished initialization
         self._initialized_event: asyncio.Event = asyncio.Event()
+        # Workspace instance, used to keep track of file buffers
         self._workspace: Workspace = None
+        # Linter instance, used to create diagnostics
         self._linter: Linter = None
+        # Completion engine used to encapsulate the complex process of creating completion suggestions
         self._completion_engine: CompletionEngine = None
-        self._update_requests: Set[Path] = set()
-        self._update_request_finished_event: asyncio.Event = None
-        self._timeout_start_time: float = None
+        # Buffer used to buffer changed files, so that lint isn't called everytime something is typed, but called
+        # after a certain delay after the user stopped typing
+        self._update_request_buffer: Set[Path] = set()
+        # Timeout instance of current update request. Can be canceled when a new update request is made.
+        self._update_request_timeout: asyncio.TimerHandle = None
+        # Manager for work done progress bars
         self._cancelable_work_done_progresses: Dict[object, asyncio.Future] = dict()
 
-    async def _request_update(self, files: Set[Path]):
-        ' Requests an update for the file. '
-        # TODO: This can be done better, but works for now...
-        log.debug('Update request: %s', files)
-        self._update_requests.update(files)
-        self._timeout_start_time = time()
-        if not self._update_request_finished_event:
-            log.debug('Creating request timer')
-            self._update_request_finished_event = asyncio.Event()
-            while time() - self._timeout_start_time < self.update_delay_seconds:
-                log.debug('Waiting for timer to run out...')
-                await asyncio.sleep(self.update_delay_seconds)
-            log.debug('Linting %i files', len(self._update_requests))
-            for file in self._update_requests:
-                ln = self._linter.lint(file, on_progress_fun=lambda info, count, done: log.debug('%s %s %s', info, count, done))
-                self.publish_diagnostics(uri=ln.uri, diagnostics=ln.diagnostics)
-            self._update_requests.clear()
-            self._update_request_finished_event.set()
-            self._update_request_finished_event = None
-        else:
-            log.debug('Update request timer already running: Waiting for result for %s', files)
-            await self._update_request_finished_event.wait()
+    def _update_files_and_clear_timeout(self):
+        self._update_request_timeout = None
+        update_requests = list(self._update_request_buffer)
+        self._update_request_buffer.clear()
+        log.debug('Linting %i files.', len(update_requests))
+        progress_fun = lambda info, count, done: log.debug('Linking "%s": (count=%s, done=%s)', info, count, done)
+        for file in update_requests:
+            ln = self._linter.lint(file, on_progress_fun=progress_fun)
+            self.publish_diagnostics(uri=file.as_uri(), diagnostics=ln.diagnostics)
+        log.debug('Finished linting %i files.', len(update_requests))
+
+    def _request_update_for_set_of_files(self, files: Set[Path]):
+        ''' Request update for a set of files.
+
+        The update will be executed after a set amount of time
+        and will be delayed again, if @_request_update_for_set_of_files is called again before the timer runs out.
+        '''
+        log.debug('Update request for the files: %s', files)
+        self._update_request_buffer.update(files)
+        if self._update_request_timeout:
+            log.debug('Canceling old update request timeout: %s', self._update_request_timeout)
+            self._update_request_timeout.cancel()
+        self._update_request_timeout = asyncio.get_running_loop().call_later(
+            self.update_delay_seconds,
+            self._update_files_and_clear_timeout
+        )
+        log.debug('New update timeout: %s', self._update_request_buffer)
 
     async def __aenter__(self):
         log.debug('Server async enter')
@@ -352,13 +365,14 @@ class Server(Dispatcher):
         await self._initialized_event.wait()
         log.debug('didOpen(%s)', textDocument)
         if self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
-            await self._request_update({textDocument.path})
+            self._request_update_for_set_of_files({textDocument.path})
 
     @method
     @alias('textDocument/didChange')
     async def text_document_did_change(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: List[TextDocumentContentChangeEvent]):
+        # NOTE: Because there is no handler for the annotation type "List": contentChanges is a list of dictionaries!
         await self._initialized_event.wait()
-        log.debug('updating file "%s" with version %i', textDocument.path, textDocument.version)
+        log.debug('Buffering file "%s" with version %i', textDocument.path, textDocument.version)
         if self._workspace.is_open(textDocument.path):
             for item in contentChanges:
                 status = self._workspace.update_file(textDocument.path, textDocument.version, item['text'])
@@ -370,9 +384,9 @@ class Server(Dispatcher):
                     else:
                         requests = set()
                     requests.add(textDocument.path)
-                    await self._request_update(requests)
+                    self._request_update_for_set_of_files(requests)
         else:
-            log.warning('did_change event for non-opened document: "%s"', textDocument.path)
+            log.warning('didCahnge event for non-opened document: "%s"', textDocument.path)
 
 
     @method
@@ -382,7 +396,7 @@ class Server(Dispatcher):
         log.debug('Closing document: "%s"', textDocument.path)
         status = self._workspace.close_file(textDocument.path)
         if not status:
-            log.warning('Failed to close file "%s"', textDocument.path)
+            log.warning('Failed to close file: "%s"', textDocument.path)
 
     @method
     @alias('textDocument/didSave')
@@ -390,6 +404,6 @@ class Server(Dispatcher):
         await self._initialized_event.wait()
         if self._workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
-            await self._request_update({textDocument.path})
+            self._request_update_for_set_of_files({textDocument.path})
         else:
             log.debug('Received didSave event for invalid file: %s', textDocument.uri)

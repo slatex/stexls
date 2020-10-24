@@ -1,3 +1,4 @@
+import functools
 from time import time
 from typing import Union, Awaitable, Set, Dict
 import logging
@@ -14,6 +15,7 @@ from stexls.util.jsonrpc import Dispatcher, method, alias, notification, request
 from stexls.trefier.models import Seq2SeqModel, Model
 
 from .completions import CompletionEngine
+from .workspace_symbols import WorkspaceSymbols
 
 log = logging.getLogger(__name__)
 
@@ -71,16 +73,24 @@ class Server(Dispatcher):
         self._update_request_timeout: asyncio.TimerHandle = None
         # Manager for work done progress bars
         self._cancellable_work_done_progresses: Dict[object, ProgressBar] = dict()
+        # Accumulator for symbols in workspace, used for suggestions and fast search of missing modules etc
+        self._workspace_symbols = WorkspaceSymbols()
 
     def _update_files_and_clear_timeout(self):
+        ''' Actually update the files in the buffered file update requests.
+        '''
         self._update_request_timeout = None
         update_requests = list(self._update_request_buffer)
         self._update_request_buffer.clear()
         log.debug('Linting %i files.', len(update_requests))
         progress_fun = lambda info, count, done: log.debug('Linking "%s": (count=%s, done=%s)', info, count, done)
         for file in update_requests:
+            self._workspace_symbols.remove(file)
             ln = self._linter.lint(file, on_progress_fun=progress_fun)
             self.publish_diagnostics(uri=file.as_uri(), diagnostics=ln.diagnostics)
+            obj = self._linter._object_buffer.get(file)
+            if obj:
+                self._workspace_symbols.add(obj)
         log.debug('Finished linting %i files.', len(update_requests))
 
     def _request_update_for_set_of_files(self, files: Set[Path]):

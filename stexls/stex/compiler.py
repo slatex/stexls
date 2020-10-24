@@ -501,8 +501,8 @@ class Compiler:
                 defi.name,
                 access_modifier=context.get_visible_access_modifier())
             try:
-                # TODO: alternative definition possibly allowed here?
-                current_module.add_child(symbol)
+                alt_allowed = ModuleType.MODULE == current_module.module_type
+                current_module.add_child(symbol, alternative=alt_allowed)
             except DuplicateSymbolDefinedError as err:
                 obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
         else:

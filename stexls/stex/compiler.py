@@ -556,9 +556,7 @@ class Compiler:
             obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
 
     def _compile_importmodule(self, obj: StexObject, context: Symbol, importmodule: ImportModuleIntermediateParseTree):
-        if not isinstance(importmodule.find_parent_module_parse_tree(), ModuleIntermediateParseTree):
-            # TODO: Semantic location check: importmodule only allowed inside begin{module}?
-            obj.diagnostics.module_not_found_semantic_location_check(importmodule.location.range, 'importmodule')
+        # TODO: Semantic location check
         dep = Dependency(
             range=importmodule.location.range,
             scope=context,
@@ -580,12 +578,12 @@ class Compiler:
         if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
             # same dir is acceptable if it refers to a different repo
             if not importmodule.mhrepos or importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
-                obj.diagnostics.is_current_dir_check(importmodule.dir.range, importmodule.dir.text)
+                # ignore this for now
+                # obj.diagnostics.is_current_dir_check(importmodule.dir.range, importmodule.dir.text)
+                pass
 
     def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
-        if not isinstance(gimport.find_parent_module_parse_tree(), (ModuleIntermediateParseTree, ModsigIntermediateParseTree)):
-            # TODO: Semantic location check
-            obj.diagnostics.module_not_found_semantic_location_check(gimport.location.range, 'gimport')
+        # TODO: Semantic location check
         dep = Dependency(
             range=gimport.location.range,
             scope=context,

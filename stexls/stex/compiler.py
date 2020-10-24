@@ -32,7 +32,6 @@ log = logging.getLogger(__name__)
 
 from stexls.vscode import Diagnostic, DiagnosticSeverity, Position, Range, Location
 from stexls.util.format import format_enumeration
-from stexls import trefier
 from .references import Reference, ReferenceType
 from .parser import *
 from .symbols import *

@@ -16,13 +16,8 @@ I testet it with 3.7, 3.8 and 3.9-dev.
 
 Alternatively use the provided installation script: `.\upgrade`
 
-# Uninstallation
 
-Uninstall using pip: `pip uninstall stexls`
-
-Alternatively use the provided uninstallation script: `.\uninstall`
-
-# Update & Upgrade
+## Update & Upgrade
 
 Update by doing the installation instructions again, but add the `--upgrade` flag to the pip install command:
 
@@ -31,6 +26,20 @@ Update by doing the installation instructions again, but add the `--upgrade` fla
 Then remove old cached files located in the directory you opened with VSCode by running `rm -r <root directory>/.stexls`.
 
 To upgrade the pip package you can also use the upgrade script: `.\upgrade`
+
+## Install with extra packages
+
+In order to use the trefier you need to specify that you want to download more dependencies:
+
+Add `[ml]` to the directory path: `pip install stexls[ml]` or `pip install stexls[ml] --upgrade` if you want to upgrade.
+
+You can also use the script: `.\upgrade-w-trefier`
+
+# Uninstallation
+
+Uninstall using pip: `pip uninstall stexls`
+
+Alternatively use the provided uninstallation script: `.\uninstall`
 
 # Features
 

@@ -24,7 +24,7 @@ setuptools.setup(
         'tqdm',
     ],
     extras_require = {
-        'ml': ['cython', 'numpy', 'scikit-learn', 'nltk', 'tensorflow'],
+        'ml': ['numpy', 'scikit-learn', 'nltk', 'tensorflow'],
     },
     package_data = {
         'stexls': ['*.model']

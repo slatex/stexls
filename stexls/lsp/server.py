@@ -12,7 +12,10 @@ from stexls.util.workspace import Workspace
 from stexls.linter import Linter
 from stexls.stex import *
 from stexls.util.jsonrpc import Dispatcher, method, alias, notification, request
-from stexls.trefier.models import Seq2SeqModel, Model
+try:
+    from stexls.trefier.models import Seq2SeqModel, Model
+except (ImportError, ModuleNotFoundError):
+    pass
 
 from .completions import CompletionEngine
 from .workspace_symbols import WorkspaceSymbols

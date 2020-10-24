@@ -7,7 +7,11 @@ from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSe
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 from stexls.stex.references import ReferenceType
-from stexls.trefier.models.tags import Tag
+try:
+    from stexls.trefier.models.tags import Tag
+except (ImportError, ModuleNotFoundError):
+    class Tag:
+        pass
 
 __all__ = ['Diagnostics']
 

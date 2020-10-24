@@ -1,4 +1,3 @@
-from stexls.trefier.models.seq2seq import Seq2SeqModel
 from stexls.stex.compiler import ObjectfileNotFoundError
 from typing import Callable, Iterable, Dict, Iterator, Optional, List, Set
 from pathlib import Path
@@ -6,7 +5,6 @@ from multiprocessing import Pool
 from stexls.vscode import *
 from stexls.stex import *
 from stexls.util.workspace import Workspace
-from stexls.trefier.models import Model
 import logging
 
 log = logging.getLogger(__name__)
@@ -70,7 +68,6 @@ class Linter:
         workspace: Workspace,
         outdir: Path = None,
         enable_global_validation: bool = False,
-        tagger_model: Model = None,
         num_jobs: int = 1):
         """ Initializes a linter object.
 
@@ -79,7 +76,6 @@ class Linter:
             outdir: Output directory to where the compiler will store it's output at.
             enable_global_validation: If enabled, will look at every cached compiled file in order to create better
                 diagnostics related to references and other things.
-            tagger_model: Tagger used by the compiler to create trefier tag hints.
             num_jobs: Number of processes to use for compilation.
         """
         self.workspace = workspace
@@ -87,7 +83,6 @@ class Linter:
         self.enable_global_validation = enable_global_validation
         self.num_jobs = num_jobs
         self.compiler = Compiler(self.workspace.root, self.outdir)
-        self.compiler.model = tagger_model
         self.linker = Linker(self.outdir)
         # The objectbuffer stores all compiled objects
         self._object_buffer: Dict[Path, StexObject] = dict()

@@ -197,8 +197,7 @@ class Server(Dispatcher):
             workspace=self._workspace,
             outdir=outdir,
             enable_global_validation=self.enable_global_validation,
-            num_jobs=self.num_jobs,
-            tagger_model=model)
+            num_jobs=self.num_jobs)
         if self._linter.enable_global_validation:
             compile_progress_iter = self._linter.compile_workspace()
             progressbar = ProgressBar(server=self, cancellable=True, total=len(compile_progress_iter))

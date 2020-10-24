@@ -6,20 +6,14 @@ This parses therefore doesn't just parse the *.tex files but also filters and
 preparses the contents in order to create an intermediate parse tree.
 """
 from __future__ import annotations
-from stexls.trefier.training.datasets.smglom import Label
 from typing import Callable, Optional, Tuple, List, Dict, Set
 from pathlib import Path
 import re
-import numpy as np
 
 from stexls.util import roman_numerals
 from stexls.vscode import *
 from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument, Token
 from stexls.util.latex.exceptions import LatexException
-
-from stexls.trefier.models.tags import Tag
-from stexls.trefier.models.seq2seq import Seq2SeqModel
-from stexls import trefier
 
 from .exceptions import *
 from .symbols import *
@@ -175,15 +169,12 @@ class IntermediateParser:
         self.roots: List[IntermediateParseTree] = []
         # Buffer for exceptions raised during parsing
         self.errors: Dict[Location, List[Exception]] = {}
-        # List of tagged words
-        self.tags: List[Tag] = []
 
-    def parse(self, content: str = None, model: trefier.models.Model = None)-> IntermediateParser:
-        ''' Parse the file from the in the constructor given path and create trefier tags if a model is given.
+    def parse(self, content: str = None)-> IntermediateParser:
+        ''' Parse the file from the in the constructor given path.
 
         Parameters:
             content: Currently buffered content of the file that is supposed to be parsed.
-            model: Optional Model used for trefier tagging.
 
         Returns:
             self
@@ -197,10 +188,6 @@ class IntermediateParser:
             parser.walk(
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
-            if model is not None:
-                for document_tags in model.predict(parser):
-                    # NOTE: Since we only provide a single parser, only one "document_tags" will be generated
-                    self.tags = document_tags
         except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self

@@ -94,25 +94,31 @@ class Linter:
         # THe linked object buffer bufferes all linked objects
         self._linked_object_buffer: Dict[Path, StexObject] = dict()
 
-    def _compile_file_with_respect_to_workspace(self, file: Path) -> Optional[StexObject]:
-        ' Compiles or loads the file using external information from the linter\'s workspace member. '
+    def get_files_that_require_recompilation(self) -> Dict[Path, Optional[str]]:
+        ' Filters out the files that need recompilation and returns them together with their buffered content. '
+        files = dict()
+        for file in self.workspace.files:
+            if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
+                files[file] = self.workspace.read_buffer(file)
+        return files
+
+    def compile_file_with_respect_to_workspace(self, file: Path) -> Optional[StexObject]:
+        ' Compiles the file with the buffered content stored in workspace. '
+        try:
+            return self.compiler.compile(file, content=self.workspace.read_buffer(file))
+        except FileNotFoundError:
+            log.warning('Failed to compile file "%s": FileNotFound', file)
+        return None
+
+    def get_objectfile(self, file: Path) -> Optional[StexObject]:
+        ' Gets the objectfile by compiling it or loading it from disk if already compiled and no recompilation is required. '
         if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
-            content = self.workspace.read_file(file) if self.workspace.is_open(file) else None
-            try:
-                return self.compiler.compile(file, content=content)
-            except FileNotFoundError:
-                log.warning('Failed to compile file "%s": FileNotFound', file)
-                return None
-        buffered = self._object_buffer.get(file)
-        objectfile = self.compiler.get_objectfile_path(file)
-        if buffered and objectfile.is_file() and objectfile.lstat().st_mtime < buffered.creation_time:
-            # TODO: Is returned the buffered object really necessary? And is the condition correct?
-            return buffered
+            return self.compile_file_with_respect_to_workspace(file)
         try:
             return self.compiler.load_from_objectfile(file)
         except ObjectfileNotFoundError:
             log.warning('ObjectfileNotFound: "%s"', file)
-            return None
+        return None
 
     def compile_workspace(self) -> Iterable[Optional[Path]]:
         ''' Compiles or loads all files in the workspace and bufferes them in ram.
@@ -136,7 +142,7 @@ class Linter:
                 dict_update_buffer: Dict[Path, StexObject] = {}
                 with Pool(self.linter.num_jobs) as pool:
                     mapfn = map if self.linter.num_jobs <= 1 else pool.imap
-                    it = mapfn(self.linter._compile_file_with_respect_to_workspace, self._files)
+                    it = mapfn(self.linter.get_objectfile, self._files)
                     # Rotate the file list by one in order be able to view the file being compiled after the current obj
                     next_files = [*self._files[1:], None]
                     # Iterate through the list next files paired with the object of the currently compiled file
@@ -170,7 +176,7 @@ class Linter:
             if file in visited:
                 continue
             if on_progress_fun: on_progress_fun(file, len(visited))
-            obj = self._compile_file_with_respect_to_workspace(file)
+            obj = self.get_objectfile(file)
             if not obj:
                 continue
             visited[file] = obj

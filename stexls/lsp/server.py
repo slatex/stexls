@@ -65,7 +65,7 @@ class Server(Dispatcher):
         # Timeout instance of current update request. Can be canceled when a new update request is made.
         self._update_request_timeout: asyncio.TimerHandle = None
         # Manager for work done progress bars
-        self._cancelable_work_done_progresses: Dict[object, asyncio.Future] = dict()
+        self._cancellable_work_done_progresses: Dict[object, ProgressBar] = dict()
 
     def _update_files_and_clear_timeout(self):
         self._update_request_timeout = None
@@ -200,77 +200,51 @@ class Server(Dispatcher):
             num_jobs=self.num_jobs,
             tagger_model=model)
         if self._linter.enable_global_validation:
-            token = None
-            cancel: asyncio.Future = None
-            if self.work_done_progress_capability_is_set:
-                token, cancel = await self._begin_work_done_progress(title='Compiling', cancelable=True)
-                log.info('Linter enable_global_validation is enabled: Progress token is "%s"', token)
             compile_progress_iter = self._linter.compile_workspace()
+            progressbar = ProgressBar(server=self, cancellable=True, total=len(compile_progress_iter))
             try:
+                await progressbar.create()
+            except:
+                log.exception('Failed to create compile workspace on startup progressbar')
+            try:
+                await progressbar.begin(title='Compiling')
+                self._cancellable_work_done_progresses[progressbar.token] = progressbar
                 for i, currently_compiling_file in enumerate(compile_progress_iter):
-                    log.debug('Compile workspace progress (%i/%i): %s', i, len(compile_progress_iter), currently_compiling_file)
-                    percentage = int(i*100/len(compile_progress_iter))
-                    if self.work_done_progress_capability_is_set:
-                        if cancel.cancelled():
-                            # Get the exception
-                            await cancel
-                        report = WorkDoneProgressReport(percentage=percentage, message=currently_compiling_file.name)
-                        await self.send_progress(token=token, value=report)
+                    await progressbar.update(i, message=currently_compiling_file.name, cancellable=True)
             except asyncio.CancelledError:
-                log.info('Cancelled compilation of workspace on startup by user.')
+                log.info('Compile workspace on startup task cancelled by user')
             except:
                 log.exception('Exception occured during compiling of workspace')
                 raise
             finally:
-                if self.work_done_progress_capability_is_set:
-                    del self._cancelable_work_done_progresses[token]
-                    end = WorkDoneProgressEnd('Compiling workspace done')
-                    await self.send_progress(token=token, value=end)
+                await progressbar.end('Done compiling workspace')
+                del self._cancellable_work_done_progresses[progressbar.token]
         self._completion_engine = CompletionEngine(None)
         if self.lint_workspace_on_startup:
             log.info('Linting workspace on startup...')
             files = list(self._linter.workspace.files)
-            count = len(files)
-            token, cancel = None, None
-            if self.work_done_progress_capability_is_set:
-                token, cancel = await self._begin_work_done_progress(title='Linting', cancelable=True)
+            progressbar = ProgressBar(server=self, cancellable=True, total=len(files))
             try:
+                await progressbar.create()
+            except:
+                log.exception('Failed to create lint workspace ')
+            try:
+                await progressbar.begin(title='Linting')
+                self._cancellable_work_done_progresses[progressbar.token] = progressbar
                 for i, file in enumerate(files):
-                    log.debug('Linting workspace (%i/%i): %s', i, count, file)
-                    if self.work_done_progress_capability_is_set:
-                        if cancel.cancelled():
-                            # Get the cancellation error if is cancelled
-                            await cancel
-                        report = WorkDoneProgressReport(percentage=int(100*i/count), message=file.name)
-                        await self.send_progress(token=token, value=report)
+                    await progressbar.update(i, message=file.name, cancellable=True)
                     result = self._linter.lint(file)
                     await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
             except asyncio.CancelledError:
-                log.exception('Task %s was cancelled by user input', token)
+                log.info('Lint workspace on startup task cancelled by user input')
             except:
                 log.exception('Exception raised during linting of workspace')
                 raise
             finally:
-                if self.work_done_progress_capability_is_set:
-                    del self._cancelable_work_done_progresses[token]
-                    report = WorkDoneProgressEnd(message=f'Done linting {count} files in workspace')
-                    await self.send_progress(token=token, value=report)
+                del self._cancellable_work_done_progresses[progressbar.token]
+                await progressbar.end('Done compiling workspace')
         log.info('Initialized')
         self._initialized_event.set()
-
-    async def _begin_work_done_progress(self, title: str, cancelable: bool = False) -> Tuple[str, asyncio.Future]:
-        " Creates and begins work done progress. Returns the progress token as well as a cancelable future object if cancelable is True. "
-        token = create_random_string(16)
-        log.debug('Creating progress token: %s', token)
-        await self.window_work_done_progress_create(token=token)
-        report = WorkDoneProgressBegin(title=title, percentage=0, cancellable=cancelable)
-        await self.send_progress(token=token, value=report)
-        if cancelable:
-            log.debug('Registering cancelable task: %s', token)
-            future = asyncio.Future()
-            self._cancelable_work_done_progresses[token] = future
-            return token, future
-        return token
 
     @method
     def shutdown(self):
@@ -305,12 +279,10 @@ class Server(Dispatcher):
     @alias('window/workDoneProgress/cancel')
     def window_work_done_progress_cancel(self, token: ProgressToken):
         log.info('Cancelling work done progress token: %s', token)
-        prog = self._cancelable_work_done_progresses.get(token)
+        prog = self._cancellable_work_done_progresses.get(token)
         if not prog:
             log.error('Unknown progress token: %s', token)
-        elif not prog.cancelled():
-            prog.cancel()
-        else:
+        if not prog.cancel():
             log.warning('Token already cancelled: %s', token)
 
     @method
@@ -407,3 +379,95 @@ class Server(Dispatcher):
             self._request_update_for_set_of_files({textDocument.path})
         else:
             log.debug('Received didSave event for invalid file: %s', textDocument.uri)
+
+class ProgressBar:
+    """ Helper class that handles the creation and update of progressbars. """
+    def __init__(self, server: Server, cancellable: bool, total: int = None) -> None:
+        """ Initializes a progressbar. It still must be created using the @create() async task.
+
+        Parameters:
+            server: The server instance, needed to communicate with the client.
+            cancellable: Flag enabling the cancel button on the client side.
+            total: Total number of times this progress bar will be updated. Used to create a progressbar with percentage information.
+        """
+        self.server = server
+        self.token = create_random_string(16)
+        self.cancellable = cancellable
+        self.total = total
+        self.begin_message_sent: bool = False
+        self.created: bool = False
+        self._on_finished_event: asyncio.Future = asyncio.Future()
+
+    def wait(self) -> Awaitable:
+        ' Returns awaitable that is resolved after this progressbar reached the end or is canceled. '
+        return self._on_finished_event
+
+    def cancel(self) -> bool:
+        ' Cancels the underlying @on_finished_event future object. Returns true if cancelling was successful. '
+        if not self._on_finished_event.done():
+            self._on_finished_event.cancel()
+            return True
+        return False
+
+    async def create(self):
+        ''' Needs to be called before it can be used. Used to initialize the progress bar on the client side.
+
+        If the client raises an error during this call, no further progress information may be sent to the client.
+        '''
+        created = self.server.window_work_done_progress_create(token=self.token)
+        try:
+            await created
+        except Exception as err:
+            self._on_finished_event.set_exception(err)
+            raise
+        self.created = True
+
+    async def begin(self, title: str = None, message: str = None):
+        ' Sends a begin message with optional text. '
+        if self.created:
+            if self.begin_message_sent:
+                raise ValueError('ProgressBar begin() called more than once.')
+            if self._on_finished_event.cancelled():
+                # Raise if canceled
+                await self._on_finished_event
+            args = { }
+            if title is not None:
+                args['title'] = title
+            if self.total is not None:
+                args['percentage'] = 0
+            if message is not None:
+                args['message'] = message
+            begin = WorkDoneProgressBegin(cancellable=self.cancellable, **args)
+            await self.server.send_progress(token=self.token, value=begin)
+        self.begin_message_sent = True
+
+    async def update(self, iteration_progress_count: int = None, message: str = None, cancellable: bool = None):
+        if not self.created:
+            # raise ValueError(f'Progress "{self.token}" not created by client.')
+            return # Return if not created
+        if not self.begin_message_sent:
+            raise ValueError('Begin message must be sent before using the progressbar.')
+        if self._on_finished_event.cancelled():
+            # Raise if canceled
+            await self._on_finished_event
+        args = { }
+        if self.total is not None and iteration_progress_count is not None:
+            args['percentage'] = int(100*iteration_progress_count/self.total)
+        if message is not None:
+            args['message'] = message
+        if cancellable is not None:
+            args['cancellable'] = cancellable
+        report = WorkDoneProgressReport(**args)
+        await self.server.send_progress(token=self.token, value=report)
+
+    async def end(self, message: str):
+        if not self.created:
+            # raise ValueError(f'Progress "{self.token}" not created by client.')
+            return # Return if not created
+        if not self.begin_message_sent:
+            raise ValueError('Begin message must be sent before using the progressbar.')
+        end = WorkDoneProgressEnd(message=message)
+        await self.server.send_progress(token=self.token, value=end)
+        if not self._on_finished_event.done():
+            # Only set event if not canceled or already returned
+            self._on_finished_event.set_result(True)

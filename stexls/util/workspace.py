@@ -123,18 +123,28 @@ class Workspace:
             log.warning('Closing not open file: "%s"', path)
         return False
 
+    def read_buffer(self, path: Path) -> Optional[str]:
+        """ Gets the files buffer if the buffered content is newer than the file read from disk """
+        document = self._open_files.get(path)
+        if document and (not path.is_file() or path.lstat().st_mtime < document.time_modified):
+            log.debug('Reading buffered file version %s: "%s"', document.version, path)
+            return document.text
+        return None
+
     def read_file(self, path: Path) -> Optional[str]:
-        """ Reads a file modified in this workspace. If the accessed file is not modified
-            it is read from disk instead.
+        """ Gets the most up to date content of the file @path.
 
         Returns:
-            Content of the file. Read from disk if not opened and read from ram if opened.
-            If any kind of exception occurs None is returned.
+            Content of the file in buffer if the buffer is newer than the file,
+            else reads the content from disk and returns that.
+            None is returned if the file is not buffered and the file can't be read from disk.
         """
         if self.is_open(path):
             document = self._open_files[path]
-            log.debug('Reading open file version %i: "%s"', document.version, path)
-            return document.text
+            if not path.is_file() or path.lstat().st_mtime < document.time_modified:
+                # Only get buffered document text if the file on disk is older than the buffer
+                log.debug('Reading file (version %s) from buffer: "%s"', document.version, path)
+                return document.text
         try:
             with open(path) as fd:
                 log.debug('Reading local file: "%s"', path)

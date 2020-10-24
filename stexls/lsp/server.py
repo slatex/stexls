@@ -18,6 +18,9 @@ from .completions import CompletionEngine
 log = logging.getLogger(__name__)
 
 
+# pattern_for_environments_that_should_never_display_trefier_annotation_hints = (
+#   re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?'))
+
 class Server(Dispatcher):
     def __init__(
         self,
@@ -39,7 +42,7 @@ class Server(Dispatcher):
             enable_global_validation: Enables linter global validation.
             enable_linting_of_related_files_on_change: Enables automatic linting requests for files that reference a file that received a didChange event.
             lint_workspace_on_startup: Create disagnostics for all files in the workspace after initialization.
-            path_to_trefier_model: Path to a loadable Seq2Seq model used by the compiler in order to create trefier tags.
+            path_to_trefier_model: Path to a loadable Seq2Seq model used to create trefier tags.
         """
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
@@ -51,6 +54,8 @@ class Server(Dispatcher):
         self.path_to_trefier_model = path_to_trefier_model
         # Path to the root directory
         self._root: Path = None
+        # trefier model loaded from path_to_trefier_model
+        self._trefier_model: Seq2SeqModel = None
         # Event used to prevent the server from answering requests before the server finished initialization
         self._initialized_event: asyncio.Event = asyncio.Event()
         # Workspace instance, used to keep track of file buffers
@@ -171,15 +176,14 @@ class Server(Dispatcher):
             }
         }
 
-    def _load_tagger_model(self) -> Optional[Model]:
-        " Loads the tagger model from the given @self.path_to_trefier_model path and returns it if successful. "
+    def _load_trefier_model(self):
+        " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
-            return Seq2SeqModel.load(self.path_to_trefier_model)
+            self._trefier_model = Seq2SeqModel.load(self.path_to_trefier_model)
         except Exception as err:
             log.exception('Failed to load seq2seq model')
             self.show_message(type=MessageType.Error, message=f'{type(err).__name__}: {err}')
-        return None
 
     @method
     async def initialized(self):
@@ -188,11 +192,8 @@ class Server(Dispatcher):
             raise RuntimeError('Server already initialized')
         outdir = self._root / '.stexls' / 'objects'
         self._workspace = Workspace(self._root)
-        model: Seq2SeqModel = None
         if self.path_to_trefier_model:
-            model = self._load_tagger_model()
-        else:
-            log.info('No trefier model has been provided.')
+            self._load_trefier_model()
         self._linter = Linter(
             workspace=self._workspace,
             outdir=outdir,

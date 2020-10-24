@@ -171,6 +171,9 @@ class Linter:
             if file in visited:
                 continue
             if on_progress_fun: on_progress_fun(file, len(visited))
+            # TODO: Currently forced to reload every file that is used from disk and overwrite the _object_buffer, this should not be necessary
+            # TODO: Only overwrite files that actually changed
+            # TODO: Only load files that are not already in self._object_buffer
             obj = self.get_objectfile(file)
             if not obj:
                 continue

@@ -905,7 +905,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
     def build_path_to_imported_module(
         root: Path,
         current_file: Path,
-        repo: Optional[union[Path, str]],
+        repo: Optional[Union[Path, str]],
         module: str):
         """ A static helper method to get the targeted filepath by a gimport environment.
 

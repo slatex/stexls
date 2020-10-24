@@ -398,10 +398,6 @@ class ProgressBar:
         self.created: bool = False
         self._on_finished_event: asyncio.Future = asyncio.Future()
 
-    def wait(self) -> Awaitable:
-        ' Returns awaitable that is resolved after this progressbar reached the end or is canceled. '
-        return self._on_finished_event
-
     def cancel(self) -> bool:
         ' Cancels the underlying @on_finished_event future object. Returns true if cancelling was successful. '
         if not self._on_finished_event.done():

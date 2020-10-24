@@ -35,6 +35,8 @@ Add `[ml]` to the directory path: `pip install stexls[ml]` or `pip install stexl
 
 You can also use the script: `.\upgrade-w-trefier`
 
+If not all dependencies are installed you will get a "Seq2SeqModel not defined" on startup. This error *can be ignored*.
+
 # Uninstallation
 
 Uninstall using pip: `pip uninstall stexls`

@@ -135,6 +135,7 @@ async def linter(
     enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true', help="This will make the server compile every file in the workspace on startup, enabling global validation and diagnostics."),
     lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup', action='store_true', help="Create diagnostics for every file in the workspace on startup."),
     enable_trefier=Arg('--enable_trefier', '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging."),
+    enable_linting_of_related_files=Arg('--enable_linting_of_related_files', '--enable-linting-of-related-files', action='store_true', help="The server will lint every file that reference a changed file, directly or transitively."),
     transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
@@ -146,6 +147,7 @@ async def lsp(
     update_delay_seconds: float = 1.0,
     enable_global_validation: bool = False,
     lint_workspace_on_startup: bool = False,
+    enable_linting_of_related_files: bool = False,
     enable_trefier: bool = False,
     transport_kind: str = 'ipc',
     host: str = 'localhost',
@@ -160,6 +162,7 @@ async def lsp(
         enable_global_validation: Enables global validation of references.
         lint_workspace_on_startup: Create diagnostics for every file in the workspace on startup.
         enable_trefier: Enables machine learning trefier tagging.
+        enable_linting_of_related_files: The server will lint every file that reference a changed file, directly or transitively.
         transport_kind: Mode of transportation to use.
         host: Host for "tcp" transport. Defaults to localhost.
         port: Port for "tcp" transport. Defaults to 0. 0 will bind the server to any free port.
@@ -180,6 +183,7 @@ async def lsp(
         'update_delay_seconds': update_delay_seconds,
         'enable_global_validation': enable_global_validation,
         'lint_workspace_on_startup': lint_workspace_on_startup,
+        'enable_linting_of_related_files_on_change': enable_linting_of_related_files,
     }
     if enable_trefier:
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()

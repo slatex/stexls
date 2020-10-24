@@ -34,7 +34,7 @@ class Server(Dispatcher):
         update_delay_seconds: float = 1.0,
         enable_global_validation: bool = False,
         lint_workspace_on_startup: bool = False,
-        enable_linting_of_related_files_on_change: bool = True,
+        enable_linting_of_related_files_on_change: bool = False,
         path_to_trefier_model: Path = None):
         """ Creates a server dispatcher.
 

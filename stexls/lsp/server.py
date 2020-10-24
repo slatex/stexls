@@ -263,7 +263,7 @@ class Server(Dispatcher):
         token = create_random_string(16)
         log.debug('Creating progress token: %s', token)
         await self.window_work_done_progress_create(token=token)
-        report = WorkDoneProgressBegin(title=title, cancellable=cancelable)
+        report = WorkDoneProgressBegin(title=title, percentage=0, cancellable=cancelable)
         await self.send_progress(token=token, value=report)
         if cancelable:
             log.debug('Registering cancelable task: %s', token)

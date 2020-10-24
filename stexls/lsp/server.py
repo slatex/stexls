@@ -87,9 +87,12 @@ class Server(Dispatcher):
         self._update_request_buffer.clear()
         log.debug('Linting %i files.', len(update_requests))
         progress_fun = lambda info, count, done: log.debug('Linking "%s": (count=%s, done=%s)', info, count, done)
-        async with ProgressBar(self, title='Linting', cancellable=True, total=len(update_requests)) as progress:
+        cancellable = len(update_requests) > 3
+        async with ProgressBar(self, title='Linting', cancellable=cancellable, total=len(update_requests)) as progress:
+            self._cancellable_work_done_progresses[progress.token] = progress
+            await progress.begin()
             for i, file in enumerate(update_requests):
-                await progress.update(i, message=file.name, cancellable=True)
+                await progress.update(i, message=file.name, cancellable=cancellable)
                 # TODO: Need all the changed unlinked objects to properly add workspace symbols
                 self._workspace_symbols.remove(file)
                 ln = self._linter.lint(file, on_progress_fun=progress_fun)
@@ -97,6 +100,7 @@ class Server(Dispatcher):
                 obj = self._linter._object_buffer.get(file)
                 if obj:
                     self._workspace_symbols.add(obj)
+        del self._cancellable_work_done_progresses[progress.token]
         log.debug('Finished linting %i files.', len(update_requests))
 
 
@@ -219,22 +223,30 @@ class Server(Dispatcher):
             num_jobs=self.num_jobs)
         if self._linter.enable_global_validation:
             compile_progress_iter = self._linter.compile_workspace()
-            async with ProgressBar(server=self, title='Compiling', cancellable=True, total=len(compile_progress_iter)) as progress:
-                self._cancellable_work_done_progresses[progress._token] = progress
-                for i, currently_compiling_file in enumerate(compile_progress_iter):
-                    await progress.update(i, message=currently_compiling_file.name, cancellable=True)
-            del self._cancellable_work_done_progresses[progress._token]
+            try:
+                async with ProgressBar(server=self, title='Compiling', cancellable=True, total=len(compile_progress_iter)) as progress:
+                    self._cancellable_work_done_progresses[progress.token] = progress
+                    await progress.begin()
+                    for i, currently_compiling_file in enumerate(compile_progress_iter):
+                        await progress.update(i, message=currently_compiling_file.name, cancellable=True)
+                del self._cancellable_work_done_progresses[progress.token]
+            except:
+                log.exception('An error occured while compiling workspace')
         self._completion_engine = CompletionEngine(None)
         if self.lint_workspace_on_startup:
             log.info('Linting workspace on startup...')
             files = list(self._linter.workspace.files)
-            async with ProgressBar(server=self, title='Linting', cancellable=True, total=len(files)) as progress:
-                self._cancellable_work_done_progresses[progress._token] = progress
-                for i, file in enumerate(files):
-                    await progress.update(i, message=file.name, cancellable=True)
-                    result = self._linter.lint(file)
-                    await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
-            del self._cancellable_work_done_progresses[progress._token]
+            try:
+                async with ProgressBar(server=self, title='Linting', cancellable=True, total=len(files)) as progress:
+                    self._cancellable_work_done_progresses[progress.token] = progress
+                    await progress.begin()
+                    for i, file in enumerate(files):
+                        await progress.update(i, message=file.name, cancellable=True)
+                        result = self._linter.lint(file)
+                        await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
+                del self._cancellable_work_done_progresses[progress.token]
+            except:
+                log.exception("Exception raised while linting workspace")
         log.info('Initialized')
         self._initialized_event.set()
 
@@ -344,7 +356,9 @@ class Server(Dispatcher):
                     log.warning('Failed to patch file with: %s', item)
                 else:
                     if self.enable_linting_of_related_files_on_change:
+                        log.debug('Linter searching for related files of: "%s"', textDocument.path)
                         requests = self._linter.find_dependent_files_of(textDocument.path)
+                        log.debug('Found %i relations: %s', len(requests), requests)
                     else:
                         requests = set()
                     requests.add(textDocument.path)
@@ -388,14 +402,12 @@ class ProgressBar:
             title: Title of the process.
             cancellable: Flag enabling the cancel button on the client side.
             total: Total number of times this progress bar will be updated. Used to create a progressbar with percentage information.
-            begin_message: Message sent when the progress bar is initialized using an async with statement.
             end_message: Message sent when the progress finishes using an async with statement.
         """
         self._server = server
         self._title = title
-        self._begin_message = begin_message
         self._end_message = end_message
-        self._token = create_random_string(16)
+        self.token = create_random_string(16)
         self._cancellable = cancellable
         self._total = total
         self._begin_message_sent: bool = False
@@ -405,7 +417,6 @@ class ProgressBar:
     async def __aenter__(self):
         try:
             await self.create()
-            await self.begin(message=self._begin_message)
         except asyncio.CancelledError:
             log.warning('The progress was cancelled while initializing.')
         except:
@@ -432,7 +443,7 @@ class ProgressBar:
 
         If the client raises an error during this call, no further progress information may be sent to the client.
         '''
-        created = self._server.window_work_done_progress_create(token=self._token)
+        created = self._server.window_work_done_progress_create(token=self.token)
         try:
             await created
         except Exception as err:
@@ -456,7 +467,7 @@ class ProgressBar:
             if message is not None:
                 args['message'] = message
             begin = WorkDoneProgressBegin(cancellable=self._cancellable, **args)
-            await self._server.send_progress(token=self._token, value=begin)
+            await self._server.send_progress(token=self.token, value=begin)
         self._begin_message_sent = True
 
     async def update(self, iteration_progress_count: int = None, message: str = None, cancellable: bool = None):
@@ -476,16 +487,14 @@ class ProgressBar:
         if cancellable is not None:
             args['cancellable'] = cancellable
         report = WorkDoneProgressReport(**args)
-        await self._server.send_progress(token=self._token, value=report)
+        await self._server.send_progress(token=self.token, value=report)
 
     async def end(self, message: str):
         if not self.created:
             # raise ValueError(f'Progress "{self.token}" not created by client.')
             return # Return if not created
-        if not self._begin_message_sent:
-            raise ValueError('Begin message must be sent before using the progressbar.')
         end = WorkDoneProgressEnd(message=message)
-        await self._server.send_progress(token=self._token, value=end)
+        await self._server.send_progress(token=self.token, value=end)
         if not self._on_finished_event.done():
             # Only set event if not canceled or already returned
             self._on_finished_event.set_result(True)

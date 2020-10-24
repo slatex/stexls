@@ -1,4 +1,4 @@
-from typing import Set, Dict, Tuple
+from typing import List, Dict
 from pathlib import Path
 from stexls.stex.symbols import *
 from stexls.stex.compiler import StexObject
@@ -20,7 +20,8 @@ class WorkspaceSymbols:
         self.resolution_char = resolution_char
         # symbol providers is a dict from path to the object because StexObject is not a ValueType.
         self.symbol_providers: Dict[Path, StexObject] = dict()
-        self.symbols: Dict[str, Set[StexObject]] = dict()
+        # The value needs to be a list, because a symbol can be provided multiple times by a single object
+        self.symbols: Dict[str, List[StexObject]] = dict()
 
     def add(self, obj: StexObject) -> bool:
         """ Adds @obj as a provider of symbol names.
@@ -34,7 +35,7 @@ class WorkspaceSymbols:
         self.symbol_providers[obj.file] = obj
         for symbol in obj.symbol_table.flat():
             symbol_name = self.resolution_char.join(symbol.qualified)
-            self.symbols.setdefault(symbol_name, set()).add(obj)
+            self.symbols.setdefault(symbol_name, []).append(obj)
 
     def remove(self, file: Path) -> bool:
         " Removes @obj as a provider of symbol names. Returns True if the file was removed. "

@@ -505,6 +505,8 @@ class Compiler:
                 current_module.add_child(symbol, alternative=alt_allowed)
             except DuplicateSymbolDefinedError as err:
                 obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
+            except InvalidSymbolRedifinitionException as err:
+                obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
         else:
             if not defi.find_parent_module_name():
                 # TODO: Semantic location check

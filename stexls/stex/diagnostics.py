@@ -138,7 +138,13 @@ class Diagnostics:
         self.diagnostics.append(diagnostic)
 
     def invalid_redefinition(self, range: Range, other_location: Location, info: str):
-        ' Used when redefinitions are allowed (symdef), but the redefeined symbol\'s signature is incompatible (noverb tags different) '
+        ''' Used when redefinitions are allowed (symdef), but the redefeined symbol\'s signature is incompatible (noverb tags different)
+
+        Parameters:
+            range: Range of the causing symbol
+            other_location: Location of the symbol with a different signature
+            info: Information about the signature difference. Just some message string.
+        '''
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.INVALID_REDEFINITION.value
         related = DiagnosticRelatedInformation(other_location, 'Previous definition')

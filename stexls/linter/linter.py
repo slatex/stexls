@@ -107,8 +107,11 @@ class Linter:
 
     def get_objectfile(self, file: Path) -> Optional[StexObject]:
         ' Gets the objectfile by compiling it or loading it from disk if already compiled and no recompilation is required. '
-        if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
-            return self.compile_file_with_respect_to_workspace(file)
+        try:
+            if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
+                return self.compile_file_with_respect_to_workspace(file)
+        except:
+            log.exception('Failed to compile file %s', file)
         try:
             return self.compiler.load_from_objectfile(file)
         except ObjectfileNotFoundError:
@@ -132,9 +135,9 @@ class Linter:
                 self._files = list(self.linter.workspace.files)
                 # Length is -1 because the last file has no "next"
                 self._len = max(0, len(self._files) - 1)
+                self.compiled_object_buffer: Dict[Path, StexObject] = dict()
 
             def __iter__(self) -> Iterator[Optional[Path]]:
-                dict_update_buffer: Dict[Path, StexObject] = {}
                 with Pool(self.linter.num_jobs) as pool:
                     mapfn = map if self.linter.num_jobs <= 1 else pool.imap
                     it = mapfn(self.linter.get_objectfile, self._files)
@@ -144,11 +147,11 @@ class Linter:
                     for next_file, obj in zip(next_files, it):
                         if obj:
                             # Need to buffer the dict update because of multiprocessing pickling the whole linter
-                            dict_update_buffer[obj.file] = obj
+                            self.compiled_object_buffer[obj.file] = obj
                         if next_file:
                             # The last element has no next, don't yield anything
                             yield next_file
-                self.linter._object_buffer.update(dict_update_buffer)
+                self.linter._object_buffer.update(self.compiled_object_buffer)
 
             def __len__(self) -> int:
                 return self._len
@@ -218,13 +221,16 @@ class Linter:
             if on_progress_fun: on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)
 
-    def find_dependent_files_of(self, file: Path) -> Set[Path]:
+    def find_dependent_files_of(self, file: Path, *, _already_added_set: Set[Path] = None) -> Set[Path]:
         """ Finds all files that somehow depend on or reference the argument @file, given that their object is buffered. """
-        dependent_files_set = set()
+        dependent_files_set = _already_added_set or set()
         for obj in self._object_buffer.values():
             if file in obj.related_files:
-                dependent_files_set.add(obj.file)
-                continue
+                if file not in dependent_files_set:
+                    dependent_files_set.add(obj.file)
+                    self.find_dependent_files_of(obj.file, _already_added_set=dependent_files_set)
+                else:
+                    dependent_files_set.add(obj.file)
         return dependent_files_set
 
     def definitions(self, file: Path, position: Position) -> List[Location]:

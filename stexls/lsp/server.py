@@ -5,15 +5,11 @@ import pkg_resources
 import sys
 
 from stexls.vscode import *
-from stexls.util import create_random_string
+from stexls.util.random_string import create_random_string
 from stexls.util.workspace import Workspace
 from stexls.linter import Linter
 from stexls.stex import *
 from stexls.util.jsonrpc import Dispatcher, method, alias, notification, request
-try:
-    from stexls.trefier.models import Seq2SeqModel
-except (ImportError, ModuleNotFoundError):
-    pass
 
 from .completions import CompletionEngine
 from .workspace_symbols import WorkspaceSymbols
@@ -58,7 +54,7 @@ class Server(Dispatcher):
         # Path to the root directory
         self._root: Path = None
         # trefier model loaded from path_to_trefier_model
-        self._trefier_model: Seq2SeqModel = None
+        self._trefier_model: 'Seq2SeqModel' = None
         # Event used to prevent the server from answering requests before the server finished initialization
         self._initialized_event: asyncio.Event = asyncio.Event()
         # Workspace instance, used to keep track of file buffers
@@ -200,7 +196,11 @@ class Server(Dispatcher):
         " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
-            self._trefier_model = Seq2SeqModel.load(self.path_to_trefier_model)
+            try:
+                from stexls.trefier.models import Seq2SeqModel
+                self._trefier_model: Seq2SeqModel = Seq2SeqModel.load(self.path_to_trefier_model)
+            except (ImportError, ModuleNotFoundError):
+                pass
         except Exception as err:
             log.exception('Failed to load seq2seq model')
             self.show_message(type=MessageType.Error, message=f'{type(err).__name__}: {err}')

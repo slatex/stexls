@@ -463,7 +463,8 @@ class Compiler:
 
     def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
         if trefi.drefi:
-            # TODO: Semantic location check
+            # TODO: Semantic location check for \drefi location
+            # TODO: issue 30 (https://gl.kwarc.info/Marian6814/stexls/-/issues/30): Drefi behaviour not quite clear
             module: ModuleSymbol = context.get_current_module()
             if not module:
                 obj.diagnostics.module_not_found_semantic_location_check(trefi.location.range, 'drefi')
@@ -478,15 +479,16 @@ class Compiler:
                 except InvalidSymbolRedifinitionException as err:
                     obj.diagnostics.invalid_redefinition(trefi.location.range, err.other_location, err.info)
         if trefi.module:
-            # TODO: Semantic location check
+            # TODO: Semantic location check when module info is there
             obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
             obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
         else:
-            # TODO: Semantic location check
             module_name: Optional[str] = trefi.find_parent_module_name()
             if not module_name:
+                # TODO: Semantic location check parent module name can't be found
                 obj.diagnostics.cant_infer_ref_module_outside_module(trefi.location.range)
             else:
+                # TODO: Semantic location check parent module name can be found
                 obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
         if trefi.m:
             obj.diagnostics.mtref_deprecated_check(trefi.location.range)

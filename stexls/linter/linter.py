@@ -75,7 +75,7 @@ class Linter:
             workspace: Workspace this linter works on.
             outdir: Output directory to where the compiler will store it's output at.
             enable_global_validation: If enabled, will look at every cached compiled file in order to create better
-                diagnostics related to references and other things.
+                diagnostics related to references and other things. To prefetch all objects use @Linter.compile_workspace().
             num_jobs: Number of processes to use for compilation.
         """
         self.workspace = workspace

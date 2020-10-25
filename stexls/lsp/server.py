@@ -1,6 +1,4 @@
-import functools
-from time import time
-from typing import Union, Awaitable, Set, Dict
+from typing import Union, Set, Dict
 import logging
 import asyncio
 import pkg_resources
@@ -13,7 +11,7 @@ from stexls.linter import Linter
 from stexls.stex import *
 from stexls.util.jsonrpc import Dispatcher, method, alias, notification, request
 try:
-    from stexls.trefier.models import Seq2SeqModel, Model
+    from stexls.trefier.models import Seq2SeqModel
 except (ImportError, ModuleNotFoundError):
     pass
 

@@ -153,7 +153,7 @@ async def linter(
 )
 async def lsp(
     num_jobs: int = 1,
-    update_delay_seconds: float = 1.0,
+    update_delay_seconds: float = 2.0,
     enable_global_validation: bool = False,
     lint_workspace_on_startup: bool = False,
     enable_linting_of_related_files: bool = False,

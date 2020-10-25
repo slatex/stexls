@@ -433,9 +433,7 @@ class Compiler:
         return binding
 
     def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
-        if not isinstance(context, RootSymbol):
-            # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(module.location.range, 'module')
+        # TODO: Semantic location check
         if module.id:
             name_location = module.location.replace(positionOrRange=module.id.range)
             symbol = ModuleSymbol(ModuleType.MODULE, name_location, module.id.text)
@@ -499,8 +497,9 @@ class Compiler:
     def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
         current_module = context.get_current_module()
         if current_module:
-            # TODO: Semantic location check
+            # TODO: Semantic location check for defi inside a module
             symbol = DefSymbol(
+                # TODO: Issue #26 (https://gl.kwarc.info/Marian6814/stexls/-/issues/26): Find a way to create a symbols with multiple allowed types -> DefType as FlagEnum
                 DefType.DEF,
                 defi.location,
                 defi.name,
@@ -514,7 +513,7 @@ class Compiler:
                 obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
         else:
             if not defi.find_parent_module_name():
-                # TODO: Semantic location check
+                # TODO: Semantic location check for defi when no parent module info can be acquired
                 # A defi without a parent module doesn't generate a reference
                 obj.diagnostics.module_not_found_semantic_location_check(defi.location.range, 'defi')
                 return

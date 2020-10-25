@@ -123,7 +123,7 @@ async def linter(
     buffer = []
     for file in progressfn(files, 'Linting', files):
         try:
-            ln = linter.lint(file.absolute())
+            ln = linter.lint(file.expanduser().resolve().absolute())
         except Exception as err:
             log.exception('Failed to lint file: %s', file)
             buffer.append(f'{file} Failed to lint file: {err} ({type(err)})')

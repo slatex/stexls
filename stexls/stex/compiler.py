@@ -449,14 +449,19 @@ class Compiler:
         return None
 
     def _compile_tassign(self, obj: StexObject, context: Symbol, tassign: TassignIntermediateParseTree):
-        if not isinstance(tassign.parent, ViewSigIntermediateParseTree):
-            obj.diagnostics.semantic_location_check(tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "gviewsig"')
+        if not isinstance(tassign.parent, (ViewSigIntermediateParseTree, ViewIntermediateParseTree)):
+            obj.diagnostics.semantic_location_check(tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
             return
-        view : ViewSigIntermediateParseTree = tassign.parent
 
-        obj.add_reference(Reference(tassign.source_symbol.range, context, [view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
-        if tassign.torv == 'v':
-            obj.add_reference(Reference(tassign.target_term.range, context, [view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
+        if isinstance(tassign.parent, ViewSigIntermediateParseTree):
+            view : ViewSigIntermediateParseTree = tassign.parent
+            obj.add_reference(Reference(tassign.source_symbol.range, context, [view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
+            if tassign.torv == 'v':
+                obj.add_reference(Reference(tassign.target_term.range, context, [view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
+        else:
+            view : ViewIntermediateParseTree = tassign.parent
+            # TODO: Also compile when inside view environments
+            obj.diagnostics.exception(context.location.range, NotImplementedError('"assign" inside "view" not implemented yet.'))
 
     def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
         if trefi.drefi:

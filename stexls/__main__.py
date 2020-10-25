@@ -104,8 +104,16 @@ async def linter(
         workspace=workspace,
         outdir=outdir,
         enable_global_validation=False,
-        num_jobs=num_jobs,
-        path_to_trefier_model=_get_default_trefier_model_path() if enable_trefier else None)
+        num_jobs=num_jobs)
+
+    trefier_model = None
+    try:
+        if enable_trefier:
+            trefier_model_path = _get_default_trefier_model_path()
+            log.debug('Loading trefier from "%s"', trefier_model_path)
+            trefier_model = Seq2SeqModel.load(trefier_model_path)
+    except:
+        log.exception('Failed to load trefier model')
 
     if tagfile:
         log.debug('Creating tagfile at "%s"', root / tagfile)

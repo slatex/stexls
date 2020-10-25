@@ -7,11 +7,6 @@ from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSe
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 from stexls.stex.references import ReferenceType
-try:
-    from stexls.trefier.models.tags import Tag
-except (ImportError, ModuleNotFoundError):
-    class Tag:
-        pass
 
 __all__ = ['Diagnostics']
 
@@ -71,9 +66,9 @@ class Diagnostics:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
 
-    def trefier_tag(self, tag: Tag):
+    def trefier_tag(self, range: Range, text: str, label: np.ndarray):
         ' Create a simple diagnostic for a trefier tag. '
-        message = f'Label for "{tag.token.lexeme}": {np.round(tag.label, 2)}'
+        message = f'Label for "{text}": {np.round(label, 2)}'
         severity = DiagnosticSeverity.Information
         code = DiagnosticCodeName.TREFIER_TAG_HINT.name
         # TODO: Diagnostics have a "related information" field, allowing them to display references to possible defis.
@@ -90,7 +85,7 @@ class Diagnostics:
         # TODO: Then we can create a diagnostic with the combined range of "prime" and "number", with related information
         # TODO: to the location of where \symii{prime}{number} is defined. Also a quick fix that does the follwoing edits
         # TODO: is created: "This is a prime number" -> "This is a \trefii[primenumber]{prime}{number}"
-        diagnostic = Diagnostic(tag.token.range, message=message, severity=severity, code=code)
+        diagnostic = Diagnostic(range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def cant_infer_ref_module_outside_module(self, range: Range):
@@ -261,7 +256,7 @@ class Diagnostics:
 
     def referenced_symbol_type_check(self, range: Range, expected: ReferenceType, actual: ReferenceType):
         ' Used when the expected type given by a reference mismatches with the actually resolved symbol. '
-        message = f'Expected symbol type is "{expected.format_enum()}" but the resolved symbol is of type "{actual.format_enum()}"'
+        message = f'Expected symbol type is {expected.format_enum()} but the resolved symbol is of type {actual.format_enum()}'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.REFERENCE_TYPE_CHECK.value
         diagnostic = Diagnostic(range, message, severity, code)

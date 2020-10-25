@@ -10,7 +10,7 @@ import pkg_resources
 from tqdm import tqdm
 from pathlib import Path
 
-from stexls.util.cli import Cli, command, Arg
+from stexls.util.cli import Cli, command, Arg, argparse
 from stexls.vscode import *
 from stexls.util.workspace import Workspace
 from stexls.linter import Linter
@@ -23,8 +23,8 @@ def _get_default_trefier_model_path() -> Path:
     return Path(__file__).parent / 'seq2seq.model'
 
 @command(
-    files=Arg(type=Path, nargs='+', help='List of files for which to generate diagnostics.'),
-    root=Arg(required=True, type=Path, help="Root directory. Required to resolve imports."),
+    files=Arg(type=Path, nargs=argparse.REMAINDER, help='List of files for which to generate diagnostics.'),
+    root=Arg(type=Path, help="Root directory. Required to resolve imports."),
     diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string, help='Only diagnostics for the specified level and above are printed.'),
     include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
     ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
@@ -39,9 +39,9 @@ def _get_default_trefier_model_path() -> Path:
 )
 async def linter(
     files: List[Path],
-    root: Path = '.',
-    diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information,
-    include: List[Pattern] = None,
+    root: Path = None,
+    diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Hint,
+    include: List[Pattern] = [re.compile(r'.*\.tex')],
     ignore: List[Pattern] = None,
     enable_trefier: bool = False,
     show_progress: bool = False,
@@ -49,7 +49,7 @@ async def linter(
     format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
     tagfile: str = None,
     loglevel: str = 'error',
-    logfile: Path = Path('/tmp/stexls.log'),
+    logfile: Path = Path('stexls.log'),
     verbose: bool = False):
     """ Run the language server in linter mode.
 
@@ -73,16 +73,16 @@ async def linter(
     Returns:
         Awaitable task.
     """
-    root = root.expanduser().resolve().absolute()
-    settings_dir = root / '.stexls'
-    settings_dir.mkdir(exist_ok=True)
-    if not logfile.is_absolute():
-        logfile = settings_dir / logfile
+    root = (root or Path.cwd()).expanduser().resolve().absolute()
+    stexls_home = root / '.stexls'
+    stexls_home.mkdir(exist_ok=True)
+    if not logfile.expanduser().is_absolute():
+        logfile = stexls_home / logfile
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
-    log.debug('Setting linker root to "%s"', root)
-    outdir = settings_dir / 'objects'
+    log.debug('Setting root to "%s"', root)
+    outdir = stexls_home / 'objects'
     outdir.mkdir(exist_ok=True)
     log.debug('Compiler outdir at "%s"', outdir)
     def progressfn(it, title, files):
@@ -100,6 +100,11 @@ async def linter(
     workspace = Workspace(root)
     workspace.ignore = ignore
     workspace.include = include
+
+    if not files:
+        files = list(workspace.files)
+        log.info('No files provided: Linting all %i files in workspace', len(files))
+
     linter = Linter(
         workspace=workspace,
         outdir=outdir,
@@ -111,6 +116,7 @@ async def linter(
         if enable_trefier:
             trefier_model_path = _get_default_trefier_model_path()
             log.debug('Loading trefier from "%s"', trefier_model_path)
+            from stexls.trefier.models.seq2seq import Seq2SeqModel
             trefier_model = Seq2SeqModel.load(trefier_model_path)
             # TODO: Use the trefier model
     except:

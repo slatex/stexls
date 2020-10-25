@@ -112,6 +112,7 @@ async def linter(
             trefier_model_path = _get_default_trefier_model_path()
             log.debug('Loading trefier from "%s"', trefier_model_path)
             trefier_model = Seq2SeqModel.load(trefier_model_path)
+            # TODO: Use the trefier model
     except:
         log.exception('Failed to load trefier model')
 

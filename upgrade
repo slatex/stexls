@@ -1,2 +1,2 @@
 #!/bin/bash
-pip install --upgrade "$0/.."
+pip3 install --upgrade "$0/.."

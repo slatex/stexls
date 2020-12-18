@@ -11,7 +11,7 @@ setuptools.setup(
     description="Language server and other utilities for STex.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://gl.kwarc.info/Marian6814/stexls",
+    url="https://github.com/slatex/stexls",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

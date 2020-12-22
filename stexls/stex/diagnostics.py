@@ -13,6 +13,8 @@ __all__ = ['Diagnostics']
 class DiagnosticCodeName(Enum):
     ' Enum for uniform diagnostic code names. '
     # TODO: Names should be a little bit more consistent
+    ' An unclassified exception occurred '
+    GENERIC_EXCEPTION = 'generic-exception'
     ' The referenced module is not specified and cannot be inferred because the macro (trefi, anything else?) is used outside of any module '
     CANT_INFER_REF_MODULE_OUTSIDE_MODULE = 'cannot-infer-referenced-module-outside-module'
     ' Duplicate symbol '

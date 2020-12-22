@@ -181,6 +181,9 @@ class Symbol:
             raise ValueError('Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
             for prev_child in self.children[child.name]:
+                # TODO: Is the following too broad? In general, we can have symbols of different types with the same name and they should be treated independently.
+                if child.reference_type != prev_child.reference_type:
+                    continue
                 if not alternative:
                     raise DuplicateSymbolDefinedError(child.name, prev_child.location)
                 if not isinstance(prev_child, type(child)):
@@ -199,7 +202,7 @@ class Symbol:
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
-    def lookup(self, identifier: Union[str, List[str]]) -> List[Symbol]:
+    def lookup(self, identifier: Union[str, List[str]], accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
         """ Symbol lookup searches for symbols with a given identifier.
         A "lookup" is search operation that can change the root to a parent.
         After a root has been found, the normal "find" operation will take over and only
@@ -221,13 +224,14 @@ class Symbol:
             for resolved_root in self.children.get(identifier[0], [])
             # Resolve the rest of the identifier
             for symbol in resolved_root.find(identifier[1:])
+            if not accepted_ref_type or symbol.reference_type in accepted_ref_type
         ]
         # If nothing was resolved yet, try to search for the first symbol inside the parents
         if not resolved_symbols:
             # Lookup the identifier in parent tree
             if self.parent and not isinstance(self, (ModuleSymbol, BindingSymbol)):
                 # TODO: Is preventing lookup through modules enough? Or is there a more generic way to describe this lookup behaviour?
-                return self.parent.lookup(identifier)
+                return self.parent.lookup(identifier, accepted_ref_type)
             # This is a failsafe in case the current module is referenced inside itself
             # This is needed because else referencing another module inside the same file might be possible
             # depending on the order of declaration, but not allowed!

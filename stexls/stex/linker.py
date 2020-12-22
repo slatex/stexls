@@ -170,16 +170,21 @@ class Linker:
         # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches
         for ref in linked.references:
             refname = "?".join(ref.name)
-            resolved: List[Symbol] = ref.scope.lookup(ref.name)
+            # TODO: Does using ref.reference_type to specify the expected type restrict too much?
+            resolved: List[Symbol] = ref.scope.lookup(ref.name, ref.reference_type)
             if not resolved:
                 similar_symbols = linked.find_similar_symbols(ref.scope, ref.name, ref.reference_type)
                 linked.diagnostics.undefined_symbol(ref.range, refname, ref.reference_type, similar_symbols)
             for symbol in resolved:
-                if symbol.reference_type not in ref.reference_type:
-                    linked.diagnostics.referenced_symbol_type_check(ref.range, ref.reference_type, symbol.reference_type)
-                else:
-                    # Only add to valid resolved symbols if the reference type matches
-                    ref.resolved_symbols.append(symbol)
+                # TODO: Are these warnings really useful? (currently not matching symbols are filtered out during lookup)
+                # Reasoning: It's okay to have e.g. modules and symbols of the same name so there may exist
+                # symbols in the scope of the same name that just don't match and are not expected to match.
+#                 if symbol.reference_type not in ref.reference_type:
+#                     linked.diagnostics.referenced_symbol_type_check(ref.range, ref.reference_type, symbol.reference_type)
+#                 else:
+#                     # Only add to valid resolved symbols if the reference type matches
+#                     ref.resolved_symbols.append(symbol)
+                ref.resolved_symbols.append(symbol)
                 if isinstance(symbol, DefSymbol):
                     defs: DefSymbol = symbol
                     if defs.noverb:

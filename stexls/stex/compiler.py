@@ -580,11 +580,11 @@ class Compiler:
         # importmodule[]{} with any arg (mhrepos, path, dir) --> SAME DIRECTORY (if the arg is the same directory) but not same file
         if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
             obj.diagnostics.is_current_dir_check(importmodule.mhrepos.range, importmodule.mhrepos.text)
-        if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
-            obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
-        if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
-            # same dir is acceptable if it refers to a different repo
-            if not importmodule.mhrepos or importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
+        # same path/dir is acceptable if it refers to a different repo
+        if not importmodule.mhrepos or importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
+            if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
+                obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
+            if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
                 # ignore this for now
                 # obj.diagnostics.is_current_dir_check(importmodule.dir.range, importmodule.dir.text)
                 pass

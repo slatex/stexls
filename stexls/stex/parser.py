@@ -376,7 +376,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ViewIntermediateParseTree]:
-        match = cls.PATTERN.match(e.env_name)
+        match = cls.PATTERN.fullmatch(e.env_name)
         if not match:
             return None
         _, named = TokenWithLocation.parse_oargs(e.oargs)
@@ -451,7 +451,7 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
 
 
 class ModuleIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'module(\*)?')
+    PATTERN = re.compile(r'(module(\*)?)|(smentry)')
     def __init__(
         self,
         location: Location,
@@ -471,7 +471,7 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[ModuleIntermediateParseTree]:
-        match = cls.PATTERN.match(e.env_name)
+        match = cls.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         _, named = TokenWithLocation.parse_oargs(e.oargs)
@@ -490,7 +490,7 @@ class GStructureIntermediateParseTree(IntermediateParseTree):
 
     @classmethod
     def from_environment(cls, e: Environment) -> Optional[GStructureIntermediateParseTree]:
-        match = cls.PATTERN.match(e.env_name)
+        match = cls.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 2:

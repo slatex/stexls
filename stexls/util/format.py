@@ -1,7 +1,6 @@
 from typing import Iterable
 
-
-__all__ = ('format_enumeration',)
+__all__ = ['format_enumeration']
 
 
 # TODO: Find better place for this function
@@ -22,11 +21,12 @@ def format_enumeration(it: Iterable[str], last: str = 'and', add_quotes: bool = 
     quotesO = '" ' if add_quotes else ''
     quotesC = ' "' if add_quotes else ''
     quotesN = '"' if add_quotes else ''
-    l = list(it)
-    if not l:
+    items = list(it)
+    if not items:
         return ''
-    if len(l) > 1:
-        s = (f'{quotesO}{last}{quotesC}').join((f'{quotesN}, {quotesN}'.join(l[:-1]), l[-1]))
+    if len(items) > 1:
+        s = (f'{quotesO}{last}{quotesC}').join(
+            (f'{quotesN}, {quotesN}'.join(items[:-1]), items[-1]))
     else:
-        s = l[0]
+        s = items[0]
     return quotesN + s + quotesN

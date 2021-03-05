@@ -1,9 +1,11 @@
 # Copied from https://microsoft.github.io/language-server-protocol/specifications/specification-3-14/
 from __future__ import annotations
-from typing import Optional, Union, Any, List, NewType, Generic, T, Tuple, Iterable
-from pathlib import Path
+
 import urllib
 from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 
 class SerializableEnum(Enum):
     def to_json(self):
@@ -25,15 +27,15 @@ class Undefined:
     @staticmethod
     def from_json(json): return undefined
 
+
 undefined = Undefined()
 
-DocumentUri = NewType('DocumentUri', str)
-
-ProgressToken = NewType('ProgressToken', Union[int, str])
+DocumentUri = str
 
 
 class Position:
     ' Representation of a zero indexed line and character inside a file. '''
+
     def __init__(self, line: int, character: int):
         ''' Initializes the position with a line and character offset.
         Parameters:
@@ -43,7 +45,7 @@ class Position:
         self.line = max(0, line)
         self.character = max(0, character)
 
-    def __eq__(self, other: Position):
+    def __eq__(self, other) -> bool:
         return isinstance(other, Position) and self.line == other.line and self.character == other.character
 
     def __hash__(self):
@@ -152,7 +154,7 @@ class Position:
         return f'[Position ({self.line} {self.character})]'
 
     def to_json(self) -> dict:
-        return { 'line': self.line, 'character': self.character }
+        return {'line': self.line, 'character': self.character}
 
     @staticmethod
     def from_json(json: dict) -> Position:
@@ -161,6 +163,7 @@ class Position:
 
 class Range:
     ' Represents a range given by a start and end position. '
+
     def __init__(self, start: Position, end: Position = None):
         ''' Initializes the range.
         Parameters:
@@ -171,7 +174,7 @@ class Range:
         self.start = start
         self.end = end or start
 
-    def __eq__(self, other: Range):
+    def __eq__(self, other):
         return isinstance(other, Range) and self.start == other.start and self.end == other.end
 
     def __hash__(self):
@@ -179,14 +182,15 @@ class Range:
 
     @property
     def length(self) -> Tuple[int, int]:
-        ' Returns a tuple with 1st begin "length" of lines and 2nd being "length" of characters. Allows for easy comparision using builtin operators. '
+        ''' Returns a tuple with 1st begin "length" of lines and 2nd being "length" of characters.
+        Allows for easy comparision using builtin operators. '''
         return self.end.line - self.start.line, self.end.character - self.start.character
 
     def is_empty(self) -> bool:
         ''' Checks wether the range is empty or not.
             The range is empty if start and end are equal.
         '''
-        return self.start.equals(self.end)
+        return self.start.is_equal(self.end)
 
     def is_single_line(self) -> bool:
         ' Returns true if the start and end positions are on the same line. '
@@ -221,9 +225,7 @@ class Range:
         True
         '''
         if isinstance(range, Position):
-            range: Position
             return self.start.is_before_or_equal(range) and self.end.is_after_or_equal(range)
-        range: Range
         return self.start.is_before_or_equal(range.start) and self.end.is_after_or_equal(range.end)
 
     def union(self, other: Union[Range, Position]) -> Range:
@@ -237,8 +239,10 @@ class Range:
             New range representing the union of self and other.
             The union is given by the smaller start and larger end position of both.
         '''
+        if isinstance(other, Position):
+            other = Range(other)
         return Range(
-            self.start.copy() if self.start.qual(other.start)
+            self.start.copy() if self.start.is_equal(other.start)
             else other.start.copy(),
             self.end.copy() if self.end.is_after_or_equal(other.end)
             else other.end.copy())
@@ -333,8 +337,8 @@ class Range:
             accmin: Position = default
             accmax: Position = default
         else:
-            accmin: Position = default.start
-            accmax: Position = default.end
+            accmin = default.start
+            accmax = default.end
         for x in rangesOrPositions[1:]:
             assert isinstance(x, (Position, Range)), "Invalid type in array."
             if isinstance(x, Position):
@@ -353,7 +357,7 @@ class Range:
         return f'[Range ({self.start.line} {self.start.character}) ({self.end.line} {self.end.character})]'
 
     def to_json(self) -> dict:
-        return { 'start': self.start.to_json(), 'end': self.end.to_json() }
+        return {'start': self.start.to_json(), 'end': self.end.to_json()}
 
     @staticmethod
     def from_json(json: dict) -> Range:
@@ -368,19 +372,20 @@ class Location:
         if isinstance(positionOrRange, Position):
             self.range = Range(positionOrRange, positionOrRange)
         else:
-            assert isinstance(positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
+            assert isinstance(
+                positionOrRange, Range), "Invalid Location initialization: positionOrRange must be of type Position or Range."
             self.range = positionOrRange
 
     def copy(self) -> Location:
         return Location(self.uri, self.range.copy())
 
-    def __eq__(self, other: Location):
+    def __eq__(self, other):
         return isinstance(other, Location) and self.uri == other.uri and self.range == other.range
 
     def __hash__(self):
         return hash(hash(self.uri) ^ hash(self.range))
 
-    def read(self, lines: Optional[List[str]] = None) -> str:
+    def read(self, lines: Optional[List[str]] = None) -> Optional[str]:
         ''' Opens the file and returns the text at the range of the location.
 
         Parameters:
@@ -426,8 +431,9 @@ class Location:
         path = self.path
         if relative:
             path = path.relative_to(relative_to or Path.cwd())
-        path = path.as_posix().replace('\\ ', ' ').replace(' ', '\\ ') # two times to prevent errors with already escaped paths
-        return f'{path}:{range.start.line}:{range.start.character}'
+        # two times to prevent errors with already escaped paths
+        posix = path.as_posix().replace('\\ ', ' ').replace(' ', '\\ ')
+        return f'{posix}:{range.start.line}:{range.start.character}'
 
     def replace(self, uri: DocumentUri = None, positionOrRange: Union[Position, Range] = None):
         ''' Creates a copy of this location object and replaces uri and/or range properties if given.
@@ -447,7 +453,7 @@ class Location:
         return f'[Location uri="{self.uri}" range={self.range}]'
 
     def to_json(self) -> dict:
-        return { 'uri': str(self.uri), 'range': self.range.to_json() }
+        return {'uri': str(self.uri), 'range': self.range.to_json()}
 
     @staticmethod
     def from_json(json: dict) -> Location:
@@ -456,30 +462,37 @@ class Location:
 
 class LocationLink:
     def __init__(
-        self,
-        targetUri: DocumentUri,
-        targetRange: Range,
-        targetSelectionRange: Range,
-        originSelectionRange: Optional[Range] = undefined):
+            self,
+            targetUri: DocumentUri,
+            targetRange: Range,
+            targetSelectionRange: Range,
+            originSelectionRange: Union[Range, Undefined] = undefined):
         self.targetUri = targetUri
         self.targetRange = targetRange
         self.targetSelectionRange = targetSelectionRange
-        if originSelectionRange:
-            self.originSelectionRange = originSelectionRange
+        self.originSelectionRange = originSelectionRange
 
     def to_json(self) -> dict:
-        json = { 'targetUri': str(self.targetUri), 'targetRange': self.targetRange.to_json(), 'targetSelectionRange': self.targetRange.to_json() }
-        if getattr(self, 'originSelectionRange', None):
+        json: Dict[str, Any] = {
+            'targetUri': str(self.targetUri),
+            'targetRange': self.targetRange.to_json(),
+            'targetSelectionRange': self.targetRange.to_json()
+        }
+        if not isinstance(self.originSelectionRange, Undefined):
             json['originSelectionRange'] = self.originSelectionRange.to_json()
         return json
 
     @staticmethod
     def from_json(json: dict) -> LocationLink:
+        origin_raw = json.get('originSelectionRange', undefined)
+        origin: Union[Undefined, Range] = undefined
+        if isinstance(origin_raw, dict):
+            origin = Range.from_json(origin_raw)
         return LocationLink(
             targetUri=DocumentUri(json['targetUri']),
             targetRange=Range.from_json(json['targetRange']),
             targetSelectionRange=Range.from_json(json['targetSelectionRange']),
-            originSelectionRange=undefined if 'originSelectionRange' not in json else Range.from_json(json['originSelectionRange']))
+            originSelectionRange=origin)
 
 
 class TextDocumentIdentifier:
@@ -493,7 +506,7 @@ class TextDocumentIdentifier:
         return Path(p.path)
 
     def to_json(self) -> dict:
-        return { 'uri': str(self.uri) }
+        return {'uri': str(self.uri)}
 
     @staticmethod
     def from_json(json: dict) -> TextDocumentIdentifier:
@@ -524,14 +537,14 @@ class DiagnosticSeverity(SerializableEnum):
 
 class DiagnosticRelatedInformation:
     def __init__(
-        self,
-        location: Location,
-        message: str):
+            self,
+            location: Location,
+            message: str):
         self.location = location
         self.message = message
 
     def to_json(self) -> dict:
-        return { 'location': self.location.to_json(), 'message': self.message }
+        return {'location': self.location.to_json(), 'message': self.message}
 
 
 class DiagnosticTag(SerializableEnum):
@@ -541,37 +554,37 @@ class DiagnosticTag(SerializableEnum):
 
 class Diagnostic:
     def __init__(
-        self,
-        range: Range,
-        message: str,
-        severity: DiagnosticSeverity = undefined,
-        code: Union[int, str] = undefined,
-        source: str = undefined,
-        tags: List[DiagnosticTag] = undefined,
-        relatedInformation: List[DiagnosticRelatedInformation] = undefined):
+            self,
+            range: Range,
+            message: str,
+            severity: DiagnosticSeverity = DiagnosticSeverity.Error,
+            code: Union[int, str, Undefined] = undefined,
+            source: Union[str, Undefined] = undefined,
+            tags: Optional[List[DiagnosticTag]] = None,
+            relatedInformation: Optional[List[DiagnosticRelatedInformation]] = None):
         self.range = range
         self.message = message
-        if severity is not undefined:
-            self.severity = severity
-        if code is not undefined:
-            self.code = code
-        if source is not undefined:
-            self.source = source
-        if tags is not undefined:
-            self.tags = tags
-        if relatedInformation is not undefined:
-            self.relatedInformation = relatedInformation
+        self.severity = severity
+        self.code = code
+        self.source = source
+        self.tags = tags or []
+        self.relatedInformation = relatedInformation or []
 
     def to_json(self) -> dict:
-        json = {
+        json: Dict[str, Any] = {
             'range': self.range.to_json(),
             'message': self.message,
-            'severity': self.severity.to_json(),
         }
-        if getattr(self, 'tags', undefined) is not undefined:
-            json['tags'] = [ tag.to_json() for tag in self.tags ]
-        if getattr(self, 'relatedInformation', undefined) is not undefined:
-            json['relatedInformation'] = [ info.to_json() for info in self.relatedInformation ]
+        json['severity'] = self.severity.to_json()
+        if isinstance(self.code, (int, str)):
+            json['code'] = self.code
+        if isinstance(self.source, str):
+            json['source'] = self.source
+        if self.tags:
+            json['tags'] = [tag.to_json() for tag in self.tags]
+        if self.relatedInformation:
+            json['relatedInformation'] = [
+                info.to_json() for info in self.relatedInformation]
         return json
 
 
@@ -587,7 +600,7 @@ class MessageActionItem:
         self.title = title
 
     def to_json(self) -> dict:
-        return { 'title': self.title }
+        return {'title': self.title}
 
     @staticmethod
     def from_json(json: dict) -> MessageActionItem:
@@ -611,7 +624,7 @@ class TextDocumentItem:
         return Path(p.path)
 
     def to_json(self) -> dict:
-        return { 'uri': self.uri, 'languageId': self.languageId, 'version': self.version, 'text': self.text }
+        return {'uri': self.uri, 'languageId': self.languageId, 'version': self.version, 'text': self.text}
 
     @staticmethod
     def from_json(json: dict) -> TextDocumentItem:
@@ -622,7 +635,6 @@ class TextDocumentItem:
             text=str(json['text']))
 
 
-
 class CompletionTriggerKind(SerializableEnum):
     Invoked = 1
     TriggerCharacter = 2
@@ -631,17 +643,17 @@ class CompletionTriggerKind(SerializableEnum):
 
 class CompletionContext:
     def __init__(
-        self,
-        triggerKind: CompletionTriggerKind,
-        triggerCharacter: str = undefined):
+            self,
+            triggerKind: CompletionTriggerKind,
+            triggerCharacter: Union[str, Undefined] = undefined):
         self.triggerKind = triggerKind
-        if triggerCharacter is not undefined:
-            self.triggerCharacter = triggerCharacter
+        self.triggerCharacter = triggerCharacter
 
     def to_json(self) -> dict:
-        json = { 'triggerKind': self.triggerKind.to_json() }
-        if getattr(self, 'triggerCharacter', undefined) is not undefined:
+        json: Dict[str, Any] = {'triggerKind': self.triggerKind.to_json()}
+        if isinstance(self.triggerCharacter, str):
             json['triggerCharacter'] = self.triggerCharacter
+        return json
 
     @staticmethod
     def from_json(json) -> CompletionContext:
@@ -665,7 +677,7 @@ class TextEdit:
         self.newText = newText
 
     def to_json(self) -> dict:
-        return { 'range': self.range.to_json(), 'newText': self.newText }
+        return {'range': self.range.to_json(), 'newText': self.newText}
 
     @staticmethod
     def from_json(dict) -> TextEdit:
@@ -673,115 +685,100 @@ class TextEdit:
 
 
 class CompletionItemKind(SerializableEnum):
-	Text = 1
-	Method = 2
-	Function = 3
-	Constructor = 4
-	Field = 5
-	Variable = 6
-	Class = 7
-	Interface = 8
-	Module = 9
-	Property = 10
-	Unit = 11
-	Value = 12
-	Enum = 13
-	Keyword = 14
-	Snippet = 15
-	Color = 16
-	File = 17
-	Reference = 18
-	Folder = 19
-	EnumMember = 20
-	Constant = 21
-	Struct = 22
-	Event = 23
-	Operator = 24
-	TypeParameter = 25
+    Text = 1
+    Method = 2
+    Function = 3
+    Constructor = 4
+    Field = 5
+    Variable = 6
+    Class = 7
+    Interface = 8
+    Module = 9
+    Property = 10
+    Unit = 11
+    Value = 12
+    Enum = 13
+    Keyword = 14
+    Snippet = 15
+    Color = 16
+    File = 17
+    Reference = 18
+    Folder = 19
+    EnumMember = 20
+    Constant = 21
+    Struct = 22
+    Event = 23
+    Operator = 24
+    TypeParameter = 25
 
 
 class CompletionItem:
     def __init__(
-        self,
-        label: str,
-        kind: CompletionItemKind = undefined,
-        tags: List[CompletionItemTag] = undefined,
-        detail: str = undefined,
-        documentation: str = undefined,
-        deprecated: bool = undefined,
-        preselect: bool = undefined,
-        sortText: bool = undefined,
-        filterText: str = undefined,
-        insertText: str = undefined,
-        insertTextFormat: InsertTextFormat = undefined,
-        textEdit: TextEdit = undefined,
-        additionalTextEdtits: List[TextEdit] = undefined,
-        commitCharacters: List[str] = undefined,
-        command = undefined,
-        data = undefined):
+            self,
+            label: str,
+            kind: Union[Undefined, CompletionItemKind] = undefined,
+            tags: Union[Undefined, List[CompletionItemTag]] = undefined,
+            detail: Union[Undefined, str] = undefined,
+            documentation: Union[Undefined, str] = undefined,
+            deprecated: Union[Undefined, bool] = undefined,
+            preselect: Union[Undefined, bool] = undefined,
+            sortText: Union[Undefined, bool] = undefined,
+            filterText: Union[Undefined, str] = undefined,
+            insertText: Union[Undefined, str] = undefined,
+            insertTextFormat: Union[Undefined, InsertTextFormat] = undefined,
+            textEdit: Union[Undefined, TextEdit] = undefined,
+            additionalTextEdtits: Union[Undefined, List[TextEdit]] = undefined,
+            commitCharacters: Union[Undefined, List[str]] = undefined,
+            command: Any = undefined,
+            data: Any = undefined):
         self.label = label
-        if kind is not undefined:
-            self.kind = kind
-        if tags is not undefined:
-            self.tags = tags
-        if detail is not undefined:
-            self.detail = detail
-        if documentation is not undefined:
-            self.documentation = documentation
-        if deprecated is not undefined:
-            self.deprecated = deprecated
-        if preselect is not undefined:
-            self.preselect = preselect
-        if sortText is not undefined:
-            self.sortText = sortText
-        if filterText is not undefined:
-            self.filterText = filterText
-        if insertText is not undefined:
-            self.insertText = insertText
-        if insertTextFormat is not undefined:
-            self.insertTextFormat = insertTextFormat
-        if textEdit is not undefined:
-            self.textEdit = textEdit
-        if additionalTextEdtits is not undefined:
-            self.additionalTextEdtits = additionalTextEdtits
-        if commitCharacters is not undefined:
-            self.commitCharacters = commitCharacters
-        if command is not undefined:
-            self.command  = command
-        if data is not undefined:
-            self.data  = data
+        self.kind = kind
+        self.tags = tags
+        self.detail = detail
+        self.documentation = documentation
+        self.deprecated = deprecated
+        self.preselect = preselect
+        self.sortText = sortText
+        self.filterText = filterText
+        self.insertText = insertText
+        self.insertTextFormat = insertTextFormat
+        self.textEdit = textEdit
+        self.additionalTextEdtits = additionalTextEdtits
+        self.commitCharacters = commitCharacters
+        self.command = command
+        self.data = data
 
     def to_json(self) -> dict:
-        json = { 'label': self.label }
-        if self.kind is not undefined:
+        json: Dict[str, Any] = {'label': self.label}
+        if not isinstance(self.kind, Undefined):
             json['kind'] = self.kind
-        if self.tags is not undefined:
+        if not isinstance(self.tags, Undefined):
             json['tags'] = self.tags
-        if self.detail is not undefined:
+        if not isinstance(self.detail, Undefined):
             json['detail'] = self.detail
-        if self.documentation is not undefined:
+        if not isinstance(self.documentation, Undefined):
             json['documentation'] = self.documentation
-        if self.deprecated is not undefined:
+        if not isinstance(self.deprecated, Undefined):
             json['deprecated'] = self.deprecated
-        if self.preselect is not undefined:
+        if not isinstance(self.preselect, Undefined):
             json['preselect'] = self.preselect
-        if self.sortText is not undefined:
+        if not isinstance(self.sortText, Undefined):
             json['sortText'] = self.sortText
-        if self.filterText is not undefined:
+        if not isinstance(self.filterText, Undefined):
             json['filterText'] = self.filterText
-        if self.insertText is not undefined:
+        if not isinstance(self.insertText, Undefined):
             json['insertText'] = self.insertText
-        if self.insertTextFormat is not undefined:
+        if not isinstance(self.insertTextFormat, Undefined):
             json['insertTextFormat'] = self.insertTextFormat
-        if self.textEdit is not undefined:
+        if not isinstance(self.textEdit, Undefined):
             json['textEdit'] = self.textEdit
-        if self.additionalTextEdtits is not undefined:
+        if not isinstance(self.additionalTextEdtits, Undefined):
             json['additionalTextEdtits'] = self.additionalTextEdtits
-        if self.commitCharacters is not undefined:
+        if not isinstance(self.commitCharacters, Undefined):
             json['commitCharacters'] = self.commitCharacters
-        if self.command is not undefined:
+        if not isinstance(self.command, Undefined):
             json['command'] = self.command
-        if self.data is not undefined:
+        if not isinstance(self.data, Undefined):
             json['data'] = self.data
         return json
 
@@ -801,7 +798,7 @@ class CompletionList:
     def to_json(self) -> dict:
         return {
             'isComplete': self.isComplete,
-            'items': [ item.to_json() for item in self.items ]}
+            'items': [item.to_json() for item in self.items]}
 
     @staticmethod
     def from_json(json):
@@ -810,30 +807,27 @@ class CompletionList:
 
 class WorkDoneProgressBegin:
     def __init__(
-        self,
-        title: str,
-        percentage: int = undefined,
-        message: str = undefined,
-        cancellable: bool = undefined):
+            self,
+            title: str,
+            percentage: Union[int, Undefined] = undefined,
+            message: Union[str, Undefined] = undefined,
+            cancellable: Union[bool, Undefined] = undefined):
         self.kind = 'begin'
         self.title = title
-        if percentage is not undefined:
-            self.percentage = percentage
-        if message is not undefined:
-            self.message = message
-        if cancellable is not undefined:
-            self.cancellable = cancellable
+        self.percentage = percentage
+        self.message = message
+        self.cancellable = cancellable
 
     def to_json(self) -> dict:
-        json = {
+        json: Dict[str, Any] = {
             'kind': self.kind,
             'title': self.title,
         }
-        if getattr(self, 'percentage', undefined) is not undefined:
+        if isinstance(self.percentage, int):
             json['percentage'] = self.percentage
-        if getattr(self, 'message', undefined) is not undefined:
+        if isinstance(self.message, str):
             json['message'] = self.message
-        if getattr(self, 'cancellable', undefined) is not undefined:
+        if isinstance(self.cancellable, bool):
             json['cancellable'] = self.cancellable
         return json
 
@@ -848,27 +842,24 @@ class WorkDoneProgressBegin:
 
 class WorkDoneProgressReport:
     def __init__(
-        self,
-        percentage: int = undefined,
-        message: str = undefined,
-        cancellable: bool = undefined):
+            self,
+            percentage: Union[int, Undefined] = undefined,
+            message: Union[str, Undefined] = undefined,
+            cancellable: Union[bool, Undefined] = undefined):
         self.kind = 'report'
-        if percentage is not undefined:
-            self.percentage = percentage
-        if message is not undefined:
-            self.message = message
-        if cancellable is not undefined:
-            self.cancellable = cancellable
+        self.percentage = percentage
+        self.message = message
+        self.cancellable = cancellable
 
     def __repr__(self): return str(self.to_json())
 
     def to_json(self) -> dict:
-        json = { 'kind': self.kind }
-        if getattr(self, 'percentage', undefined) is not undefined:
+        json: Dict[str, Any] = {'kind': self.kind}
+        if isinstance(self.percentage, int):
             json['percentage'] = self.percentage
-        if getattr(self, 'message', undefined) is not undefined:
+        if isinstance(self.message, str):
             json['message'] = self.message
-        if getattr(self, 'cancellable', undefined) is not undefined:
+        if isinstance(self.cancellable, bool):
             json['cancellable'] = self.cancellable
         return json
 
@@ -882,17 +873,16 @@ class WorkDoneProgressReport:
 
 class WorkDoneProgressEnd:
     def __init__(
-        self,
-        message: str = undefined):
+            self,
+            message: Union[str, Undefined] = undefined):
         self.kind = 'end'
-        if message is not undefined:
-            self.message = message
+        self.message = message
 
     def to_json(self) -> dict:
-        json = {
+        json: Dict[str, Any] = {
             'kind': self.kind,
         }
-        if getattr(self, 'message', undefined) is not undefined:
+        if not isinstance(self.message, Undefined):
             json['message'] = self.message
         return json
 
@@ -903,30 +893,38 @@ class WorkDoneProgressEnd:
 
 
 class TextDocumentContentChangeEvent:
-    def __init__(self, text: str, range: Range = undefined, rangeLength: int = undefined) -> None:
+    def __init__(
+            self,
+            text: str,
+            range: Union[Range, Undefined] = undefined,
+            rangeLength: Union[int, Undefined] = undefined) -> None:
         self.text = text
         self.range = range
         self.rangeLength = rangeLength
 
     def __repr__(self) -> str:
-        return f'[TextDocumentContentChangeEvent #chars={len(self.text)} range={self.range} rangeLength={self.rangeLength}]'
+        num_chars = f'#chars={len(self.text)}'
+        range_value = f'range={self.range}'
+        range_length = f'rangeLength={self.rangeLength}'
+        return f'[TextDocumentContentChangeEvent {num_chars} {range_value} {range_length}]'
 
     @staticmethod
-    def from_json(json) -> TextDocumentContentChangeEvent:
+    def from_json(json: dict) -> TextDocumentContentChangeEvent:
         text = json.get('text', undefined)
-        range = undefined
-        if 'range' in json:
-            range = Range.from_json(json['range'])
-        return TextDocumentContentChangeEvent(text, range, json.get('rangeLength', undefined))
+        range_value: Union[Undefined, Range] = undefined
+        range_dict: Dict = json.get('range', undefined)
+        if isinstance(range_dict, dict):
+            range_value = Range.from_json(range_dict)
+        return TextDocumentContentChangeEvent(text, range_value, json.get('rangeLength', undefined))
 
 
 class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
-    def __init__(self, uri: DocumentUri, version: Optional[int]):
+    def __init__(self, uri: DocumentUri, version: int):
         super().__init__(uri)
         self.version = version
 
     def to_json(self) -> dict:
-        return { 'uri': self.uri, 'version': self.version }
+        return {'uri': self.uri, 'version': self.version}
 
     @staticmethod
     def from_json(json) -> VersionedTextDocumentIdentifier:
@@ -934,36 +932,36 @@ class VersionedTextDocumentIdentifier(TextDocumentIdentifier):
 
 
 class SymbolKind(SerializableEnum):
-    Array=17
-    Boolean=16
-    Class=4
-    Constant=13
-    Constructor=8
-    Enum=9
-    EnumMember=21
-    Event=23
-    Field=7
-    File=0
-    Function=11
-    Interface=10
-    Key=19
-    Method=5
-    Module=1
-    Namespace=2
-    Null=20
-    Number=15
-    Object=18
-    Operator=24
-    Package=3
-    Property=6
-    String=14
-    Struct=22
-    TypeParameter=25
-    Variable=12
+    Array = 17
+    Boolean = 16
+    Class = 4
+    Constant = 13
+    Constructor = 8
+    Enum = 9
+    EnumMember = 21
+    Event = 23
+    Field = 7
+    File = 0
+    Function = 11
+    Interface = 10
+    Key = 19
+    Method = 5
+    Module = 1
+    Namespace = 2
+    Null = 20
+    Number = 15
+    Object = 18
+    Operator = 24
+    Package = 3
+    Property = 6
+    String = 14
+    Struct = 22
+    TypeParameter = 25
+    Variable = 12
 
 
 class SymbolTag(SerializableEnum):
-    Deprecated=1
+    Deprecated = 1
 
 
 class DocumentSymbol:
@@ -983,10 +981,10 @@ class DocumentSymbol:
             'kind': self.kind.to_json(),
             'range': self.range.to_json(),
             'selectionRange': self.selectionRange.to_json(),
-            'children': [ child.to_json() for child in self.children ]
+            'children': [child.to_json() for child in self.children]
         }
         if self.tags:
-            j['tags'] = [ tag.to_json() for tag in self.tags ]
+            j['tags'] = [tag.to_json() for tag in self.tags]
         return j
 
     def __repr__(self):
@@ -994,7 +992,7 @@ class DocumentSymbol:
 
 
 class SymbolInformation:
-    def __init__(self, name: str, kind: SymbolKind, location: Location, containerName: str = undefined):
+    def __init__(self, name: str, kind: SymbolKind, location: Location, containerName: Union[str, Undefined] = undefined):
         self.name = name
         self.kind = kind
         self.location = location

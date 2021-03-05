@@ -10,6 +10,7 @@ from stexls.stex.references import ReferenceType
 
 __all__ = ['Diagnostics']
 
+
 class DiagnosticCodeName(Enum):
     ' Enum for uniform diagnostic code names. '
     # TODO: Names should be a little bit more consistent
@@ -54,11 +55,12 @@ class DiagnosticCodeName(Enum):
     ' Used when referencing a symdef tagged with noverb '
     REFERENCE_TO_NOVERB_CHECK = 'referenced-noverb-symbol'
 
+
 class Diagnostics:
     def __init__(self) -> None:
         self.diagnostics: List[Diagnostic] = []
 
-    def copy(self) -> Diagnostic:
+    def copy(self) -> 'Diagnostics':
         ' Creates a copy of this object. '
         cpy = Diagnostics()
         cpy.diagnostics.extend(self.diagnostics)
@@ -87,19 +89,22 @@ class Diagnostics:
         # TODO: Then we can create a diagnostic with the combined range of "prime" and "number", with related information
         # TODO: to the location of where \symii{prime}{number} is defined. Also a quick fix that does the follwoing edits
         # TODO: is created: "This is a prime number" -> "This is a \trefii[primenumber]{prime}{number}"
-        diagnostic = Diagnostic(range, message=message, severity=severity, code=code)
+        diagnostic = Diagnostic(range, message=message,
+                                severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def cant_infer_ref_module_outside_module(self, range: Range):
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.CANT_INFER_REF_MODULE_OUTSIDE_MODULE.value
         message = f'Cannot infer what module is referenced outside of any module'
-        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code)
+        diagnostic = Diagnostic(
+            range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def module_not_found_semantic_location_check(self, range: Range, env_name: str):
         ' Used when an environment is used at locations where a module can\'t be deduced. E.g. outside of modsig or module environments. '
-        self.semantic_location_check(range, env_name, 'Parent module info not found')
+        self.semantic_location_check(
+            range, env_name, 'Parent module info not found')
 
     def parent_must_be_root_semantic_location_check(self, range: Range, env_name: str):
         ' Used when the parent of an environment is something different than root. '
@@ -113,7 +118,8 @@ class Diagnostics:
             message = f'Invalid location for {env_name}'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.SEMANTIC_LOCATION_CHECK.value
-        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code)
+        diagnostic = Diagnostic(
+            range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def is_current_dir_check(self, range: Range, dir: str):
@@ -144,8 +150,10 @@ class Diagnostics:
         '''
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.INVALID_REDEFINITION.value
-        related = DiagnosticRelatedInformation(other_location, 'Previous definition')
-        diagnostic = Diagnostic(range, message=info, severity=severity, code=code, relatedInformation=[related])
+        related = DiagnosticRelatedInformation(
+            other_location, 'Previous definition')
+        diagnostic = Diagnostic(
+            range, message=info, severity=severity, code=code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
     def mtref_deprecated_check(self, range: Range):
@@ -153,7 +161,8 @@ class Diagnostics:
         message = '"mtref" environments are deprecated'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.MTREF_DEPRECATION_CHECK.value
-        diagnostic = Diagnostic(range, message, severity=severity, code=code, tags=[DiagnosticTag.Deprecated])
+        diagnostic = Diagnostic(range, message, severity=severity, code=code, tags=[
+                                DiagnosticTag.Deprecated])
         self.diagnostics.append(diagnostic)
 
     def mtref_questionmark_syntax_check(self, range: Range):
@@ -169,7 +178,8 @@ class Diagnostics:
         message = f'Expected the this file name "{expected_name}", but found "{actual_name}"'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.MODULE_FILE_NAME_MISMATCH.value
-        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code)
+        diagnostic = Diagnostic(
+            range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
     def duplicate_symbol_definition(self, range: Range, symbol_name: str, previous_def: Location):
@@ -177,8 +187,10 @@ class Diagnostics:
         message = f'Duplicate definition of symbol: "{symbol_name}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.DUPLICATE_SYMBOL.value
-        related = DiagnosticRelatedInformation(previous_def, message=f'Previous definition of "{symbol_name}"')
-        diagnostic = Diagnostic(range=range, message=message, severity=severity, code=code, relatedInformation=[related])
+        related = DiagnosticRelatedInformation(
+            previous_def, message=f'Previous definition of "{symbol_name}"')
+        diagnostic = Diagnostic(range=range, message=message,
+                                severity=severity, code=code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
     def parser_exception(self, range: Range, exception: Exception):
@@ -192,7 +204,8 @@ class Diagnostics:
     def exception(self, range: Range, exception: Exception, severity: DiagnosticSeverity = None):
         ' Generic exception occured. '
         message = str(exception)
-        severity = severity or DiagnosticSeverity.from_string(type(exception).__name__)
+        severity = severity or DiagnosticSeverity.from_string(
+            type(exception).__name__)
         code = DiagnosticCodeName.GENERIC_EXCEPTION.value
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
@@ -212,7 +225,8 @@ class Diagnostics:
         else:
             message = f'Undefined symbol "{symbol_name}"'
         if similar_symbols:
-            message += ': Did you mean ' + format_enumeration(similar_symbols, last='or') + '?'
+            message += ': Did you mean ' + \
+                format_enumeration(similar_symbols, last='or') + '?'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNDEFINED_SYMBOL.value
         related_information = [
@@ -220,7 +234,8 @@ class Diagnostics:
             for name, locations in similar_symbols.items()
             for location in locations
         ]
-        diagnostic = Diagnostic(range, message, severity, code, relatedInformation=related_information)
+        diagnostic = Diagnostic(range, message, severity,
+                                code, relatedInformation=related_information)
         self.diagnostics.append(diagnostic)
 
     def undefined_module_not_exported_by_file(self, range: Range, module_name: str, file: Path):
@@ -244,8 +259,10 @@ class Diagnostics:
         message = f'Cyclic dependency create at import of "{module_name}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.CYCLIC_DEPENDENCY_CHECK.value
-        related = DiagnosticRelatedInformation(location_of_cyclic_import, "Imported at")
-        diagnostic = Diagnostic(range, message, severity, code, relatedInformation=[related])
+        related = DiagnosticRelatedInformation(
+            location_of_cyclic_import, "Imported at")
+        diagnostic = Diagnostic(range, message, severity,
+                                code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
     def file_not_found(self, range: Range, file: Path):
@@ -274,8 +291,10 @@ class Diagnostics:
         code = DiagnosticCodeName.REFERENCE_TO_NOVERB_CHECK.value
         related = []
         if related_symbol_location:
-            related.append(DiagnosticRelatedInformation(related_symbol_location, 'Referenced symbol'))
-        diagnostic = Diagnostic(range, message, severity, code, relatedInformation=related)
+            related.append(DiagnosticRelatedInformation(
+                related_symbol_location, 'Referenced symbol'))
+        diagnostic = Diagnostic(range, message, severity,
+                                code, relatedInformation=related)
         self.diagnostics.append(diagnostic)
 
     def redundant_import_check(self, range: Range, module_name: str, previously_at: Location = None):
@@ -284,9 +303,11 @@ class Diagnostics:
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.REDUNDANT_IMPORT_STATEMENT_CHECK.value
         if previously_at:
-            related = [DiagnosticRelatedInformation(previously_at, 'Previously located here')]
+            related = [DiagnosticRelatedInformation(
+                previously_at, 'Previously located here')]
         else:
             related = []
         tag = DiagnosticTag.Unnecessary
-        diagnostic = Diagnostic(range, message, severity, code, tags=[tag], relatedInformation=related)
+        diagnostic = Diagnostic(range, message, severity, code, tags=[
+                                tag], relatedInformation=related)
         self.diagnostics.append(diagnostic)

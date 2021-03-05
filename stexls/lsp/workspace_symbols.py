@@ -1,7 +1,8 @@
-from typing import List, Dict
 from pathlib import Path
-from stexls.stex.symbols import *
+from typing import Dict, List
+
 from stexls.stex.compiler import StexObject
+
 
 class WorkspaceSymbols:
     """ This class is a accumulator for all symbols in unlinked StexObjects added to the workspace.
@@ -16,6 +17,7 @@ class WorkspaceSymbols:
 
         All qualified symbol names can be accessed using @WorkspaceSymbols.symbols.
     """
+
     def __init__(self, resolution_char: str = '?') -> None:
         self.resolution_char = resolution_char
         # symbol providers is a dict from path to the object because StexObject is not a ValueType.
@@ -23,7 +25,7 @@ class WorkspaceSymbols:
         # The value needs to be a list, because a symbol can be provided multiple times by a single object
         self.symbols: Dict[str, List[StexObject]] = dict()
 
-    def add(self, obj: StexObject) -> bool:
+    def add(self, obj: StexObject):
         """ Adds @obj as a provider of symbol names.
         The @obj should be unlinked and only contain it's own symbols.
 
@@ -49,5 +51,6 @@ class WorkspaceSymbols:
                 del self.symbols[qualified_string]
         del self.symbol_providers[file]
         return True
+
 
 __all__ = ['WorkspaceSymbols']

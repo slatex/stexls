@@ -1,14 +1,15 @@
 from __future__ import annotations
-from typing import Callable, Union, List, Optional, Any, Awaitable
-import re
-import asyncio
-import logging
-import json
-import inspect
 
-from .core import MessageObject, NotificationObject, RequestObject, ResponseObject, ErrorCodes, ErrorObject
-from .streams import JsonStream
+import asyncio
+import inspect
+import json
+import logging
+from typing import Any, Awaitable, Callable, List, Optional, Union, Dict
+
+from .core import (ErrorCodes, ErrorObject, NotificationObject, RequestObject,
+                   ResponseObject)
 from .parser import MessageParser
+from .streams import JsonStream
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ __all__ = ['JsonRpcConnection']
 
 class JsonRpcConnection:
     ' This is a implementation for the json-rpc-protocol. '
+
     def __init__(self, stream: JsonStream):
         """ Initializes the connection with a stream which can read and write json data.
 
@@ -24,8 +26,8 @@ class JsonRpcConnection:
             stream: IO Stream which handles json serialization and protocol header stuff.
         """
         self._stream = stream
-        self._methods = {}
-        self._requests = {}
+        self._methods: Dict[str, Callable] = {}
+        self._requests: Dict[Union[str, int], asyncio.Future] = {}
 
     def on(self, method: str, callback: Callable):
         """ Registers a method as a request and notification handler.
@@ -35,7 +37,8 @@ class JsonRpcConnection:
             callback (Callable): The function body that will be called.
         """
         if method in self._methods:
-            raise ValueError(f'Method "{method}" is already registered with this protocol.')
+            raise ValueError(
+                f'Method "{method}" is already registered with this protocol.')
         self._methods[method] = callback
 
     def send(self, message: Union[NotificationObject, RequestObject]) -> Optional[Awaitable[Any]]:
@@ -53,6 +56,7 @@ class JsonRpcConnection:
             raise ValueError('The user should not send response objects.')
         elif isinstance(message, RequestObject):
             return self.send_request(message)
+        return None
 
     def send_notification(self, message: NotificationObject):
         ' Specifically sends a notification. '
@@ -62,7 +66,7 @@ class JsonRpcConnection:
         ' Sends a request and returns the future object with the results. '
         if message.id in self._requests:
             raise ValueError('Duplicate message id.')
-        result = asyncio.Future()
+        result: asyncio.Future = asyncio.Future()
         self._requests[message.id] = result
         self._stream.write_json(message)
         return result
@@ -102,7 +106,7 @@ class JsonRpcConnection:
             request.method, getattr(request, 'params', None), request.id)
 
     async def _handle_message(
-        self, message: Union[RequestObject, NotificationObject, ResponseObject]) -> Optional[ResponseObject]:
+            self, message: Union[RequestObject, NotificationObject, ResponseObject]) -> Optional[ResponseObject]:
         " Handles any type of incoming message and returns the response if it is a request. "
         if isinstance(message, ResponseObject):
             self._handle_response(message)
@@ -112,10 +116,10 @@ class JsonRpcConnection:
             return await self._handle_request(message)
 
     async def call(
-        self,
-        method: str,
-        params: Union[list, dict, None] = None,
-        id: Union[int, str] = None) -> Optional[ResponseObject]:
+            self,
+            method: str,
+            params: Union[List, dict, None] = None,
+            id: Union[int, str] = None) -> Optional[ResponseObject]:
         """ Calls a registered method.
 
         Searches for the specified method and executes it using the list or dict
@@ -142,34 +146,42 @@ class JsonRpcConnection:
                 elif isinstance(params, list):
                     for i, (value, (name, param)) in enumerate(zip(params, inspect.signature(m).parameters.items())):
                         if hasattr(param.annotation, 'from_json') and callable(param.annotation.from_json):
-                            log.debug(f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
+                            log.debug(
+                                f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
                             try:
                                 params[i] = param.annotation.from_json(value)
                             except:
-                                log.exception(f'Failed to deserialize param "{name}" in method call "{method}"')
+                                log.exception(
+                                    f'Failed to deserialize param "{name}" in method call "{method}"')
                     result = m(*params)
                 elif isinstance(params, dict):
                     for name, param in inspect.signature(m).parameters.items():
                         if name in params and hasattr(param.annotation, 'from_json') and callable(param.annotation.from_json):
-                            log.debug(f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
+                            log.debug(
+                                f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
                             try:
-                                params[name] = param.annotation.from_json(params[name])
+                                params[name] = param.annotation.from_json(
+                                    params[name])
                             except:
-                                log.exception(f'Failed to deserialize param "{name}" in method call "{method}"')
+                                log.exception(
+                                    f'Failed to deserialize param "{name}" in method call "{method}"')
                     result = m(**params)
                 else:
-                    raise ValueError(f'Method params of invalid type: {type(params)}')
+                    raise ValueError(
+                        f'Method params of invalid type: {type(params)}')
                 log.debug('Method %s(%s) call successful.', method, params)
                 if asyncio.iscoroutine(result):
                     log.debug(f'Called method "{method}" returned coroutine.')
                     result = await result
                 response = ResponseObject(id, result=result)
             except TypeError as e:
-                log.warning('Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
+                log.warning(
+                    'Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
             except Exception as e:
-                log.exception('Method %s(%s) raised an unexpected error.', method, params)
+                log.exception(
+                    'Method %s(%s) raised an unexpected error.', method, params)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
         return response
@@ -210,8 +222,10 @@ class JsonRpcConnection:
                     log.debug('Message received: %s', obj)
                     asyncio.create_task(self._handle(obj))
                 except json.JSONDecodeError as e:
-                    log.exception('Reader encountered exception while parsing json.')
-                    response = ResponseObject(None, error=ErrorObject(ErrorCodes.ParseError, message=str(e)))
+                    log.exception(
+                        'Reader encountered exception while parsing json.')
+                    response = ResponseObject(None, error=ErrorObject(
+                        ErrorCodes.ParseError, message=str(e)))
                     self._stream.write_json(response)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
             log.debug('Connection task closing because of exception: %s', type(e))

@@ -8,19 +8,21 @@
     executes the commands with the given parameters when
     dispatch() is called.
 '''
-from typing import Any, List, Dict, Callable
-import sys
-import inspect
 import argparse
+import inspect
+import sys
+from typing import Any, Callable, Dict, List
 
 __all__ = ['Cli', 'Arg', 'command']
 
 
 class Arg:
     ' Passes init argument through to ArgumentParser.add_argument() '
+
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
+
 
 def command(**kwargs):
     ''' Decorator for a function used as a cli command.
@@ -33,6 +35,7 @@ def command(**kwargs):
     for _, arg in kwargs.items():
         if not isinstance(arg, Arg):
             raise ValueError("Command kwargs must be of type Arg")
+
     def decorator(f):
         f.cli_cmd_config = kwargs
         params = inspect.signature(f).parameters
@@ -62,8 +65,10 @@ def command(**kwargs):
         return f
     return decorator
 
+
 class Cli:
     ' The cli binds a list of commands together and makes them executable by dispatching an argv.'
+
     def __init__(self, commands: List[Callable], aliases: Dict[str, Callable] = None, description: str = None, version: str = None):
         ''' Initializes the internal argument parsers using the provided commands.
         Parameters:
@@ -77,7 +82,8 @@ class Cli:
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
         if version:
-            self.parser.add_argument('--version', '-v', action='version', version=version)
+            self.parser.add_argument(
+                '--version', '-v', action='version', version=version)
 
         class ExtendAction(argparse.Action):
             def __call__(self, parser, namespace, values, option_string=None):
@@ -108,7 +114,7 @@ class Cli:
 
             sub_command.register('action', 'extend', ExtendAction)
 
-            for param_name, conf in command.cli_cmd_config.items():
+            for _param_name, conf in getattr(command, 'cli_cmd_config').items():
                 sub_command.add_argument(*conf.args, **conf.kwargs)
 
     def dispatch(self, argv: list = None) -> Any:

@@ -6,6 +6,7 @@ GIT_EXECUTABLE = 'git'
 
 __all__ = ['clone']
 
+
 def clone(repo: str, dest: str = None, depth: int = None) -> int:
     ' Clones a repository into the current pwd or dest if given. Returns git process exit code. '
     args = [GIT_EXECUTABLE, 'clone']
@@ -14,5 +15,6 @@ def clone(repo: str, dest: str = None, depth: int = None) -> int:
     args.append(repo)
     if dest is not None:
         args.append(dest)
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE)
     return proc.wait()

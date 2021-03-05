@@ -2,7 +2,7 @@
 Specification from: https://www.jsonrpc.org/specification#overview
 """
 from __future__ import annotations
-from typing import Optional, Union, List, Dict, Any, Iterator, Iterable
+from typing import Optional, Union, List, Dict, Any
 from enum import IntEnum
 import json
 from . import exceptions
@@ -16,11 +16,13 @@ __all__ = [
     'ErrorCodes'
 ]
 
+
 class MessageObject:
     ' Base message. All Messages contain the string "jsonrpc: 2.0". '
+
     def __init__(self):
         self.jsonrpc = "2.0"
-    
+
     def __repr__(self):
         return json.dumps(self, default=lambda x: x.__dict__)
 
@@ -31,6 +33,7 @@ class RequestObject(MessageObject):
         The server must repond with a ResponseObject containing
         the same id the client provided.
     '''
+
     def __init__(self, id: Union[str, int], method: str, params: Union[Dict[str, Any], List[Any]] = None):
         ''' Initializes the request object.
         Parameters:
@@ -42,7 +45,8 @@ class RequestObject(MessageObject):
         if id is None:
             raise ValueError('RequestObject id must not be "None"')
         if not (params is None or isinstance(params, (dict, list, tuple))):
-            raise ValueError(f'Invalid params type, allowed are list, dict and None: {type(params)}')
+            raise ValueError(
+                f'Invalid params type, allowed are list, dict and None: {type(params)}')
         self.id = id
         self.method = method
         if params is not None:
@@ -54,6 +58,7 @@ class NotificationObject(MessageObject):
         The server will try to execute the method but the client will not be notified
         about the results or errors.
     '''
+
     def __init__(self, method: str, params: Union[Dict[str, Any], List[Any]]):
         ''' Initializes a notification message.
             See RequestObject for information about parameters.
@@ -68,8 +73,9 @@ class ResponseObject(MessageObject):
     ''' A response message gives success or failure status in response
         to a request message with the same id.
     '''
+
     def __init__(
-        self, id: Optional[Union[str, int]], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
+            self, id: Optional[Union[str, int]], result: Optional[Any] = None, error: Optional[ErrorObject] = None):
         ''' Initializes a response message.
         Parameters:
             id: The id of the request to respond to. "None" if there was an error detecting the request id.
@@ -81,7 +87,8 @@ class ResponseObject(MessageObject):
         '''
         super().__init__()
         if result is not None and error is not None:
-            raise ValueError('Only either result or either error can be defined.')
+            raise ValueError(
+                'Only either result or either error can be defined.')
         if error is not None:
             self.error = error
         else:
@@ -91,6 +98,7 @@ class ResponseObject(MessageObject):
 
 class ErrorObject:
     " Gives more information in case a request method can't be executed by the server. "
+
     def __init__(self, code: int, message: Optional[str] = None, data: Optional[Any] = None):
         ''' Constructs error object.
         Parameters:
@@ -103,10 +111,10 @@ class ErrorObject:
         self.message = message or ErrorCodes.message(code)
         if data is not None:
             self.data = data
-    
+
     def __repr__(self):
         return json.dumps(self, default=lambda x: x.__dict__)
-    
+
     def to_exception(self) -> Exception:
         ' Creates a python exception object using the code of this ErrorObject. '
         if self.code == ErrorCodes.ParseError:

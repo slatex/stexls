@@ -1,19 +1,23 @@
 from __future__ import annotations
-import itertools, os, re, copy, antlr4
-from pathlib import Path
-from typing import Iterator, Pattern, List, Optional, Tuple, Callable, Union, Dict
+
+import re
 import tempfile
+from pathlib import Path
+from typing import (Callable, Dict, Iterator, List, Optional, Pattern, Tuple,
+                    Union)
 
+import antlr4
 from antlr4.error.ErrorListener import ErrorListener
+from stexls.vscode import Location, Position, Range
 
-from stexls.vscode import Location, Range, Position
-
-from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
-from .grammar.out.LatexParserListener import LatexParserListener as _LatexParserListener
-from .grammar.out.LatexParser import LatexParser as _LatexParser
 from .exceptions import LatexException
+from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
+from .grammar.out.LatexParser import LatexParser as _LatexParser
+from .grammar.out.LatexParserListener import \
+    LatexParserListener as _LatexParserListener
 
-__all__ = ['LatexParser', 'InlineEnvironment', 'Environment', 'Token', 'MathToken', 'Node', 'SyntaxErrorException']
+__all__ = ['LatexParser', 'InlineEnvironment', 'Environment',
+           'Token', 'MathToken', 'Node', 'SyntaxErrorException']
 
 
 class SyntaxErrorException(Exception):
@@ -22,6 +26,7 @@ class SyntaxErrorException(Exception):
 
 class Node:
     ' Base class for the syntax tree content. '
+
     def __init__(self, parser: LatexParser, begin: int, end: int):
         """ Creates a node.
 
@@ -55,7 +60,8 @@ class Node:
     @parent.setter
     def parent(self, value: Node):
         if self._parent is not None:
-            raise RuntimeError(f'Unable to assign parent {value} to {self}: Parent alredy assigned to {self.parent}')
+            raise RuntimeError(
+                f'Unable to assign parent {value} to {self}: Parent alredy assigned to {self.parent}')
         self._parent = value
 
     @property
@@ -136,6 +142,7 @@ class Node:
 
 class Token(Node):
     ' A token is a leaf node that contains the actual text of the source file. '
+
     def __init__(self, parser: LatexParser, begin: int, end: int, lexeme: str):
         """ Constructs a token with text and position information.
         Parameters:
@@ -200,6 +207,7 @@ class Environment(Node):
         \\end{name}
         The oargs and rargs do not contain text.
     """
+
     def __init__(self, parser: LatexParser, begin: int, end: int):
         """ Initializes an environment node with an empty name and empty rarg & oarg arrays.
 
@@ -216,7 +224,7 @@ class Environment(Node):
         super().__init__(parser, begin, end)
         self.oargs: List[OArgument] = []
         self.rargs: List[Node] = []
-        self.name: Node = None
+        self.name: Optional[Node] = None
 
     @property
     def unnamed_args(self) -> List[Node]:
@@ -271,7 +279,7 @@ class Environment(Node):
             yield from child.tokens
 
     def finditer(self, env_pattern: Pattern) -> Iterator[Node]:
-        if re.fullmatch(env_pattern, self.name.text):
+        if self.name and re.fullmatch(env_pattern, self.name.text):
             yield self
         else:
             yield from super().finditer(env_pattern)
@@ -445,6 +453,7 @@ class LatexParser:
 
 class _SyntaxErrorErrorListener(ErrorListener):
     ' Error listener that captures syntax errors during parsing. '
+
     def __init__(self, file: str):
         """ Initializes the error listener with the filename which is to be parsed.
 
@@ -464,6 +473,7 @@ class _SyntaxErrorErrorListener(ErrorListener):
 
 class _LatexParserListener(_LatexParserListener):
     ' Implements the antlr4 methods for parsing a latex file. '
+
     def __init__(self, parser: LatexParser):
         super().__init__()
         self.parser = parser
@@ -472,7 +482,8 @@ class _LatexParserListener(_LatexParserListener):
     @staticmethod
     def _get_ctx_range(ctx):
         if not ctx.start or not ctx.stop:
-            raise LatexException('Invalid context encountered during parsing of latex file.')
+            raise LatexException(
+                'Invalid context encountered during parsing of latex file.')
         return ctx.start.start, ctx.stop.stop + 1
 
     def enterMain(self, ctx: _LatexParser.MainContext):
@@ -487,12 +498,12 @@ class _LatexParserListener(_LatexParserListener):
         node = MathToken.from_ctx(ctx, self.parser, lexeme=lexeme)
         self.stack[-1].add(node)
 
-    def enterBody(self, ctx:_LatexParser.BodyContext):
+    def enterBody(self, ctx: _LatexParser.BodyContext):
         if ctx.body():
             node = Node.from_ctx(ctx, self.parser)
             self.stack.append(node)
 
-    def exitBody(self, ctx:_LatexParser.BodyContext):
+    def exitBody(self, ctx: _LatexParser.BodyContext):
         if ctx.body():
             body = self.stack.pop()
             self.stack[-1].add(body)
@@ -506,7 +517,8 @@ class _LatexParserListener(_LatexParserListener):
         _end_env = Environment.from_ctx(ctx, self.parser)
         env.end = _end_env.end
         if not isinstance(env, Environment):
-            raise LatexException(f'Broken parser stack. Environment expected: {self.stack}')
+            raise LatexException(
+                f'Broken parser stack. Environment expected: {self.stack}')
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
@@ -543,41 +555,45 @@ class _LatexParserListener(_LatexParserListener):
         rarg = self.stack.pop()
         env: Environment = self.stack[-1]
         if not isinstance(env, Environment):
-            self.parser.syntax_errors.append((env.location, LatexException(f'Expected stack top to be of type Environment found: {self.stack}')))
+            self.parser.syntax_errors.append((env.location, LatexException(
+                f'Expected stack top to be of type Environment found: {self.stack}')))
         elif not env.name:
             env.add_name(rarg)
         else:
             env.add_rarg(rarg)
 
-    def enterArgument(self, ctx:_LatexParser.ArgumentContext):
+    def enterArgument(self, ctx: _LatexParser.ArgumentContext):
         node = OArgument.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgument(self, ctx:_LatexParser.ArgumentContext):
+    def exitArgument(self, ctx: _LatexParser.ArgumentContext):
         node = self.stack.pop()
         if not isinstance(self.stack[-1], Environment):
             loc = Location(node.location.uri, node.location.range.end)
-            self.parser.syntax_errors.append((loc, LatexException(f'Expected stack top to be of typ Environment: {self.stack}')))
+            self.parser.syntax_errors.append((loc, LatexException(
+                f'Expected stack top to be of typ Environment: {self.stack}')))
         self.stack[-1].add_oarg(node)
 
-    def enterArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
+    def enterArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentName(self, ctx:_LatexParser.ArgumentNameContext):
+    def exitArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
         name = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            self.parser.syntax_errors.append((oarg.location, LatexException(f'Expected stack to be of type OArgument: {self.stack}')))
+            self.parser.syntax_errors.append((oarg.location, LatexException(
+                f'Expected stack to be of type OArgument: {self.stack}')))
         oarg.add_name(name)
 
-    def enterArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
+    def enterArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentValue(self, ctx:_LatexParser.ArgumentValueContext):
+    def exitArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
         value = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
-            self.parser.syntax_errors.append((value.location, LatexException(f'Expected stack to be of type OArgument: {self.stack}')))
+            self.parser.syntax_errors.append((value.location, LatexException(
+                f'Expected stack to be of type OArgument: {self.stack}')))
         oarg.add_value(value)

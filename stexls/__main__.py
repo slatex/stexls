@@ -2,19 +2,20 @@
 The server can be used by using tcp sockets or
 it can simply communicate with another process using
 stdin and stdout. After the starver has started,  '''
-from typing import Pattern
-import logging
 import asyncio
+import logging
 import re
+from pathlib import Path
+from typing import Optional, Pattern, List, Dict, Any
+
 import pkg_resources
 from tqdm import tqdm
-from pathlib import Path
 
-from stexls.util.cli import Cli, command, Arg, argparse
-from stexls.vscode import *
-from stexls.util.workspace import Workspace
 from stexls.linter import Linter
 from stexls.lsp import Server
+from stexls.util.cli import Arg, Cli, argparse, command
+from stexls.util.workspace import Workspace
+from stexls.vscode import DiagnosticSeverity
 
 log = logging.getLogger(__name__)
 
@@ -22,35 +23,47 @@ log = logging.getLogger(__name__)
 def _get_default_trefier_model_path() -> Path:
     return Path(__file__).parent / 'seq2seq.model'
 
+
 @command(
-    files=Arg(type=Path, nargs=argparse.REMAINDER, help='List of files for which to generate diagnostics.'),
+    files=Arg(type=Path, nargs=argparse.REMAINDER,
+              help='List of files for which to generate diagnostics.'),
     root=Arg(type=Path, help="Root directory. Required to resolve imports."),
-    diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string, help='Only diagnostics for the specified level and above are printed.'),
-    include=Arg('--include', '-I', nargs='+', type=re.compile, help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
-    ignore=Arg('--ignore', '-i', nargs='+', type=re.compile, help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
-    enable_trefier=Arg('--enable_trefier', '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging."),
-    show_progress=Arg('--show-progress', '-p', action='store_true', help='Enables printing of a progress bar to stderr during update.'),
-    num_jobs=Arg('--num-jobs', '-j', type=int, help='Specifies the number of processes to use for compiling.'),
+    diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string,
+                        help='Only diagnostics for the specified level and above are printed.'),
+    include=Arg('--include', '-I', nargs='+', type=re.compile,
+                help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
+    ignore=Arg('--ignore', '-i', nargs='+', type=re.compile,
+               help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
+    enable_trefier=Arg('--enable_trefier', '--enable-trefier',
+                       action='store_true', help="Enables machine learning trefier tagging."),
+    show_progress=Arg('--show-progress', '-p', action='store_true',
+                      help='Enables printing of a progress bar to stderr during update.'),
+    num_jobs=Arg('--num-jobs', '-j', type=int,
+                 help='Specifies the number of processes to use for compiling.'),
     format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
-    tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?', help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
-    loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
-    logfile=Arg('--logfile', '-L', type=Path, help='Optional path to a logfile.'),
-    verbose=Arg('--verbose', '-v', action='store_true', help='If enabled, instead of only printing errors, this will print all infos about each input file.')
+    tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?',
+                help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
+    loglevel=Arg('--loglevel', '-l',
+                 choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
+    logfile=Arg('--logfile', '-L', type=Path,
+                help='Optional path to a logfile.'),
+    verbose=Arg('--verbose', '-v', action='store_true',
+                help='If enabled, instead of only printing errors, this will print all infos about each input file.')
 )
 async def linter(
-    files: List[Path],
-    root: Path = None,
-    diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Hint,
-    include: List[Pattern] = [re.compile(r'.*\.tex')],
-    ignore: List[Pattern] = None,
-    enable_trefier: bool = False,
-    show_progress: bool = False,
-    num_jobs: int = 1,
-    format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
-    tagfile: str = None,
-    loglevel: str = 'error',
-    logfile: Path = Path('stexls.log'),
-    verbose: bool = False):
+        files: List[Path],
+        root: Path = None,
+        diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Hint,
+        include: List[Pattern] = [re.compile(r'.*\.tex')],
+        ignore: List[Pattern] = None,
+        enable_trefier: bool = False,
+        show_progress: bool = False,
+        num_jobs: int = 1,
+        format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
+        tagfile: str = None,
+        loglevel: str = 'error',
+        logfile: Path = Path('stexls.log'),
+        verbose: bool = False):
     """ Run the language server in linter mode.
 
         In this mode only diagnostics and progress are printed to stdout.
@@ -85,14 +98,16 @@ async def linter(
     outdir = stexls_home / 'objects'
     outdir.mkdir(exist_ok=True)
     log.debug('Compiler outdir at "%s"', outdir)
+
     def progressfn(it, title, files):
         log.debug('Progress "%s":%i', title, len(it))
         if show_progress:
             try:
                 it = tqdm(it, total=len(it))
                 if files is not None:
-                    assert len(files) == len(it), 'Length of input iterator and provided file list do not match.'
-            except:
+                    assert len(files) == len(
+                        it), 'Length of input iterator and provided file list do not match.'
+            except Exception:
                 it = tqdm(it, total=None if files is None else len(files))
             it.set_description(title)
         return it
@@ -111,7 +126,7 @@ async def linter(
         enable_global_validation=False,
         num_jobs=num_jobs)
 
-    trefier_model = None
+    trefier_model: Optional[Seq2SeqModel] = None
     try:
         if enable_trefier:
             trefier_model_path = _get_default_trefier_model_path()
@@ -119,7 +134,7 @@ async def linter(
             from stexls.trefier.models.seq2seq import Seq2SeqModel
             trefier_model = Seq2SeqModel.load(trefier_model_path)
             # TODO: Use the trefier model
-    except:
+    except Exception:
         log.exception('Failed to load trefier model')
 
     if tagfile:
@@ -139,36 +154,49 @@ async def linter(
             verbose_format = ln.object.format()
             buffer.append(verbose_format)
         else:
-            messages = ln.format_messages(format_string=format, diagnosticlevel=diagnosticlevel)
+            messages = ln.format_messages(
+                format_string=format, diagnosticlevel=diagnosticlevel)
             buffer.extend(messages)
 
     print('\n'.join(buffer))
 
+
 @command(
-    num_jobs=Arg('--num_jobs', '-j', type=int, help="Number of processes used for multiprocessing."),
-    update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.'),
-    enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true', help="This will make the server compile every file in the workspace on startup, enabling global validation and diagnostics."),
-    lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup', action='store_true', help="Create diagnostics for every file in the workspace on startup."),
-    enable_trefier=Arg('--enable_trefier', '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging."),
-    enable_linting_of_related_files=Arg('--enable_linting_of_related_files', '--enable-linting-of-related-files', action='store_true', help="The server will lint every file that reference a changed file, directly or transitively."),
-    transport_kind=Arg('--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
+    num_jobs=Arg('--num_jobs', '-j', type=int,
+                 help="Number of processes used for multiprocessing."),
+    update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay',
+                             type=float, help='Delay of the linter in seconds after a change is made.'),
+    enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true',
+                                 help="This will make the server compile every file in the workspace on startup,"
+                                      " enabling global validation and diagnostics."),
+    lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup',
+                                  action='store_true',
+                                  help="Create diagnostics for every file in the workspace on startup."),
+    enable_trefier=Arg('--enable_trefier', '--enable-trefier',
+                       action='store_true', help="Enables machine learning trefier tagging."),
+    enable_linting_of_related_files=Arg('--enable_linting_of_related_files', '--enable-linting-of-related-files',
+                                        action='store_true',
+                                        help="The server will lint every file that reference a changed file, directly or transitively."),
+    transport_kind=Arg('--transport-kind', '-t',
+                       choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
     host=Arg('--host', '-H', help='Hostname to bind server to.'),
     port=Arg('--port', '-p', help='Port number to bind server to.'),
-    loglevel=Arg('--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
+    loglevel=Arg('--loglevel', '-l',
+                 choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
     logfile=Arg('--logfile', '-L',  type=Path, help='Logfile name.'),
 )
 async def lsp(
-    num_jobs: int = 1,
-    update_delay_seconds: float = 2.0,
-    enable_global_validation: bool = False,
-    lint_workspace_on_startup: bool = False,
-    enable_linting_of_related_files: bool = False,
-    enable_trefier: bool = False,
-    transport_kind: str = 'ipc',
-    host: str = 'localhost',
-    port: int = 0,
-    loglevel: str = 'error',
-    logfile: Path = Path('/tmp/stexls.log')):
+        num_jobs: int = 1,
+        update_delay_seconds: float = 2.0,
+        enable_global_validation: bool = False,
+        lint_workspace_on_startup: bool = False,
+        enable_linting_of_related_files: bool = False,
+        enable_trefier: bool = False,
+        transport_kind: str = 'ipc',
+        host: str = 'localhost',
+        port: int = 0,
+        loglevel: str = 'error',
+        logfile: Path = Path('/tmp/stexls.log')):
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:
@@ -193,7 +221,7 @@ async def lsp(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
     server, connection = None, None
-    shared_args = {
+    shared_args: Dict[str, Any] = {
         'num_jobs': num_jobs,
         'update_delay_seconds': update_delay_seconds,
         'enable_global_validation': enable_global_validation,
@@ -204,10 +232,12 @@ async def lsp(
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
         server, connection = await Server.open_ipc_connection(**shared_args)
+        async with server:
+            await connection
     elif transport_kind == 'tcp':
         server, connection = await Server.open_connection(host=host, port=port, **shared_args)
-    async with server:
-        await connection
+        async with server:
+            await connection
 
 
 if __name__ == '__main__':

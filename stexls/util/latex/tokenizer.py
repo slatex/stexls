@@ -4,18 +4,20 @@ and parses the parse tree into it's more useful tokens, preserving
 environment, location and parse tree structure.
 '''
 from __future__ import annotations
-from ast import parse
+
 import re
-from typing import List, Iterator, Tuple, Union
 from pathlib import Path
+from typing import Iterator, List, Tuple, Union
+
 from stexls.util.latex import parser
-from stexls.vscode import Range, Position
+from stexls.vscode import Range
 
 __all__ = ['LatexTokenizer', 'LatexToken']
 
 DEFAULT_WORDS = r'''(?:[\w\d_]|(?<!^)\-|\{\\ss\}|\\ss|\\\"(?:a|A|o|O|u|U|s|S))+(?:'s|(?<=n)'t)?|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|;|\"|\||\{|\}|s+'''
 
 DEFAULT_FILTER = r'''\s+|\@|\#|\^|\*|\_|\+|\=|\[|\]|\\|\/|\>|\<|\{|\}'''
+
 
 class LatexToken:
     ''' A lexical token, which inherited the location and environment
@@ -24,6 +26,7 @@ class LatexToken:
         Why does this exists?
         Because the Token defined in util.latex contains a reference to the parser which is not needed anymore.
     '''
+
     def __init__(self, range: Range, lexeme: str, envs: Tuple[str, ...]):
         ''' Initializes the token.
         Parameters:
@@ -40,12 +43,13 @@ class LatexToken:
 
 class LatexTokenizer:
     ''' Extracts the tokens with their environments from a parsed latex file. '''
+
     def __init__(
-        self,
-        root: parser.Node,
-        lower: bool = True,
-        words: str = DEFAULT_WORDS,
-        token_filter: str = DEFAULT_FILTER):
+            self,
+            root: parser.Node,
+            lower: bool = True,
+            words: str = DEFAULT_WORDS,
+            token_filter: str = DEFAULT_FILTER):
         self.lower = lower
         self.math_token = '<math>'
         self._words = re.compile(words)
@@ -72,7 +76,8 @@ class LatexTokenizer:
                     lexeme = word.group()
                     if self.lower:
                         lexeme = lexeme.lower()
-                    offsetted_token = parser.Token(token.parser, token.begin + begin, token.begin + end, token.envs)
+                    offsetted_token = parser.Token(
+                        token.parser, token.begin + begin, token.begin + end, token.envs)
                     yield LatexToken(
                         offsetted_token.range,
                         lexeme,
@@ -86,6 +91,7 @@ class LatexTokenizer:
         if not file.parsed:
             file.parse()
         return LatexTokenizer(file.root, lower=lower)
+
 
 def _replace_german_characters(text: str) -> str:
     return (text.

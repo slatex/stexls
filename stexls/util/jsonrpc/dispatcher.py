@@ -1,19 +1,21 @@
 from __future__ import annotations
-from typing import Union, Any, Awaitable, Optional, Tuple
-from collections import defaultdict
+
 import asyncio
-import logging
 import itertools
+import logging
 import os
 import sys
-from .core import RequestObject, NotificationObject
-from .hooks import extract_methods
+from typing import Any, Awaitable, Literal, Tuple, Union, Dict
+
 from .connection import JsonRpcConnection
+from .core import NotificationObject, RequestObject
+from .hooks import extract_methods
 from .streams import JsonStream
 
 log = logging.getLogger(__name__)
 
 __all__ = ['Dispatcher']
+
 
 class Dispatcher:
     ''' A dispatcher is a hook that allows sending user messages to a connection
@@ -22,6 +24,7 @@ class Dispatcher:
         the called methods are done somewhere different and have to wait
         until the message is send, handled and the response returned.
     '''
+
     def __init__(self, connection: JsonRpcConnection):
         """Initializes the given connection protocol.
 
@@ -72,12 +75,12 @@ class Dispatcher:
 
     @classmethod
     async def start_server(
-        dispatcher_factory: type,
-        host: str = 'localhost',
-        port: int = 0,
-        encoding: str = 'utf-8',
-        charset: str = None,
-        newline: str = '\r\n') -> Tuple[Tuple[str, int], asyncio.Task]:
+            dispatcher_factory: type,
+            host: str = 'localhost',
+            port: int = 0,
+            encoding: str = 'utf-8',
+            charset: str = None,
+            newline: str = '\r\n') -> Tuple[Tuple[str, int], asyncio.Task]:
         """ Starts a tcp server.
 
         Args:
@@ -101,6 +104,7 @@ class Dispatcher:
             _ = dispatcher_factory(conn)
             asyncio.create_task(conn.run_forever())
         server = await asyncio.start_server(connect_fun, host=host, port=port)
+
         async def task():
             async with server:
                 await server.serve_forever()
@@ -110,13 +114,13 @@ class Dispatcher:
 
     @classmethod
     async def open_connection(
-        dispatcher_factory: type,
-        host: str = 'localhost',
-        port: int = 0,
-        encoding: str = 'utf-8',
-        charset: str = None,
-        newline: str = '\r\n',
-        **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
+            dispatcher_factory: type,
+            host: str = 'localhost',
+            port: int = 0,
+            encoding: str = 'utf-8',
+            charset: str = None,
+            newline: str = '\r\n',
+            **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens a connection to a tcp server.
 
         Parameters:
@@ -144,14 +148,16 @@ class Dispatcher:
 
     @classmethod
     async def open_ipc_connection(
-        dispatcher_factory: type,
-        input_fd: int = 'stdin',
-        output_fd: int = 'stdout',
-        encoding: str = 'utf-8',
-        charset: str = None,
-        newline: str = '\r\n',
-        loop = None,
-        **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
+            dispatcher_factory: type,
+            input_fd: Union[
+                int, Literal['stdin', 'stdout', 'stderr']] = 'stdin',
+            output_fd: Union[
+                int, Literal['stdout', 'stdout', 'stderr']] = 'stdout',
+            encoding: str = 'utf-8',
+            charset: str = None,
+            newline: str = '\r\n',
+            loop=None,
+            **kwargs) -> Tuple[Dispatcher, asyncio.Task]:
         """ Opens connection using a pipe or file.
 
         Takes input and output file descriptors and uses
@@ -175,13 +181,15 @@ class Dispatcher:
             Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher for the connection
                 as well as the task the protocol runs on.
         """
-        translate = {
-            'stdin': sys.stdin.fileno,
-            'stdout': sys.stdout.fileno,
-            'stderr': sys.stderr.fileno,
+        translate: Dict[str, int] = {
+            'stdin': sys.stdin.fileno(),
+            'stdout': sys.stdout.fileno(),
+            'stderr': sys.stderr.fileno(),
         }
-        input_fd = translate.get(input_fd, lambda: input_fd)()
-        output_fd = translate.get(output_fd, lambda: output_fd)()
+        if isinstance(input_fd, str):
+            input_fd = translate[input_fd]
+        if isinstance(output_fd, str):
+            output_fd = translate[output_fd]
         input_pipe = os.fdopen(input_fd, 'rb', 0)
         output_pipe = os.fdopen(output_fd, 'wb', 0)
         loop = loop or asyncio.get_event_loop()
@@ -189,7 +197,7 @@ class Dispatcher:
         await loop.connect_read_pipe(
             lambda: asyncio.StreamReaderProtocol(reader, loop=loop), input_pipe)
         writer_transport, writer_protocol = await loop.connect_write_pipe(
-            lambda: asyncio.streams.FlowControlMixin(loop=loop),
+            lambda: asyncio.streams.FlowControlMixin(loop=loop),  # type: ignore
             output_pipe)
         writer = asyncio.streams.StreamWriter(
             writer_transport, writer_protocol, None, loop)

@@ -1,14 +1,15 @@
 """ Parser for message objects from json string. """
-from typing import List, Optional, Callable, Any
-import json
-from .core import MessageObject, RequestObject, NotificationObject, ResponseObject, ErrorObject, ErrorCodes
+from typing import Any, Callable, List, Optional
 
+from .core import (ErrorCodes, ErrorObject, MessageObject, NotificationObject,
+                   RequestObject, ResponseObject)
 
 __all__ = ['MessageParser']
 
 
 class MessageParser:
     ' A parses that parses json objects to jrpc message objects. '
+
     def __init__(self, o: Any):
         """Parses a json object as a message or batch of messages.
 
@@ -72,6 +73,7 @@ def validate_json(o: Any) -> Optional[ResponseObject]:
         and (('result' in o) != has_error))
     if (is_request + is_notification + is_response) != 1:
         return ResponseObject(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
+
 
 def restore_message(o: object) -> MessageObject:
     """ Restores the original MessageObject assuming the input object is a valid representation of one.

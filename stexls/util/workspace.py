@@ -1,16 +1,17 @@
-import re
 import glob
 import itertools
 import logging
+import re
 import time
 from pathlib import Path
-from typing import List, Pattern, Iterable, Set, Dict
+from typing import Dict, Iterable, List, Optional, Pattern, Set, Union
 
-from stexls.vscode import *
+from .. import vscode
 
 log = logging.getLogger(__name__)
 
 __all__ = ['Workspace']
+
 
 class TextDocument:
     def __init__(self, path: Path, version: int, text: str) -> None:
@@ -58,7 +59,7 @@ class Workspace:
     def get_time_modified(self, file: Path) -> float:
         ' Get the time the file was last modified either in buffer or on disk. 0 if the file is not open. '
         if self.is_open(file):
-            return self.get_time_buffer_modified()
+            return self.get_time_buffer_modified(file)
         if file.is_file():
             return file.lstat().st_mtime
         return 0
@@ -84,7 +85,8 @@ class Workspace:
         else:
             log.debug('Opening file: "%s"', path)
         if path not in self.files:
-            log.warning('Ignoring open file attempt of "%s" because it is not part of this workspace.', path)
+            log.warning(
+                'Ignoring open file attempt of "%s" because it is not part of this workspace.', path)
             return False
         self._open_files[path] = TextDocument(path, version, text)
         return True
@@ -92,13 +94,16 @@ class Workspace:
     def update_file(self, path: Path, version: int, text: str) -> bool:
         ' Updates the time_modified, text and version of an already added file. Returns True on success. '
         if not self.is_open(path):
-            log.warning('Unable to update file that has not been opened: "%s"', path)
+            log.warning(
+                'Unable to update file that has not been opened: "%s"', path)
             return False
         document = self._open_files[path]
         if version < document.version:
-            log.warning('Ignoring file update with lower version number: %i < %i', version, document.version)
+            log.warning(
+                'Ignoring file update with lower version number: %i < %i', version, document.version)
             return False
-        log.debug('Updating version of "%s": from %i to %i', path, document.version, version)
+        log.debug('Updating version of "%s": from %i to %i',
+                  path, document.version, version)
         document.update(version, text)
         return True
 
@@ -127,7 +132,8 @@ class Workspace:
         """ Reads the file's buffered content. """
         document = self._open_files.get(path)
         if document:
-            log.debug('Reading buffered file version %s: "%s"', document.version, path)
+            log.debug('Reading buffered file version %s: "%s"',
+                      document.version, path)
             return document.text
         return None
 
@@ -140,17 +146,18 @@ class Workspace:
         """
         if self.is_open(path):
             document = self._open_files[path]
-            log.debug('Reading file (version %s) from buffer: "%s"', document.version, path)
+            log.debug('Reading file (version %s) from buffer: "%s"',
+                      document.version, path)
             return document.text
         try:
             with open(path) as fd:
                 log.debug('Reading local file: "%s"', path)
                 return fd.read()
-        except:
+        except Exception:
             log.exception('Failed to read local file from disk: "%s"', path)
         return None
 
-    def read_location(self, location: Location) -> Optional[str]:
+    def read_location(self, location: vscode.Location) -> Optional[str]:
         """ Reads the content of a location.
 
             This method is already provided by Location.read()
@@ -211,22 +218,26 @@ class Workspace:
     def files(self) -> Set[Path]:
         ' Returns the set of .tex files in this workspace after they are filtered using ignore and include patterns. '
         # get all files from the workspace root
-        files = list(glob.glob((self.root / '**' / 'source' / '**' / '*.tex').as_posix(), recursive=True))
+        glob_pattern = self.root / '**' / 'source' / '**' / '*.tex'
+        tex_file_paths = list(
+            glob.glob(glob_pattern.as_posix(), recursive=True))
         # filter out non-included files
         if isinstance(self._include, Iterable):
             # list of includes is ORed together
-            files = list(
+            tex_file_paths = list(
                 file
                 for pattern in self._include
-                for file in filter(pattern.match, files)
+                for file in filter(pattern.match, tex_file_paths)
             )
         # filter out ignored files
         if isinstance(self._ignore, Iterable):
             # list of ignores is ANDed together
             for pattern in self._ignore:
-                files = list(itertools.filterfalse(pattern.match, files))
+                tex_file_paths = list(itertools.filterfalse(
+                    pattern.match, tex_file_paths))
         # map to paths
-        files = map(Path, files)
+        paths = map(Path, tex_file_paths)
         # filter out non-files
-        files = filter(lambda p: p.is_file(), files)
+        files = filter(lambda p: p.is_file(), paths)
+        # remove duplicates
         return set(files)

@@ -1,15 +1,18 @@
-from stexls.stex.compiler import ObjectfileNotFoundError
-from typing import Callable, Iterable, Dict, Iterator, Optional, List, Set
-from pathlib import Path
-from multiprocessing import Pool
-from stexls.vscode import *
-from stexls.stex import *
-from stexls.util.workspace import Workspace
 import logging
+from multiprocessing import Pool
+from pathlib import Path
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
+
+from stexls.stex import Compiler, Linker, StexObject
+from stexls.stex.compiler import ObjectfileNotFoundError
+from stexls.stex.diagnostics import Diagnostic, DiagnosticSeverity
+from stexls.util.workspace import Workspace
+from stexls.vscode import Location, Position
 
 log = logging.getLogger(__name__)
 
 __all__ = ['LintingResult', 'Linter']
+
 
 class LintingResult:
     def __init__(self, obj: StexObject):
@@ -23,7 +26,10 @@ class LintingResult:
     def diagnostics(self) -> List[Diagnostic]:
         return self.object.diagnostics.diagnostics
 
-    def format_messages(self, format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})', diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information) -> List[str]:
+    def format_messages(
+            self,
+            format_string: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
+            diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Information) -> List[str]:
         """ Formats all errors according to the provided @format_string and @diagnosticlevel.
 
         Parameters:
@@ -39,7 +45,7 @@ class LintingResult:
         messages: List[str] = []
         try:
             relative_file = file.relative_to(Path.cwd())
-        except:
+        except Exception:
             relative_file = file
         for diagnostic in self.object.diagnostics:
             if diagnostic.severity.value > diagnosticlevel.value:
@@ -65,10 +71,10 @@ class LintingResult:
 
 class Linter:
     def __init__(self,
-        workspace: Workspace,
-        outdir: Path = None,
-        enable_global_validation: bool = False,
-        num_jobs: int = 1):
+                 workspace: Workspace,
+                 outdir: Path = None,
+                 enable_global_validation: bool = False,
+                 num_jobs: int = 1):
         """ Initializes a linter object.
 
         Parameters:
@@ -110,7 +116,7 @@ class Linter:
         try:
             if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
                 return self.compile_file_with_respect_to_workspace(file)
-        except:
+        except Exception:
             log.exception('Failed to compile file %s', file)
         try:
             return self.compiler.load_from_objectfile(file)
@@ -167,13 +173,14 @@ class Linter:
         Returns:
             Index of objects with their file path as key.
         '''
-        queue = { file }
-        visited: Dict[Path, StexObject] = { }
+        queue = {file}
+        visited: Dict[Path, StexObject] = {}
         while queue:
             file = queue.pop()
             if file in visited:
                 continue
-            if on_progress_fun: on_progress_fun(file, len(visited))
+            if on_progress_fun:
+                on_progress_fun(file, len(visited))
             # TODO: Currently forced to reload every file that is used from disk and overwrite the _object_buffer, this should not be necessary
             # TODO: Only overwrite files that actually changed
             # TODO: Only load files that are not already in self._object_buffer
@@ -204,21 +211,27 @@ class Linter:
             The result of the linting process for the provided @file path.
         '''
         # TODO: Maybe on_progress_fun is overkill here, as its genereally really fast anyway
-        if on_progress_fun: on_progress_fun('Preparing', 0, False)
+        if on_progress_fun:
+            on_progress_fun('Preparing', 0, False)
         if file in self._linked_object_buffer and not self._linked_object_buffer[file].check_if_any_related_file_is_newer_than_this_object(self.workspace):
             ln = self._linked_object_buffer[file]
-            if on_progress_fun: on_progress_fun('Done', 1, True)
+            if on_progress_fun:
+                on_progress_fun('Done', 1, True)
         else:
             objects: Dict[Path, StexObject] = self.compile_related(
                 file=file,
                 on_progress_fun=lambda *args: on_progress_fun(*args, False) if on_progress_fun else None)
-            if on_progress_fun: on_progress_fun('Linking', len(objects), False)
+            if on_progress_fun:
+                on_progress_fun('Linking', len(objects), False)
             ln = self.linker.link(file, objects, self.compiler)
             self._linked_object_buffer[file] = ln
             more_objects = self._object_buffer if self.enable_global_validation else {}
-            if on_progress_fun: on_progress_fun('Validating', len(objects) + 1, False)
-            self.linker.validate_object_references(ln, more_objects=more_objects)
-            if on_progress_fun: on_progress_fun('Done', len(objects) + 2, True)
+            if on_progress_fun:
+                on_progress_fun('Validating', len(objects) + 1, False)
+            self.linker.validate_object_references(
+                ln, more_objects=more_objects)
+            if on_progress_fun:
+                on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)
 
     def find_dependent_files_of(self, file: Path, *, _already_added_set: Set[Path] = None) -> Set[Path]:
@@ -228,31 +241,34 @@ class Linter:
             if file in obj.related_files:
                 if file not in dependent_files_set:
                     dependent_files_set.add(obj.file)
-                    self.find_dependent_files_of(obj.file, _already_added_set=dependent_files_set)
+                    self.find_dependent_files_of(
+                        obj.file, _already_added_set=dependent_files_set)
                 else:
                     dependent_files_set.add(obj.file)
         return dependent_files_set
 
     def definitions(self, file: Path, position: Position) -> List[Location]:
         ' Finds definitions for the symbol under @position in @file. '
-        obj: StexObject = self._linked_object_buffer.get(file)
+        obj = self._linked_object_buffer.get(file)
         if not obj:
             return []
         return [symbol.location for symbol in obj.get_definitions_at(position)]
 
     def references(self, file: Path, position: Position) -> List[Location]:
         ' Finds references to the symbol under @position in @file. '
-        obj: StexObject = self._linked_object_buffer.get(file)
+        obj = self._linked_object_buffer.get(file)
         if not obj:
             return []
-        definition_locations = set(definition.location for definition in obj.get_definitions_at(position))
+        definition_locations = set(
+            definition.location for definition in obj.get_definitions_at(position))
 
-        references : List[Location] = []
+        references: List[Location] = []
         for obj in self._linked_object_buffer.values():
             for ref in obj.references:
                 for refsymb in ref.resolved_symbols:
                     if refsymb.location in definition_locations:
-                        references.append(Location(obj.file.as_uri(), ref.range))
+                        references.append(
+                            Location(obj.file.as_uri(), ref.range))
                         break
 
         return references + list(definition_locations)

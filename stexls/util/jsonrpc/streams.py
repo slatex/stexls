@@ -1,15 +1,17 @@
-from typing import Any, Dict
 import asyncio
-import re
 import json
+import re
+from typing import Any, Dict
 
 __all__ = ['JsonStream']
+
 
 class JsonStream:
     """ A JsonStream implements a modified stream interface
     with read_json() and write_json() which allows to deserialize and
     deserialize objects using json.
     """
+
     def __init__(
             self,
             reader: asyncio.StreamReader,
@@ -29,7 +31,7 @@ class JsonStream:
             with_content_type: Serialize with Content-Type header
         """
         self.reader = reader
-        self.writer= writer
+        self.writer = writer
         self.encoding = encoding
         self.charset = charset or encoding
         self.newline = newline.encode(charset or encoding)
@@ -43,14 +45,15 @@ class JsonStream:
                     return child.to_json()
                 elif hasattr(child, 'serialize') and callable(child.serialize):
                     return child.serialize()
-            except:
+            except Exception:
                 pass
             return dict(child.__dict__.items())
         serialized = json.dumps(o, default=serializer)
         content = serialized.encode(self.charset)
         length_header = f'Content-Length: {len(content)}'.encode(self.encoding)
         if self.with_content_type:
-            type_header = f'Content-Type: application/json; charset={self.charset}'.encode(self.encoding)
+            type_header = f'Content-Type: application/json; charset={self.charset}'.encode(
+                self.encoding)
         self.writer.write(length_header + self.newline)
         if self.with_content_type:
             self.writer.write(type_header + self.newline)
@@ -59,19 +62,21 @@ class JsonStream:
     async def read_json(self) -> Any:
         ' Read a json object from stream, parse and return it. '
         headers: Dict[str, str] = await self.read_headers()
-        content_length = headers.get('content-length')
-        if not content_length or not content_length.isdigit():
-            raise ValueError('Invalid header: Content-Length missing or malformed.')
-        content_length = int(content_length)
+        content_length_header = headers.get('content-length')
+        if not content_length_header or not content_length_header.isdigit():
+            raise ValueError(
+                'Invalid header: Content-Length missing or malformed.')
+        content_length = int(content_length_header)
         content_type = headers.get('content-type')
         charset = self.charset
         if content_type:
             match = re.match(r'(\w+/\w+)(?:;\s*charset=(\S+))?', content_type)
             if match:
-                media_type= match.group(1)
+                media_type = match.group(1)
                 charset = match.group(2) or charset
                 if media_type != 'application/json':
-                    raise ValueError(f'Expected media type "application/json", received: "{media_type}"')
+                    raise ValueError(
+                        f'Expected media type "application/json", received: "{media_type}"')
         content = await self.reader.readexactly(content_length)
         if not content:
             raise EOFError()
@@ -82,15 +87,15 @@ class JsonStream:
         ' Reads a dict of headers to header values from stream. '
         headers: Dict[str, str] = {}
         while True:
-            line = await self.reader.readline()
-            if line == self.newline:
+            raw_line: bytes = await self.reader.readline()
+            if raw_line == self.newline:
                 return headers
-            if not line:
+            if not raw_line:
                 raise EOFError()
-            line = line.decode(self.encoding)
+            line = raw_line.decode(self.encoding)
             try:
                 header, value = line.split(':', maxsplit=1)
             except ValueError as e:
-                raise ValueError(f'Invalid line format in line "{line.strip()}": Missing ":" character.') from e
+                raise ValueError(
+                    f'Invalid line format in line "{line.strip()}": Missing ":" character.') from e
             headers[header.strip().lower()] = value.strip()
-

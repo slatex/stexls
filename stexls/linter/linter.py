@@ -1,7 +1,7 @@
 import logging
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set, Any
 
 from stexls.stex import Compiler, Linker, StexObject
 from stexls.stex.compiler import ObjectfileNotFoundError
@@ -145,8 +145,11 @@ class Linter:
 
             def __iter__(self) -> Iterator[Optional[Path]]:
                 with Pool(self.linter.num_jobs) as pool:
-                    mapfn = map if self.linter.num_jobs <= 1 else pool.imap
-                    it = mapfn(self.linter.get_objectfile, self._files)
+                    mapfn: Callable[..., Any] = map
+                    if self.linter.num_jobs > 1:
+                        mapfn = pool.imap
+                    it: Iterable[StexObject] = mapfn(
+                        self.linter.get_objectfile, self._files)
                     # Rotate the file list by one in order be able to view the file being compiled after the current obj
                     next_files = [*self._files[1:], None]
                     # Iterate through the list next files paired with the object of the currently compiled file
@@ -164,7 +167,7 @@ class Linter:
 
         return WorkspaceCompileIter(self)
 
-    def compile_related(self, file: Path, on_progress_fun: Callable[[str, int, int], None] = None) -> Dict[Path, StexObject]:
+    def compile_related(self, file: Path, on_progress_fun: Callable[..., Any] = None) -> Dict[Path, StexObject]:
         ''' Compiles all dependencies of the file, the file itself and updates the buffer.
 
         Parameters:
@@ -179,8 +182,9 @@ class Linter:
             file = queue.pop()
             if file in visited:
                 continue
+            # TODO: Review on_progress_fun arg
             if on_progress_fun:
-                on_progress_fun(file, len(visited))
+                on_progress_fun(str(file), len(visited), None)
             # TODO: Currently forced to reload every file that is used from disk and overwrite the _object_buffer, this should not be necessary
             # TODO: Only overwrite files that actually changed
             # TODO: Only load files that are not already in self._object_buffer
@@ -195,7 +199,7 @@ class Linter:
                 queue.add(dep.file_hint)
         return visited
 
-    def lint(self, file: Path, on_progress_fun: Callable[[str, int, bool], None] = None) -> LintingResult:
+    def lint(self, file: Path, on_progress_fun: Callable[..., Any] = None) -> LintingResult:
         ''' Lints the provided @file.
 
         An optional progress tracking function can be supplied.
@@ -211,9 +215,12 @@ class Linter:
             The result of the linting process for the provided @file path.
         '''
         # TODO: Maybe on_progress_fun is overkill here, as its genereally really fast anyway
+        # TODO: Review on_progress_fun arg
         if on_progress_fun:
             on_progress_fun('Preparing', 0, False)
-        if file in self._linked_object_buffer and not self._linked_object_buffer[file].check_if_any_related_file_is_newer_than_this_object(self.workspace):
+        if (file in self._linked_object_buffer
+            and not self._linked_object_buffer[file]
+                .check_if_any_related_file_is_newer_than_this_object(self.workspace)):
             ln = self._linked_object_buffer[file]
             if on_progress_fun:
                 on_progress_fun('Done', 1, True)

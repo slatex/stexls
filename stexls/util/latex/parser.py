@@ -11,6 +11,7 @@ from antlr4.error.ErrorListener import ErrorListener
 from stexls.vscode import Location, Position, Range
 
 from .exceptions import LatexException
+from .grammar import out as _out
 from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
 from .grammar.out.LatexParser import LatexParser as _LatexParser
 from .grammar.out.LatexParserListener import \
@@ -41,7 +42,7 @@ class Node:
         self.begin: int = begin
         self.end: int = end
         self.children: List[Node] = []
-        self._parent: Node = None
+        self._parent: Optional[Node] = None
 
     def get_scope(self, filter: Pattern = None) -> Location:
         ' Returns the largest scope this is contained in. Use the filter to filter out environment names that constitute a scope. '
@@ -324,7 +325,7 @@ class LatexParser:
         """
         self.file: str = file
         self._encoding: str = encoding
-        self.source: str = None
+        self.source: Optional[str] = None
         self.root: Optional[Node] = None
         self.syntax_errors: List[Tuple[Location, Exception]] = []
         self.parsed = False
@@ -357,7 +358,7 @@ class LatexParser:
         parser.removeErrorListeners()
         error_listener = _SyntaxErrorErrorListener(self.file)
         parser.addErrorListener(error_listener)
-        listener = _LatexParserListener(self)
+        listener = Listener(self)
         walker = antlr4.ParseTreeWalker()
         parse_tree = parser.main()
         walker.walk(listener, parse_tree)
@@ -471,7 +472,7 @@ class _SyntaxErrorErrorListener(ErrorListener):
         self.syntax_errors.append((location, exception))
 
 
-class _LatexParserListener(_LatexParserListener):
+class Listener(_LatexParserListener):
     ' Implements the antlr4 methods for parsing a latex file. '
 
     def __init__(self, parser: LatexParser):
@@ -513,7 +514,8 @@ class _LatexParserListener(_LatexParserListener):
         self.stack.append(node)
 
     def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
-        env: Environment = self.stack.pop()
+        env: Node = self.stack.pop()
+        assert isinstance(env, Environment)
         _end_env = Environment.from_ctx(ctx, self.parser)
         env.end = _end_env.end
         if not isinstance(env, Environment):
@@ -522,9 +524,12 @@ class _LatexParserListener(_LatexParserListener):
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
+            location_str = env.location.range.start.translate(1, 1).format()
+            end_location_str = _end_env.location.range.start.translate(
+                1, 1).format()
             error = LatexException(
                 f'Environment unbalanced:'
-                f' Expected {expected_env_name} entered ({env.location.range.start.translate(1, 1).format()}) found {actual_env_name} ({_end_env.location.range.start.translate(1, 1).format()})')
+                f' Expected {expected_env_name} entered ({location_str}) found {actual_env_name} ({end_location_str})')
             self.parser.syntax_errors.append((env.location, error))
         self.stack[-1].add(env)
 
@@ -553,7 +558,7 @@ class _LatexParserListener(_LatexParserListener):
 
     def exitRarg(self, ctx: _LatexParser.RargContext):
         rarg = self.stack.pop()
-        env: Environment = self.stack[-1]
+        env: Node = self.stack[-1]
         if not isinstance(env, Environment):
             self.parser.syntax_errors.append((env.location, LatexException(
                 f'Expected stack top to be of type Environment found: {self.stack}')))

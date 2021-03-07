@@ -15,29 +15,23 @@ using the linker from the linker module and then the linter from the linter pack
 """
 from __future__ import annotations
 
-from numpy.lib.arraysetops import isin
-from stexls.util.workspace import Workspace
-from typing import Dict, Iterable, List, Tuple, Optional, Set
-from pathlib import Path
-from hashlib import sha1
 import datetime
 import difflib
-import pickle
 import functools
 import logging
-import re
+import pickle
+from hashlib import sha1
+from pathlib import Path
 from time import time
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+
+from .. import vscode
+from ..util.workspace import Workspace
+from . import exceptions, parser, references, symbols, util
+from .diagnostics import Diagnostics
 
 log = logging.getLogger(__name__)
 
-from stexls.vscode import Diagnostic, DiagnosticSeverity, Position, Range, Location
-from stexls.util.format import format_enumeration
-from .references import Reference, ReferenceType
-from .parser import *
-from .symbols import *
-from .exceptions import *
-from . import util
-from .diagnostics import Diagnostics
 
 __all__ = ['Compiler', 'StexObject', 'Dependency', 'ObjectfileNotFoundError']
 
@@ -52,13 +46,13 @@ class ObjectfileIsCorruptedError(Exception):
 
 class Dependency:
     def __init__(
-        self,
-        range: Range,
-        scope: Symbol,
-        module_name: str,
-        module_type_hint: ModuleType,
-        file_hint: Path,
-        export: bool):
+            self,
+            range: vscode.Range,
+            scope: symbols.Symbol,
+            module_name: str,
+            module_type_hint: symbols.ModuleType,
+            file_hint: Path,
+            export: bool):
         """ Container for data required to resolve module dependencies / imports.
 
         Parameters:
@@ -104,6 +98,7 @@ class StexObject:
     """ Stex objects contain all the local information about dependencies, symbols and references in one file,
     as well as a list of errors that occured during parsing and compiling.
     """
+
     def __init__(self, file: Path):
         """ Initializes an object.
 
@@ -114,26 +109,29 @@ class StexObject:
         self.file = file
         # Root symbol tabel. All new symbols are added first to this.
         # TODO: Root location range should be the whole file.
-        self.symbol_table: RootSymbol = RootSymbol(Location(file.as_uri(), Position(0, 0)))
+        self.symbol_table: symbols.RootSymbol = symbols.RootSymbol(
+            vscode.Location(file.as_uri(), vscode.Position(0, 0)))
         # List of dependencies this file has. There may exist multiple scopes with the same module/file as dependency.
         self.dependencies: List[Dependency] = list()
-        # List of references. A reference consists of a range relative to the file that owns the reference and the symbol identifier that is referenced.
-        self.references: List[Reference] = list()
+        # List of references.
+        # A reference consists of a range relative to the file
+        # that owns the reference and the symbol identifier that is referenced.
+        self.references: List[references.Reference] = list()
         # Handler for diagnostics
         self.diagnostics: Diagnostics = Diagnostics()
         # Stores creation time
         self.creation_time = time()
 
-    def get_definitions_at(self, position: Position) -> List[Symbol]:
+    def get_definitions_at(self, position: vscode.Position) -> List[symbols.Symbol]:
         ' Queries symbol definitions at the given @position. '
-        definitions = []
+        definitions: List[symbols.Symbol] = []
         # First step: Gather the symbol definitions which are directly positioned under the cursor
         for symbol in self.symbol_table.flat():
             # same file check
             if symbol.location.path != self.file:
                 continue
             # ignore non-module and non-def symbols (e.g. scopes)
-            if not isinstance(symbol, (ModuleSymbol, DefSymbol)):
+            if not isinstance(symbol, (symbols.ModuleSymbol, symbols.DefSymbol)):
                 continue
             # Add the symbol if the symbol is positioned under cursor
             if symbol.location.range.contains(position):
@@ -187,13 +185,17 @@ class StexObject:
     @property
     def related_files(self) -> Iterable[Path]:
         ' Iterable of all files that are somehow referenced inside this object. '
-        yield self.file
+#         yield self.file
         for dep in self.dependencies:
             yield dep.file_hint
         for symbol in self.symbol_table.flat():
             yield symbol.location.path
 
-    def find_similar_symbols(self, scope: Symbol, qualified: List[str], ref_type: ReferenceType) -> Dict[str, Set[Location]]:
+    def find_similar_symbols(
+            self,
+            scope: symbols.Symbol,
+            qualified: List[str],
+            ref_type: references.ReferenceType) -> Dict[str, Set[vscode.Location]]:
         ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
 
         Parameters:
@@ -203,13 +205,15 @@ class StexObject:
         Returns:
             Dictionary map of symbol names as strings and the set of locations the symbol names are located at
         '''
-        names: Dict[str, Set[Location]] = {}
-        def f(symbol: Symbol):
+        names: Dict[str, Set[vscode.Location]] = {}
+
+        def f(symbol: symbols.Symbol):
             if ref_type.contains_any_of(symbol.reference_type):
-                names.setdefault('?'.join(symbol.qualified), set()).add(symbol.location)
+                names.setdefault('?'.join(symbol.qualified),
+                                 set()).add(symbol.location)
         self.symbol_table.traverse(lambda s: f(s))
         close_matches = difflib.get_close_matches('?'.join(qualified), names)
-        return { match: names.get(match, set()) for match in close_matches }
+        return {match: names.get(match, set()) for match in close_matches}
 
     def format(self) -> str:
         ' Simple formatter for debugging, that prints out all information in this object. '
@@ -218,29 +222,35 @@ class StexObject:
         f += '\nDependencies:'
         if self.dependencies:
             for dep in self.dependencies:
-                loc = Location(self.file.as_uri(), dep.range).format_link()
+                loc = vscode.Location(self.file.as_uri(),
+                                      dep.range).format_link()
                 f += f'\n\t{loc}: {dep.module_name} from "{dep.file_hint}"'
         else:
             f += '\n\tNo dependencies.'
         f += '\nReferences:'
         if self.references:
             for ref in self.references:
-                loc = Location(self.file.as_uri(), ref.range).format_link()
+                loc = vscode.Location(self.file.as_uri(),
+                                      ref.range).format_link()
                 f += f'\n\t{loc}: {"?".join(ref.name)} of type {ref.reference_type}'
         else:
             f += '\n\tNo references.'
         f += '\nDiagnostics:'
         if self.diagnostics:
             for diagnostic in self.diagnostics:
-                f += f'\n\t{Location(self.file.as_uri(), diagnostic.range).format_link()} {diagnostic.severity.name} - {diagnostic.message} ({diagnostic.code})'
+                link_str = vscode.Location(
+                    self.file.as_uri(), diagnostic.range).format_link()
+                f += f'\n\t{link_str} {diagnostic.severity.name} - {diagnostic.message} ({diagnostic.code})'
         else:
             f += '\n\tNo diagnostics.'
         f += '\nSymbol Table:'
-        l = []
-        def enter(l, s):
-            l.append(f'{"  "*s.depth}├ {s}')
-        self.symbol_table.traverse(lambda s: enter(l, s))
-        f += '\n' + '\n'.join(l)
+        list_of_formatted_strings: List[str] = []
+
+        def enter(formatted_strings: List[str], symbol: symbols.Symbol):
+            formatted_strings.append(f'{"  "*symbol.depth}├ {symbol}')
+        self.symbol_table.traverse(lambda symbol: enter(
+            list_of_formatted_strings, symbol))
+        f += '\n' + '\n'.join(list_of_formatted_strings)
         return f
 
     def add_dependency(self, dep: Dependency):
@@ -257,12 +267,14 @@ class StexObject:
             # TODO: this same error occurs in Symbol.import_from(): Fix both
             if dep0.check_if_same_module_imported(dep):
                 # Skip adding this dependency
-                previously_imported_at = Location(self.file.as_uri(), dep0.range)
-                self.diagnostics.redundant_import_check(dep.range, dep.module_name, previously_imported_at)
+                previously_imported_at = vscode.Location(
+                    self.file.as_uri(), dep0.range)
+                self.diagnostics.redundant_import_check(
+                    dep.range, dep.module_name, previously_imported_at)
                 return
         self.dependencies.append(dep)
 
-    def add_reference(self, reference: Reference):
+    def add_reference(self, reference: references.Reference):
         """ Registers a reference.
 
         Parameters:
@@ -277,6 +289,7 @@ class Compiler:
     The idea is that "c++ main.cpp -c -o outdir/main.o" is equal to "Compiler(cwd, outdir).compile(main.tex)"
     Important is the -c flag, as linking is seperate in our case.
     """
+
     def __init__(self, root: Path, outdir: Path):
         """ Creates a new compiler
 
@@ -318,7 +331,8 @@ class Compiler:
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
             if not isinstance(obj, StexObject):
-                raise ObjectfileIsCorruptedError(f'Objectfile for "{file}" is corrupted.')
+                raise ObjectfileIsCorruptedError(
+                    f'Objectfile for "{file}" is corrupted.')
             return obj
 
     def recompilation_required(self, file: Path, time_modified: float = None):
@@ -364,14 +378,14 @@ class Compiler:
         objectdir = objectfile.parent
         objectdir.mkdir(parents=True, exist_ok=True)
         object = StexObject(file)
-        parser = IntermediateParser(file)
-        parser.parse(content)
-        for loc, errors in parser.errors.items():
+        intermed_parser = parser.IntermediateParser(file)
+        intermed_parser.parse(content)
+        for loc, errors in intermed_parser.errors.items():
             for err in errors:
                 object.diagnostics.parser_exception(loc.range, err)
-        for root in parser.roots:
-            root: IntermediateParseTree
-            context: List[Tuple[IntermediateParseTree, Symbol]] = [(None, object.symbol_table)]
+        for root in intermed_parser.roots:
+            context: List[Tuple[Optional[parser.IntermediateParseTree], symbols.Symbol]] = [
+                (None, object.symbol_table)]
             enter = functools.partial(self._compile_enter, object, context)
             exit = functools.partial(self._compile_exit, object, context)
             root.traverse(enter, exit)
@@ -379,42 +393,51 @@ class Compiler:
             if not dryrun:
                 with open(objectfile, 'wb') as fd:
                     pickle.dump(object, fd)
-        except:
+        except Exception:
             # ignore errors if objectfile can't be written to disk
             # and continue as usual
-            log.exception('Failed to write object in "%s" to "%s".', file, objectfile)
+            log.exception(
+                'Failed to write object in "%s" to "%s".', file, objectfile)
         return object
 
-    def _compile_modsig(self, obj: StexObject, context: Symbol, modsig: ModsigIntermediateParseTree):
-        if not isinstance(context, RootSymbol):
+    def _compile_modsig(self, obj: StexObject, context: symbols.Symbol, modsig: parser.ModsigIntermediateParseTree):
+        if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(modsig.location.range, 'modsig')
-        name_location = modsig.location.replace(positionOrRange=modsig.name.range)
+            obj.diagnostics.parent_must_be_root_semantic_location_check(
+                modsig.location.range, 'modsig')
+        name_location = modsig.location.replace(
+            positionOrRange=modsig.name.range)
         if obj.file.stem != modsig.name.text:
-            obj.diagnostics.file_name_mismatch(modsig.location.range, modsig.name.text, obj.file.stem)
-        module = ModuleSymbol(
-            module_type=ModuleType.MODSIG,
+            obj.diagnostics.file_name_mismatch(
+                modsig.location.range, modsig.name.text, obj.file.stem)
+        module = symbols.ModuleSymbol(
+            module_type=symbols.ModuleType.MODSIG,
             location=name_location,
             name=modsig.name.text)
         try:
             context.add_child(module)
             return module
-        except DuplicateSymbolDefinedError:
-            log.exception('%s: Failed to compile modsig %s.', module.location.format_link(), module.name)
+        except exceptions.DuplicateSymbolDefinedError:
+            log.exception('%s: Failed to compile modsig %s.',
+                          module.location.format_link(), module.name)
         return None
 
-    def _compile_modnl(self, obj: StexObject, context: Symbol, modnl: ModnlIntermediateParseTree):
-        if not isinstance(context, RootSymbol):
+    def _compile_modnl(self, obj: StexObject, context: symbols.Symbol, modnl: parser.ModnlIntermediateParseTree):
+        if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(modnl.location.range, 'modnl')
+            obj.diagnostics.parent_must_be_root_semantic_location_check(
+                modnl.location.range, 'modnl')
         expected_file_stem = f'{modnl.name.text}.{modnl.lang.text}'
         if obj.file.stem != expected_file_stem:
-            obj.diagnostics.file_name_mismatch(modnl.location.range, expected_file_stem, obj.file.stem)
-        binding = BindingSymbol(modnl.location, modnl.name.text, modnl.lang)
+            obj.diagnostics.file_name_mismatch(
+                modnl.location.range, expected_file_stem, obj.file.stem)
+        binding = symbols.BindingSymbol(
+            modnl.location, modnl.name.text, str(modnl.lang))
         try:
             context.add_child(binding)
-        except DuplicateSymbolDefinedError:
-            log.exception('%s: Failed to compile language binding of %s.', modnl.location.format_link(), modnl.name.text)
+        except exceptions.DuplicateSymbolDefinedError:
+            log.exception('%s: Failed to compile language binding of %s.',
+                          modnl.location.format_link(), modnl.name.text)
             return None
         # Important, the context must be changed here to the binding, else the dependency and reference won't be resolved correctly
         context = binding
@@ -423,117 +446,145 @@ class Compiler:
             range=modnl.name.range,
             scope=context,
             module_name=modnl.name.text,
-            module_type_hint=ModuleType.MODSIG,
+            module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=modnl.path,
             export=True)
         obj.add_dependency(dep)
         # Add the reference from the module name to the parent module
-        ref = Reference(modnl.name.range, context, [modnl.name.text], ReferenceType.MODSIG)
+        ref = references.Reference(modnl.name.range, context, [
+            modnl.name.text], references.ReferenceType.MODSIG)
         obj.add_reference(ref)
         return binding
 
-    def _compile_module(self, obj: StexObject, context: Symbol, module: ModuleIntermediateParseTree):
+    def _compile_module(self, obj: StexObject, context: symbols.Symbol, module: parser.ModuleIntermediateParseTree):
         # TODO: Semantic location check
         if module.id:
-            name_location = module.location.replace(positionOrRange=module.id.range)
-            symbol = ModuleSymbol(ModuleType.MODULE, name_location, module.id.text)
+            name_location = module.location.replace(
+                positionOrRange=module.id.range)
+            symbol = symbols.ModuleSymbol(
+                symbols.ModuleType.MODULE, name_location, module.id.text)
         else:
-            symbol = ModuleSymbol(ModuleType.MODULE, module.location, name=None)
+            symbol = symbols.ModuleSymbol(
+                symbols.ModuleType.MODULE, module.location, name=None)
         try:
             context.add_child(symbol)
             return symbol
-        except DuplicateSymbolDefinedError:
-            log.exception('%s: Failed to compile module %s.', module.location.format_link(), module.id.text)
+        except exceptions.DuplicateSymbolDefinedError:
+            log.exception(
+                '%s: Failed to compile module %s.',
+                module.location.format_link(),
+                (module.id.text if module.id else "<undefined>"))
         return None
 
-    def _compile_tassign(self, obj: StexObject, context: Symbol, tassign: TassignIntermediateParseTree):
-        if not isinstance(tassign.parent, (ViewSigIntermediateParseTree, ViewIntermediateParseTree)):
-            obj.diagnostics.semantic_location_check(tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
+    def _compile_tassign(self, obj: StexObject, context: symbols.Symbol, tassign: parser.TassignIntermediateParseTree):
+        if not isinstance(tassign.parent, (parser.ViewSigIntermediateParseTree, parser.ViewIntermediateParseTree)):
+            obj.diagnostics.semantic_location_check(
+                tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
             return
 
-        if isinstance(tassign.parent, ViewSigIntermediateParseTree):
-            view : ViewSigIntermediateParseTree = tassign.parent
-            obj.add_reference(Reference(tassign.source_symbol.range, context, [view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
+        if isinstance(tassign.parent, parser.ViewSigIntermediateParseTree):
+            view: parser.ViewSigIntermediateParseTree = tassign.parent
+            obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
+                              view.source_module.text, tassign.source_symbol.text], references.ReferenceType.DEF))
             if tassign.torv == 'v':
-                obj.add_reference(Reference(tassign.target_term.range, context, [view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
+                obj.add_reference(references.Reference(tassign.target_term.range, context, [
+                                  view.target_module.text, tassign.target_term.text], references.ReferenceType.DEF))
         else:
-            view : ViewIntermediateParseTree = tassign.parent
             # TODO: Also compile when inside view environments
-            obj.diagnostics.exception(context.location.range, NotImplementedError('"assign" inside "view" not implemented yet.'))
+            obj.diagnostics.exception(context.location.range, NotImplementedError(
+                '"assign" inside "view" not implemented yet.'))
 
-    def _compile_trefi(self, obj: StexObject, context: Symbol, trefi: TrefiIntermediateParseTree):
+    def _compile_trefi(self, obj: StexObject, context: symbols.Symbol, trefi: parser.TrefiIntermediateParseTree):
         if trefi.drefi:
             # TODO: Semantic location check for \drefi location
             # TODO: issue 30 (https://gl.kwarc.info/Marian6814/stexls/-/issues/30): Drefi behaviour not quite clear
-            module: ModuleSymbol = context.get_current_module()
+            module: Optional[symbols.ModuleSymbol] = context.get_current_module()
             if not module:
-                obj.diagnostics.module_not_found_semantic_location_check(trefi.location.range, 'drefi')
+                obj.diagnostics.module_not_found_semantic_location_check(
+                    trefi.location.range, 'drefi')
             else:
-                symbol = DefSymbol(
-                    DefType.DREF,
+                symbol = symbols.DefSymbol(
+                    symbols.DefType.DREF,
                     trefi.location,
                     trefi.name,
                     access_modifier=context.get_visible_access_modifier())
                 try:
                     module.add_child(symbol, alternative=True)
-                except InvalidSymbolRedifinitionException as err:
-                    obj.diagnostics.invalid_redefinition(trefi.location.range, err.other_location, err.info)
+                except exceptions.InvalidSymbolRedifinitionException as err:
+                    obj.diagnostics.invalid_redefinition(
+                        trefi.location.range, err.other_location, err.info)
         if trefi.module:
             # TODO: Semantic location check when module info is there
-            obj.add_reference(Reference(trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | ReferenceType.MODULE))
-            obj.add_reference(Reference(trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
+            obj.add_reference(references.Reference(trefi.module.range, context, [
+                              trefi.module.text], references.ReferenceType.MODSIG | references.ReferenceType.MODULE))
+            obj.add_reference(references.Reference(trefi.location.range, context, [
+                              trefi.module.text, trefi.name], references.ReferenceType.ANY_DEFINITION))
         else:
             module_name: Optional[str] = trefi.find_parent_module_name()
             if not module_name:
                 # TODO: Semantic location check parent module name can't be found
-                obj.diagnostics.cant_infer_ref_module_outside_module(trefi.location.range)
+                obj.diagnostics.cant_infer_ref_module_outside_module(
+                    trefi.location.range)
             else:
                 # TODO: Semantic location check parent module name can be found
-                obj.add_reference(Reference(trefi.location.range, context, [module_name, trefi.name], ReferenceType.ANY_DEFINITION))
+                reference = references.Reference(
+                    trefi.location.range,
+                    context,
+                    (module_name, trefi.name),
+                    references.ReferenceType.ANY_DEFINITION
+                )
+                obj.add_reference(reference)
         if trefi.m:
             obj.diagnostics.mtref_deprecated_check(trefi.location.range)
             has_q = trefi.target_annotation and '?' in trefi.target_annotation.text
             if not has_q:
-                obj.diagnostics.mtref_questionmark_syntax_check(trefi.location.range)
+                obj.diagnostics.mtref_questionmark_syntax_check(
+                    trefi.location.range)
 
-    def _compile_defi(self, obj: StexObject, context: Symbol, defi: DefiIntermediateParseTree):
+    def _compile_defi(self, obj: StexObject, context: symbols.Symbol, defi: parser.DefiIntermediateParseTree):
         current_module = context.get_current_module()
         if current_module:
             # TODO: Semantic location check for defi inside a module
-            symbol = DefSymbol(
-                # TODO: Issue #26 (https://gl.kwarc.info/Marian6814/stexls/-/issues/26): Find a way to create a symbols with multiple allowed types -> DefType as FlagEnum
-                DefType.DEF,
+            symbol = symbols.DefSymbol(
+                # TODO: Issue #26 (https://gl.kwarc.info/Marian6814/stexls/-/issues/26):
+                #       Find a way to create a symbols with multiple allowed types -> DefType as FlagEnum
+                symbols.DefType.DEF,
                 defi.location,
                 defi.name,
                 access_modifier=context.get_visible_access_modifier())
             try:
-                alt_allowed = ModuleType.MODULE == current_module.module_type
+                alt_allowed = symbols.ModuleType.MODULE == current_module.module_type
                 current_module.add_child(symbol, alternative=alt_allowed)
-            except DuplicateSymbolDefinedError as err:
-                obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
-            except InvalidSymbolRedifinitionException as err:
-                obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
+            except exceptions.DuplicateSymbolDefinedError as err:
+                obj.diagnostics.duplicate_symbol_definition(
+                    symbol.location.range, err.name, err.previous_location)
+            except exceptions.InvalidSymbolRedifinitionException as err:
+                obj.diagnostics.invalid_redefinition(
+                    symbol.location.range, err.other_location, err.info)
         else:
-            if not defi.find_parent_module_name():
+            parent_module_name = defi.find_parent_module_name()
+            if not parent_module_name:
                 # TODO: Semantic location check for defi when no parent module info can be acquired
                 # A defi without a parent module doesn't generate a reference
-                obj.diagnostics.module_not_found_semantic_location_check(defi.location.range, 'defi')
+                obj.diagnostics.module_not_found_semantic_location_check(
+                    defi.location.range, 'defi')
                 return
             obj.add_reference(
-                Reference(
+                references.Reference(
                     range=defi.location.range,
                     scope=context,
-                    name=[defi.find_parent_module_name(), defi.name],
-                    reference_type=ReferenceType.ANY_DEFINITION))
+                    name=[parent_module_name, defi.name],
+                    reference_type=references.ReferenceType.ANY_DEFINITION))
 
-    def _compile_sym(self, obj: StexObject, context: Symbol, sym: SymIntermediateParserTree):
+    def _compile_sym(self, obj: StexObject, context: symbols.Symbol, sym: parser.SymIntermediateParserTree):
         current_module = context.get_current_module()
         if not current_module:
             # TODO: Semantic location check
-            obj.diagnostics.module_not_found_semantic_location_check(sym.location.range, 'sym')
+            obj.diagnostics.module_not_found_semantic_location_check(
+                sym.location.range, 'sym')
             return
-        symbol = DefSymbol(
-            DefType.SYM,
+        symbol = symbols.DefSymbol(
+            symbols.DefType.SYM,
             sym.location,
             sym.name,
             noverb=sym.noverb.is_all,
@@ -541,17 +592,19 @@ class Compiler:
             access_modifier=context.get_visible_access_modifier())
         try:
             current_module.add_child(symbol)
-        except DuplicateSymbolDefinedError as err:
-            obj.diagnostics.duplicate_symbol_definition(symbol.location.range, err.name, err.previous_location)
+        except exceptions.DuplicateSymbolDefinedError as err:
+            obj.diagnostics.duplicate_symbol_definition(
+                symbol.location.range, err.name, err.previous_location)
 
-    def _compile_symdef(self, obj: StexObject, context: Symbol, symdef: SymdefIntermediateParseTree):
+    def _compile_symdef(self, obj: StexObject, context: symbols.Symbol, symdef: parser.SymdefIntermediateParseTree):
         current_module = context.get_current_module()
         if not current_module:
             # TODO: Semantic location check
-            obj.diagnostics.module_not_found_semantic_location_check(symdef.location.range, 'symdef')
+            obj.diagnostics.module_not_found_semantic_location_check(
+                symdef.location.range, 'symdef')
             return
-        symbol = DefSymbol(
-            DefType.SYMDEF,
+        symbol = symbols.DefSymbol(
+            symbols.DefType.SYMDEF,
             symdef.location,
             symdef.name.text,
             noverb=symdef.noverb.is_all,
@@ -559,144 +612,189 @@ class Compiler:
             access_modifier=context.get_visible_access_modifier())
         try:
             current_module.add_child(symbol, alternative=True)
-        except InvalidSymbolRedifinitionException as err:
-            obj.diagnostics.invalid_redefinition(symbol.location.range, err.other_location, err.info)
+        except exceptions.InvalidSymbolRedifinitionException as err:
+            obj.diagnostics.invalid_redefinition(
+                symbol.location.range, err.other_location, err.info)
 
-    def _compile_importmodule(self, obj: StexObject, context: Symbol, importmodule: ImportModuleIntermediateParseTree):
+    def _compile_importmodule(self, obj: StexObject, context: symbols.Symbol, importmodule: parser.ImportModuleIntermediateParseTree):
         # TODO: Semantic location check
         dep = Dependency(
             range=importmodule.location.range,
             scope=context,
             module_name=importmodule.module.text,
-            module_type_hint=ModuleType.MODULE,
+            module_type_hint=symbols.ModuleType.MODULE,
             file_hint=importmodule.path_to_imported_file(self.root_dir),
-            export=importmodule.export) #TODO: Is usemodule exportet?
+            export=importmodule.export)  # TODO: Is usemodule exportet?
         obj.add_dependency(dep)
-        ref = Reference(importmodule.location.range, context, [importmodule.module.text], ReferenceType.MODULE)
+        ref = references.Reference(importmodule.location.range, context, [
+            importmodule.module.text], references.ReferenceType.MODULE)
         obj.add_reference(ref)
         if importmodule.repos:
-            obj.diagnostics.replace_repos_with_mhrepos(importmodule.repos.range)
+            obj.diagnostics.replace_repos_with_mhrepos(
+                importmodule.repos.range)
         # TODO: is-current-dir-check not needed? importmodule{} without any arg --> SAME FILE (not same directory like with gmodule)
         # importmodule[]{} with any arg (mhrepos, path, dir) --> SAME DIRECTORY (if the arg is the same directory) but not same file
         if importmodule.mhrepos and importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
-            obj.diagnostics.is_current_dir_check(importmodule.mhrepos.range, importmodule.mhrepos.text)
+            obj.diagnostics.is_current_dir_check(
+                importmodule.mhrepos.range, importmodule.mhrepos.text)
         # same path/dir is acceptable if it refers to a different repo
         if not importmodule.mhrepos or importmodule.mhrepos.text == util.get_repository_name(self.root_dir, obj.file):
             if importmodule.path and importmodule.path.text == util.get_path(self.root_dir, obj.file):
-                obj.diagnostics.is_current_dir_check(importmodule.path.range, importmodule.path.text)
+                obj.diagnostics.is_current_dir_check(
+                    importmodule.path.range, importmodule.path.text)
             if importmodule.dir and importmodule.dir.text == util.get_dir(self.root_dir, obj.file).as_posix():
                 # ignore this for now
                 # obj.diagnostics.is_current_dir_check(importmodule.dir.range, importmodule.dir.text)
                 pass
 
-    def _compile_gimport(self, obj: StexObject, context: Symbol, gimport: GImportIntermediateParseTree):
+    def _compile_gimport(self, obj: StexObject, context: symbols.Symbol, gimport: parser.GImportIntermediateParseTree):
         # TODO: Semantic location check
         dep = Dependency(
             range=gimport.location.range,
             scope=context,
             module_name=gimport.module.text,
-            module_type_hint=ModuleType.MODSIG,
+            module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=gimport.path_to_imported_file(self.root_dir),
             export=True)
         obj.add_dependency(dep)
-        ref = Reference(dep.range, context, [dep.module_name], ReferenceType.MODSIG)
+        ref = references.Reference(dep.range, context, [
+            dep.module_name], references.ReferenceType.MODSIG)
         obj.add_reference(ref)
         if gimport.repository and gimport.repository.text == util.get_repository_name(self.root_dir, gimport.location.path):
-            obj.diagnostics.is_current_dir_check(gimport.repository.range, gimport.repository.text)
+            obj.diagnostics.is_current_dir_check(
+                gimport.repository.range, gimport.repository.text)
 
-    def _compile_scope(self, obj: StexObject, context: Symbol, tree: ScopeIntermediateParseTree):
+    def _compile_scope(self, obj: StexObject, context: symbols.Symbol, tree: parser.ScopeIntermediateParseTree):
         # TODO: Semantic location check
-        scope = ScopeSymbol(tree.location, name=tree.scope_name.text)
+        scope = symbols.ScopeSymbol(tree.location, name=tree.scope_name.text)
         context.add_child(scope)
         return scope
 
-    def _compile_gstructure(self, obj: StexObject, context: Symbol, tree: GStructureIntermediateParseTree):
+    def _compile_gstructure(self, obj: StexObject, context: symbols.Symbol, tree: parser.GStructureIntermediateParseTree):
         # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class.
-        # TODO: If content of the gstructure environment is not important, do not return anything, and delete the "next_context = " line in Compiler._enter.
+        # TODO: If content of the gstructure environment is not important,
+        #       do not return anything, and delete the "next_context = " line in Compiler._enter.
 
         # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
         return None
 
-    def _compile_view(self, obj: StexObject, context: Symbol, view: ViewIntermediateParseTree):
-        if not isinstance(context, RootSymbol):
+    def _compile_view(self, obj: StexObject, context: symbols.Symbol, view: parser.ViewIntermediateParseTree):
+        if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(view.location.range, 'view')
+            obj.diagnostics.parent_must_be_root_semantic_location_check(
+                view.location.range, 'view')
 
         if view.env == 'gviewnl':
+            assert view.module is not None, "view.module must be set in gviewnl"
+            assert view.lang is not None, "view.lang must be set in gviewnl"
             expected_name = f'{view.module.text}.{view.lang.text}'
             if expected_name != obj.file.stem:
-                obj.diagnostics.file_name_mismatch(view.module.range, expected_name, obj.file.stem)
+                obj.diagnostics.file_name_mismatch(
+                    view.module.range, expected_name, obj.file.stem)
 
         if view.env == 'gviewnl':
-            source_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir,
-                view.location.path, view.fromrepos.text if view.fromrepos else None, view.source_module.text)
-            target_file_hint = GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir,
-                view.location.path, view.torepos.text if view.torepos else None, view.target_module.text)
+            source_file_hint = parser.GImportIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir,
+                view.location.path,
+                view.fromrepos.text if view.fromrepos else None,
+                view.source_module.text)
+            target_file_hint = parser.GImportIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir,
+                view.location.path,
+                view.torepos.text if view.torepos else None,
+                view.target_module.text)
         elif view.env == 'mhview':
-            source_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.root_dir,
-                view.location.path, view.fromrepos.text if view.fromrepos else None, view.frompath.text if view.frompath else None, None, None, view.source_module.text)
-            target_file_hint = ImportModuleIntermediateParseTree.build_path_to_imported_module(self.root_dir,
-                view.location.path, view.torepos.text if view.torepos else None, view.topath.text if view.topath else None, None, None, view.target_module.text)
+            source_file_hint = parser.ImportModuleIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir,
+                view.location.path,
+                view.fromrepos.text if view.fromrepos else None,
+                view.frompath.text if view.frompath else None,
+                None,
+                None,
+                view.source_module.text)
+            target_file_hint = parser.ImportModuleIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir,
+                view.location.path,
+                view.torepos.text if view.torepos else None,
+                view.topath.text if view.topath else None,
+                None,
+                None,
+                view.target_module.text)
         else:
-            raise CompilerError(f'Unexpected environment: "{view.env}"')
+            raise exceptions.CompilerError(
+                f'Unexpected environment: "{view.env}"')
 
         source_dep = Dependency(
             range=view.source_module.range,
             scope=context,
             module_name=view.source_module.text,
-            module_type_hint=ModuleType.MODSIG, # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=source_file_hint,
             export=True)
         obj.add_dependency(source_dep)
-        ref = Reference(source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        ref = references.Reference(source_dep.range, context, [
+            source_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         target_dep = Dependency(
             range=view.target_module.range,
             scope=context,
             module_name=view.target_module.text,
-            module_type_hint=ModuleType.MODSIG, # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=target_file_hint,
             export=True)
         obj.add_dependency(target_dep)
-        ref = Reference(target_dep.range, context, [target_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        ref = references.Reference(target_dep.range, context, [
+            target_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         return None
 
-    def _compile_viewsig(self, obj: StexObject, context: Symbol, viewsig: ViewSigIntermediateParseTree):
-        if not isinstance(context, RootSymbol):
+    def _compile_viewsig(self, obj: StexObject, context: symbols.Symbol, viewsig: parser.ViewSigIntermediateParseTree):
+        if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(viewsig.location.range)
+            obj.diagnostics.parent_must_be_root_semantic_location_check(
+                viewsig.location.range,  'viewsig')
 
         if viewsig.module.text != obj.file.stem:
-            obj.diagnostics.file_name_mismatch(viewsig.module.range, viewsig.module.text, obj.file.stem)
+            obj.diagnostics.file_name_mismatch(
+                viewsig.module.range, viewsig.module.text, obj.file.stem)
 
         source_dep = Dependency(
             range=viewsig.source_module.range,
             scope=context,
             module_name=viewsig.source_module.text,
-            module_type_hint=ModuleType.MODSIG,  # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
-            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
+            # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
+            module_type_hint=symbols.ModuleType.MODSIG,
+            file_hint=parser.GImportIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
             export=True)
         obj.add_dependency(source_dep)
-        ref = Reference(source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        ref = references.Reference(source_dep.range, context, [
+            source_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         target_dep = Dependency(
             range=viewsig.target_module.range,
             scope=context,
             module_name=viewsig.target_module.text,
-            module_type_hint=ModuleType.MODSIG,
-            file_hint=GImportIntermediateParseTree.build_path_to_imported_module(self.root_dir, viewsig.location.path, viewsig.torepos.text if viewsig.torepos else None, viewsig.target_module.text),
+            module_type_hint=symbols.ModuleType.MODSIG,
+            file_hint=parser.GImportIntermediateParseTree.build_path_to_imported_module(
+                self.root_dir, viewsig.location.path, viewsig.torepos.text if viewsig.torepos else None, viewsig.target_module.text),
             export=True)
         obj.add_dependency(target_dep)
-        ref = Reference(target_dep.range, context, [target_dep.module_name], ReferenceType.MODSIG | ReferenceType.MODULE)
+        ref = references.Reference(
+            range=target_dep.range,
+            scope=context,
+            name=(target_dep.module_name,),
+            reference_type=references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         return None
 
-    def _compile_enter(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
+    def _compile_enter(self, obj: StexObject, context: List[Tuple[parser.IntermediateParseTree, symbols.Symbol]], tree: parser.IntermediateParseTree):
         """ This manages the enter operation of the intermediate parse tree into relevant environemnts.
 
         Each relevant intermediate environment is compiled here and compile operations of environments that are in \\begin{} & \\end{}
@@ -705,39 +803,39 @@ class Compiler:
         """
         _, current_context = context[-1]
         next_context = None
-        if isinstance(tree, ScopeIntermediateParseTree):
+        if isinstance(tree, parser.ScopeIntermediateParseTree):
             next_context = self._compile_scope(obj, current_context, tree)
-        elif isinstance(tree, ModsigIntermediateParseTree):
+        elif isinstance(tree, parser.ModsigIntermediateParseTree):
             next_context = self._compile_modsig(obj, current_context, tree)
-        elif isinstance(tree, ModnlIntermediateParseTree):
+        elif isinstance(tree, parser.ModnlIntermediateParseTree):
             next_context = self._compile_modnl(obj, current_context, tree)
-        elif isinstance(tree, ModuleIntermediateParseTree):
+        elif isinstance(tree, parser.ModuleIntermediateParseTree):
             next_context = self._compile_module(obj, current_context, tree)
-        elif isinstance(tree, TassignIntermediateParseTree):
+        elif isinstance(tree, parser.TassignIntermediateParseTree):
             self._compile_tassign(obj, current_context, tree)
-        elif isinstance(tree, TrefiIntermediateParseTree):
+        elif isinstance(tree, parser.TrefiIntermediateParseTree):
             self._compile_trefi(obj, current_context, tree)
-        elif isinstance(tree, DefiIntermediateParseTree):
+        elif isinstance(tree, parser.DefiIntermediateParseTree):
             self._compile_defi(obj, current_context, tree)
-        elif isinstance(tree, SymIntermediateParserTree):
+        elif isinstance(tree, parser.SymIntermediateParserTree):
             self._compile_sym(obj, current_context, tree)
-        elif isinstance(tree, SymdefIntermediateParseTree):
+        elif isinstance(tree, parser.SymdefIntermediateParseTree):
             self._compile_symdef(obj, current_context, tree)
-        elif isinstance(tree, ImportModuleIntermediateParseTree):
+        elif isinstance(tree, parser.ImportModuleIntermediateParseTree):
             self._compile_importmodule(obj, current_context, tree)
-        elif isinstance(tree, GImportIntermediateParseTree):
+        elif isinstance(tree, parser.GImportIntermediateParseTree):
             self._compile_gimport(obj, current_context, tree)
-        elif isinstance(tree, GStructureIntermediateParseTree):
+        elif isinstance(tree, parser.GStructureIntermediateParseTree):
             self._compile_gstructure(obj, current_context, tree)
-        elif isinstance(tree, ViewIntermediateParseTree):
+        elif isinstance(tree, parser.ViewIntermediateParseTree):
             self._compile_view(obj, current_context, tree)
-        elif isinstance(tree, ViewSigIntermediateParseTree):
+        elif isinstance(tree, parser.ViewSigIntermediateParseTree):
             self._compile_viewsig(obj, current_context, tree)
         if next_context:
             context.append((tree, next_context))
 
-    def _compile_exit(self, obj: StexObject, context: List[Tuple[IntermediateParseTree, Symbol]], tree: IntermediateParseTree):
-        " This manages the symbol table context structure, nothing should be done here. Everytime the tree that opened a new context symbol is exited, the context symbol must be replaced as well. "
+    def _compile_exit(self, obj: StexObject, context: List[Tuple[parser.IntermediateParseTree, symbols.Symbol]], tree: parser.IntermediateParseTree):
+        """ This manages the symbol table context structurehere. """
         current_context_tree, _ = context[-1]
         if current_context_tree == tree:
             context.pop()

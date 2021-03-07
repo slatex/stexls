@@ -4,7 +4,7 @@ from __future__ import annotations
 import urllib
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 
 class SerializableEnum(Enum):
@@ -324,7 +324,7 @@ class Range:
         return Range(self.start.translate(lines, characters), self.end.translate(lines, characters))
 
     @staticmethod
-    def big_union(rangesOrPositions: List[Union[Range, Position]]) -> Optional[Range]:
+    def big_union(rangesOrPositions: Sequence[Union[Range, Position]]) -> Optional[Range]:
         ''' Creates the big union of all ranges and positions given.
             The big union is given by the range formed by the smallest
             and largest position in the list.
@@ -385,7 +385,7 @@ class Location:
     def __hash__(self):
         return hash(hash(self.uri) ^ hash(self.range))
 
-    def read(self, lines: Optional[List[str]] = None) -> Optional[str]:
+    def read(self, lines: Optional[Sequence[str]] = None) -> Optional[str]:
         ''' Opens the file and returns the text at the range of the location.
 
         Parameters:

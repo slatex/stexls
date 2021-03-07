@@ -1,9 +1,7 @@
 from __future__ import annotations
-import os
-from typing import Set, Optional, Dict, List, Union, Tuple, Iterator
+from typing import Callable, Set, Optional, Dict, List, Union, Tuple, Iterator
 from enum import Enum, Flag
-from pathlib import Path
-from stexls.vscode import Location, Range, DocumentSymbol, Position
+from stexls import vscode
 from stexls.stex.exceptions import DuplicateSymbolDefinedError, InvalidSymbolRedifinitionException
 from stexls.util.format import format_enumeration
 from .references import ReferenceType
@@ -23,30 +21,30 @@ __all__ = [
 
 
 class AccessModifier(Flag):
-    PUBLIC=0
-    PROTECTED=1
-    PRIVATE=3 # private is 3 so that it can be treaded as stronger than protected and public in comparisions
+    PUBLIC = 0
+    PROTECTED = 1
+    PRIVATE = 3  # private is 3 so that it can be treaded as stronger than protected and public in comparisions
 
 
 class ModuleType(Enum):
     ' For module symbols: Used to remember which latex environment created this module. '
-    MODSIG='modsig'
-    MODULE='module'
+    MODSIG = 'modsig'
+    MODULE = 'module'
 
 
 class DefType(Enum):
     ' For definitions: Used to remember which latex environment created this module (e.g.: defii{}, symii{}, symdef{} or drefi{}) '
-    DEF='def'
-    DREF='dref'
-    SYMDEF='symdef'
-    SYM='sym'
+    DEF = 'def'
+    DREF = 'dref'
+    SYMDEF = 'symdef'
+    SYM = 'sym'
 
 
 class Symbol:
     def __init__(
-        self,
-        location: Location,
-        name: str):
+            self,
+            location: vscode.Location,
+            name: str):
         """ Initializes a symbol.
 
         Parameters:
@@ -136,7 +134,7 @@ class Symbol:
             return self.parent.depth + 1
         return 0
 
-    def traverse(self, enter, exit=None):
+    def traverse(self, enter: Callable[[Symbol], None], exit=None):
         ' Traverse the symbol hierarchy. Executes enter and exit for each symbol. '
         if enter:
             enter(self)
@@ -178,27 +176,33 @@ class Symbol:
             does not match all previous definitions (e.g. once with noverb and one time without noverb annotation)
         """
         if child.parent:
-            raise ValueError('Attempting to add child symbol which already has a parent.')
+            raise ValueError(
+                'Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
             for prev_child in self.children[child.name]:
                 # TODO: Is the following too broad? In general, we can have symbols of different types with the same name and they should be treated independently.
                 if child.reference_type != prev_child.reference_type:
                     continue
                 if not alternative:
-                    raise DuplicateSymbolDefinedError(child.name, prev_child.location)
+                    raise DuplicateSymbolDefinedError(
+                        child.name, prev_child.location)
                 if not isinstance(prev_child, type(child)):
-                    raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
+                    raise InvalidSymbolRedifinitionException(
+                        child.name, prev_child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
                 if isinstance(child, DefSymbol):
                     if child.def_type != prev_child.def_type:
-                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
+                        raise InvalidSymbolRedifinitionException(
+                            child.name, prev_child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')
                     if child.noverb != prev_child.noverb:
                         a = 'noverb' if child.noverb else 'not noverb'
                         b = 'noverb' if prev_child.noverb else 'not noverb'
-                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
-                    if len(child.noverbs) != len(prev_child.noverbs) or not all(a==b for a, b in zip(child.noverbs, prev_child.noverbs)):
+                        raise InvalidSymbolRedifinitionException(
+                            child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                    if len(child.noverbs) != len(prev_child.noverbs) or not all(a == b for a, b in zip(child.noverbs, prev_child.noverbs)):
                         a = format_enumeration(child.noverbs, last='and')
                         b = format_enumeration(prev_child.noverbs, last='and')
-                        raise InvalidSymbolRedifinitionException(child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
+                        raise InvalidSymbolRedifinitionException(
+                            child.name, prev_child.location, f'Noverb signatures do not match to previous definition: {a} vs. {b}')
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
@@ -267,12 +271,13 @@ class Symbol:
 
 
 class ModuleSymbol(Symbol):
-    UNNAMED_MODULE_COUNT=0
+    UNNAMED_MODULE_COUNT = 0
+
     def __init__(
-        self,
-        module_type: ModuleType,
-        location: Location,
-        name: str = None):
+            self,
+            module_type: ModuleType,
+            location: vscode.Location,
+            name: str = None):
         """ New module signature symbol.
 
         Parameters:
@@ -280,7 +285,8 @@ class ModuleSymbol(Symbol):
             location: Location at which the module symbol is created.
             name: Name of the module. If no name is provided, a name will be atomatically created.
         """
-        super().__init__(location, name or f'__MODULESYMBOL#{ModuleSymbol.UNNAMED_MODULE_COUNT}__')
+        super().__init__(
+            location, name or f'__MODULESYMBOL#{ModuleSymbol.UNNAMED_MODULE_COUNT}__')
         if not name:
             ModuleSymbol.UNNAMED_MODULE_COUNT += 1
             self.access_modifier = AccessModifier.PRIVATE
@@ -307,13 +313,13 @@ class ModuleSymbol(Symbol):
 
 class DefSymbol(Symbol):
     def __init__(
-        self,
-        def_type: DefType,
-        location: Location,
-        name: str,
-        noverb: bool = False,
-        noverbs: Set[str] = None,
-        access_modifier: AccessModifier = AccessModifier.PUBLIC):
+            self,
+            def_type: DefType,
+            location: vscode.Location,
+            name: str,
+            noverb: bool = False,
+            noverbs: Set[str] = None,
+            access_modifier: AccessModifier = AccessModifier.PUBLIC):
         """ New Verb symbol.
 
         Parameters:
@@ -343,13 +349,14 @@ class DefSymbol(Symbol):
         return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name} at {self.location.range.start.format()}]'
 
     def shallow_copy(self) -> DefSymbol:
-        cpy = DefSymbol(self.def_type, self.location.copy(), self.name, self.noverb, self.noverbs.copy())
+        cpy = DefSymbol(self.def_type, self.location.copy(),
+                        self.name, self.noverb, self.noverbs.copy())
         cpy.access_modifier = self.access_modifier
         return cpy
 
 
 class BindingSymbol(Symbol):
-    def __init__(self, location: Location, module: str, lang: str):
+    def __init__(self, location: vscode.Location, module: str, lang: str):
         super().__init__(location, module)
         self.lang = lang
 
@@ -368,9 +375,11 @@ class BindingSymbol(Symbol):
     def __repr__(self):
         return f'[{self.access_modifier.name} BindingSymbol {self.name}.{self.lang} at {self.location.range.start.format()}]'
 
+
 class RootSymbol(Symbol):
     NAME = '__root__'
-    def __init__(self, location: Location):
+
+    def __init__(self, location: vscode.Location):
         super().__init__(location, RootSymbol.NAME)
 
     @property
@@ -380,9 +389,11 @@ class RootSymbol(Symbol):
     def shallow_copy(self):
         return RootSymbol(self.location.copy())
 
+
 class ScopeSymbol(Symbol):
-    COUNTER=0
-    def __init__(self, location: Location, name: str = 'UNNAMED_SCOPE'):
+    COUNTER = 0
+
+    def __init__(self, location: vscode.Location, name: str = 'UNNAMED_SCOPE'):
         super().__init__(location, f'__{name}#{ScopeSymbol.COUNTER}__')
         ScopeSymbol.COUNTER += 1
         self._name = name

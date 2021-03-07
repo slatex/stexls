@@ -6,18 +6,18 @@ This parses therefore doesn't just parse the *.tex files but also filters and
 preparses the contents in order to create an intermediate parse tree.
 """
 from __future__ import annotations
-from typing import Callable, Optional, Tuple, List, Dict, Set
-from pathlib import Path
+
 import re
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
-from stexls.util import roman_numerals
-from stexls.vscode import *
-from stexls.util.latex.parser import Environment, Node, LatexParser, OArgument, Token
-from stexls.util.latex.exceptions import LatexException
-
-from .exceptions import *
-from .symbols import *
+from .. import vscode
+from ..util import roman_numerals
+from ..util.latex.exceptions import LatexException
+from ..util.latex import parser
 from . import util
+from . import exceptions
+from . import symbols
 
 __all__ = (
     'IntermediateParser',
@@ -42,10 +42,11 @@ __all__ = (
 
 class IntermediateParseTree:
     ' Base class for a parse tree specializations. '
-    def __init__(self, location: Location):
+
+    def __init__(self, location: vscode.Location):
         self.location = location
         self.children: List[IntermediateParseTree] = []
-        self.parent: IntermediateParseTree = None
+        self.parent: Optional[IntermediateParseTree] = None
 
     def add_child(self, child: IntermediateParseTree):
         assert child.parent is None
@@ -94,7 +95,8 @@ class IntermediateParseTree:
 
 class TokenWithLocation:
     ' Just some container for the text inside range of the file that owns an instance of this class. '
-    def __init__(self, text: str, range: Range):
+
+    def __init__(self, text: str, range: vscode.Range):
         self.text = text
         self.range = range
 
@@ -102,7 +104,7 @@ class TokenWithLocation:
         return self.text
 
     @staticmethod
-    def parse_oargs(oargs: List[OArgument]) -> Tuple[List[TokenWithLocation], Dict[str, TokenWithLocation]]:
+    def parse_oargs(oargs: List[parser.OArgument]) -> Tuple[List[TokenWithLocation], Dict[str, TokenWithLocation]]:
         ' Returns a tuple of a list and a dict of named and unnamed optional latex arguments respectively. '
         unnamed = [
             TokenWithLocation.from_node(oarg.value)
@@ -148,19 +150,24 @@ class TokenWithLocation:
         return TokenWithLocation(ltext, lrange), TokenWithLocation(rtext, rrange)
 
     @staticmethod
-    def from_node(node: Node) -> TokenWithLocation:
+    def from_node(node: parser.Node) -> TokenWithLocation:
         return TokenWithLocation(node.text_inside, node.location.range)
 
     @staticmethod
-    def from_node_union(nodes: List[Node], separator: str = ',') -> Optional[TokenWithLocation]:
+    def from_node_union(nodes: Sequence[parser.Node], separator: str = ',') -> Optional[TokenWithLocation]:
         # TODO: Can be deleted?
-        tags = map(TokenWithLocation.from_node, nodes)
-        values, ranges = zip(*((tok.text, tok.range) for tok in tags))
-        return TokenWithLocation(separator.join(values), Range.big_union(ranges))
+        tags = list(map(TokenWithLocation.from_node, nodes))
+        ranges: Sequence[vscode.Range] = tuple(
+            token.range for token in tags)
+        range_union = vscode.Range.big_union(ranges)
+        assert range_union is not None, "Node ranges union must exist."
+        text = tuple(token.text for token in tags)
+        return TokenWithLocation(separator.join(text), range_union)
 
 
 class IntermediateParser:
     " An object contains information about symbols, locations, imports of an stex source file. "
+
     def __init__(self, path: Path):
         ' Creates an empty container without actually parsing the file. '
         # Path to the source file
@@ -168,9 +175,9 @@ class IntermediateParser:
         # Buffer of all the root environments this file has.
         self.roots: List[IntermediateParseTree] = []
         # Buffer for exceptions raised during parsing
-        self.errors: Dict[Location, List[Exception]] = {}
+        self.errors: Dict[vscode.Location, List[Exception]] = {}
 
-    def parse(self, content: str = None)-> IntermediateParser:
+    def parse(self, content: str = None) -> IntermediateParser:
         ''' Parse the file from the in the constructor given path.
 
         Parameters:
@@ -182,17 +189,18 @@ class IntermediateParser:
         if self.roots:
             raise ValueError('File already parsed.')
         try:
-            parser = LatexParser(self.path)
-            parser.parse(content)
-            stack: List[Tuple[Environment, Callable]] = [(None, self.roots.append)]
-            parser.walk(
+            latex_parser = parser.LatexParser(self.path)
+            latex_parser.parse(content)
+            stack: List[Tuple[parser.Environment, Callable]] = [
+                (None, self.roots.append)]
+            latex_parser.walk(
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
-        except (CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
+        except (exceptions.CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self
 
-    def _enter(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+    def _enter(self, env, stack_of_add_child_operations: List[Tuple[parser.Environment, Callable]]):
         try:
             tree = next(filter(None, map(
                 lambda cls_: cls_.from_environment(env),
@@ -218,15 +226,15 @@ class IntermediateParser:
                     stack_of_add_child_operations[-1][1](tree)
                 stack_of_add_child_operations.append((env, tree.add_child))
                 return
-        except CompilerError as e:
+        except exceptions.CompilerError as e:
             self.errors.setdefault(env.location, []).append(e)
 
-    def _exit(self, env, stack_of_add_child_operations: List[Tuple[Environment, Callable]]):
+    def _exit(self, env, stack_of_add_child_operations: List[Tuple[parser.Environment, Callable]]):
         if stack_of_add_child_operations[-1][0] == env:
             stack_of_add_child_operations.pop()
 
     @property
-    def default_location(self) -> Location:
+    def default_location(self) -> vscode.Location:
         """ Returns a location with a range that contains the whole file
             or just the range from 0 to 0 if the file can't be openened.
         """
@@ -236,20 +244,21 @@ class IntermediateParser:
             lines = content.split('\n')
             num_lines = len(lines)
             len_last_line = len(lines[-1])
-            return Location(self.path.as_uri(), Range(Position(0, 0), Position(num_lines - 1, len_last_line - 1)))
+            return vscode.Location(self.path.as_uri(), vscode.Range(vscode.Position(0, 0), vscode.Position(num_lines - 1, len_last_line - 1)))
         except:
-            return Location(self.path.as_uri(), Position(0, 0))
+            return vscode.Location(self.path.as_uri(), vscode.Position(0, 0))
 
 
 class ScopeIntermediateParseTree(IntermediateParseTree):
     ' A scope is a new scope that seperates import statements from each other and prevent being imported from another file. '
     PATTERN = re.compile(r'n?omtext|example|omgroup|frame')
-    def __init__(self, location: Location, scope_name: TokenWithLocation):
+
+    def __init__(self, location: vscode.Location, scope_name: TokenWithLocation):
         super().__init__(location)
         self.scope_name = scope_name
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ScopeIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ScopeIntermediateParseTree]:
         match = ScopeIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return
@@ -261,7 +270,8 @@ class ScopeIntermediateParseTree(IntermediateParseTree):
 
 class ModsigIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'modsig')
-    def __init__(self, location: Location, name: TokenWithLocation):
+
+    def __init__(self, location: vscode.Location, name: TokenWithLocation):
         super().__init__(location)
         self.name = name
 
@@ -272,12 +282,13 @@ class ModsigIntermediateParseTree(IntermediateParseTree):
         return self
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ModsigIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ModsigIntermediateParseTree]:
         match = ModsigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return
         if not e.rargs:
-            raise CompilerError('Modsig environment missing required argument: {<module name>}')
+            raise exceptions.CompilerError(
+                'Modsig environment missing required argument: {<module name>}')
         return ModsigIntermediateParseTree(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]))
@@ -288,12 +299,13 @@ class ModsigIntermediateParseTree(IntermediateParseTree):
 
 class ModnlIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'(mh)?modnl')
+
     def __init__(
-        self,
-        location: Location,
-        name: TokenWithLocation,
-        lang: TokenWithLocation,
-        mh_mode: bool):
+            self,
+            location: vscode.Location,
+            name: TokenWithLocation,
+            lang: TokenWithLocation,
+            mh_mode: bool):
         super().__init__(location)
         self.name = name
         self.lang = lang
@@ -327,12 +339,13 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
         return (self.location.path.parents[0] / (self.name.text + '.tex'))
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ModnlIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ModnlIntermediateParseTree]:
         match = ModnlIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
-            return
+            return None
         if len(e.rargs) != 2:
-            raise CompilerError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+            raise exceptions.CompilerError(
+                f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         return ModnlIntermediateParseTree(
             e.location,
             TokenWithLocation.from_node(e.rargs[0]),
@@ -348,18 +361,20 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
 class ViewIntermediateParseTree(IntermediateParseTree):
     # TODO: possibly mhview should be separate -- the same way as module is separated from mhmodnl
     PATTERN = re.compile(r'mhview|gviewnl')
+
     def __init__(
-        self,
-        location: Location,
-        env: str,
-        module: Optional[TokenWithLocation],  # mhview can be anonymous, TODO: check option 'id' field
-        lang: Optional[TokenWithLocation],
-        fromrepos: Optional[TokenWithLocation],
-        frompath: Optional[TokenWithLocation],
-        torepos: Optional[TokenWithLocation],
-        topath: Optional[TokenWithLocation],
-        source_module: TokenWithLocation,
-        target_module: TokenWithLocation):
+            self,
+            location: vscode.Location,
+            env: str,
+            # mhview can be anonymous, TODO: check option 'id' field
+            module: Optional[TokenWithLocation],
+            lang: Optional[TokenWithLocation],
+            fromrepos: Optional[TokenWithLocation],
+            frompath: Optional[TokenWithLocation],
+            torepos: Optional[TokenWithLocation],
+            topath: Optional[TokenWithLocation],
+            source_module: TokenWithLocation,
+            target_module: TokenWithLocation):
         super().__init__(location)
         self.env = env
         self.module = module
@@ -375,7 +390,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         return self.module.text
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ViewIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ViewIntermediateParseTree]:
         match = cls.PATTERN.fullmatch(e.env_name)
         if not match:
             return None
@@ -384,17 +399,21 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         lang = None
         if e.env_name == 'gviewnl':
             if len(e.rargs) < 4:
-                raise CompilerError(f'Argument count mismatch: gviewnl requires 4 arguments, found {len(e.rargs)}.')
+                raise exceptions.CompilerError(
+                    f'Argument count mismatch: gviewnl requires 4 arguments, found {len(e.rargs)}.')
             for illegal_arg in ['frompath', 'topath']:
                 if illegal_arg in named:
-                    raise CompilerError(f'{illegal_arg} argument not allowed in gviewnl.')
+                    raise exceptions.CompilerError(
+                        f'{illegal_arg} argument not allowed in gviewnl.')
             module = TokenWithLocation.from_node(e.rargs[0])
             lang = TokenWithLocation.from_node(e.rargs[1])
         elif e.env_name == 'mhview':
             if len(e.rargs) < 2:
-                raise CompilerError(f'Argument count mismatch: mhview requires 2 arguments, found {len(e.rargs)}.')
+                raise exceptions.CompilerError(
+                    f'Argument count mismatch: mhview requires 2 arguments, found {len(e.rargs)}.')
         else:
-            raise CompilerError(f'Invalid environment name "{e.env_name}"')
+            raise exceptions.CompilerError(
+                f'Invalid environment name "{e.env_name}"')
         return ViewIntermediateParseTree(
             location=e.location,
             env=e.env_name,
@@ -406,19 +425,20 @@ class ViewIntermediateParseTree(IntermediateParseTree):
             topath=named.get('topath'),
             source_module=TokenWithLocation.from_node(e.rargs[-2]),
             target_module=TokenWithLocation.from_node(e.rargs[-1]),
-            )
+        )
 
 
 class ViewSigIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile('gviewsig')
+
     def __init__(
-        self,
-        location: Location,
-        fromrepos: Optional[TokenWithLocation],
-        torepos: Optional[TokenWithLocation],
-        module: TokenWithLocation,
-        source_module: TokenWithLocation,
-        target_module: TokenWithLocation):
+            self,
+            location: parser.Location,
+            fromrepos: Optional[TokenWithLocation],
+            torepos: Optional[TokenWithLocation],
+            module: TokenWithLocation,
+            source_module: TokenWithLocation,
+            target_module: TokenWithLocation):
         super().__init__(location)
         self.fromrepos = fromrepos
         self.torepos = torepos
@@ -430,12 +450,13 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
         return self.module.text
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ViewSigIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ViewSigIntermediateParseTree]:
         match = ViewSigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return None
         if len(e.rargs) < 3:
-            raise CompilerError(f'viewsig requires at least three arguments, found {len(e.rargs)}.')
+            raise exceptions.CompilerError(
+                f'viewsig requires at least three arguments, found {len(e.rargs)}.')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return ViewSigIntermediateParseTree(
             location=e.location,
@@ -452,10 +473,11 @@ class ViewSigIntermediateParseTree(IntermediateParseTree):
 
 class ModuleIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'(module(\*)?)|(smentry)')
+
     def __init__(
-        self,
-        location: Location,
-        id: Optional[TokenWithLocation]):
+            self,
+            location: vscode.Location,
+            id: Optional[TokenWithLocation]):
         super().__init__(location)
         self.id = id
 
@@ -470,7 +492,7 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
         return f'[Module {module}]'
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ModuleIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ModuleIntermediateParseTree]:
         match = cls.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
@@ -483,18 +505,20 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 
 class GStructureIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'gstructure(\*)?')
-    def __init__(self, location: Location, mhrepos: TokenWithLocation, module: TokenWithLocation):
+
+    def __init__(self, location: vscode.Location, mhrepos: TokenWithLocation, module: TokenWithLocation):
         super().__init__(location)
         self.mhrepos = mhrepos
         self.module = module
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[GStructureIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[GStructureIntermediateParseTree]:
         match = cls.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 2:
-            raise CompilerError(f'gstructure environment requires at least 2 Arguments but {len(e.rargs)} found.')
+            raise exceptions.CompilerError(
+                f'gstructure environment requires at least 2 Arguments but {len(e.rargs)} found.')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return GStructureIntermediateParseTree(
             location=e.location,
@@ -508,17 +532,18 @@ class GStructureIntermediateParseTree(IntermediateParseTree):
 
 class DefiIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'([ma]*)(d|D)ef([ivx]+)(s)?(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        tokens: List[TokenWithLocation],
-        name_annotation: Optional[TokenWithLocation],
-        m: bool,
-        a: bool,
-        capital: bool,
-        i: int,
-        s: bool,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            tokens: List[TokenWithLocation],
+            name_annotation: Optional[TokenWithLocation],
+            m: bool,
+            a: bool,
+            capital: bool,
+            i: int,
+            s: bool,
+            asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
         self.name_annotation = name_annotation
@@ -529,7 +554,8 @@ class DefiIntermediateParseTree(IntermediateParseTree):
         self.s = s
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
-            raise CompilerError(f'Defi argument count mismatch: Expected {i + int(a)} vs actual {len(tokens)}.')
+            raise exceptions.CompilerError(
+                f'Defi argument count mismatch: Expected {i + int(a)} vs actual {len(tokens)}.')
 
     @property
     def name(self) -> str:
@@ -540,17 +566,19 @@ class DefiIntermediateParseTree(IntermediateParseTree):
         return '-'.join(t.text for t in self.tokens)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[DefiIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[DefiIntermediateParseTree]:
         match = DefiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
+            raise exceptions.CompilerError(
+                'Argument count mismatch (expected at least 1, found 0).')
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         try:
             i = roman_numerals.roman2int(match.group(3))
         except:
-            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
+            raise exceptions.CompilerError(
+                f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return DefiIntermediateParseTree(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
@@ -568,18 +596,19 @@ class DefiIntermediateParseTree(IntermediateParseTree):
 
 class TrefiIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'([ma]*)(d|D|t|T)ref([ivx]+)(s)?(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        tokens: List[TokenWithLocation],
-        target_annotation: Optional[TokenWithLocation],
-        m: bool,
-        a: bool,
-        capital: bool,
-        drefi: bool,
-        i: int,
-        s: bool,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            tokens: List[TokenWithLocation],
+            target_annotation: Optional[TokenWithLocation],
+            m: bool,
+            a: bool,
+            capital: bool,
+            drefi: bool,
+            i: int,
+            s: bool,
+            asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
         self.target_annotation = target_annotation
@@ -591,7 +620,8 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
         self.s = s
         self.asterisk = asterisk
         if i + int(a) != len(tokens):
-            raise CompilerError(f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
+            raise exceptions.CompilerError(
+                f'Trefi argument count mismatch: Expected {i + int(a)} vs. actual {len(tokens)}.')
 
     @property
     def name(self) -> str:
@@ -618,20 +648,23 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
                 index = self.target_annotation.text.index('?')
                 left, _ = self.target_annotation.split(index, 1)
                 if left.text:
-                    return left # return left in case of <module>?<symbol>
-                return None # return None in case of ?symbol
-            return self.target_annotation # return the whole thing in case of [module]
-        return None # return None if no oargs are given
+                    return left  # return left in case of <module>?<symbol>
+                return None  # return None in case of ?symbol
+            # return the whole thing in case of [module]
+            return self.target_annotation
+        return None  # return None if no oargs are given
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[TrefiIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[TrefiIntermediateParseTree]:
         match = TrefiIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
+            raise exceptions.CompilerError(
+                'Argument count mismatch (expected at least 1, found 0).')
         if len(e.unnamed_args) > 1:
-            raise CompilerError(f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(e.unnamed_args)}')
+            raise exceptions.CompilerError(
+                f'Too many unnamed oargs in trefi: Expected are at most 1, found {len(e.unnamed_args)}')
         annotations = (
             TokenWithLocation.from_node(e.unnamed_args[0])
             if e.unnamed_args
@@ -641,7 +674,8 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
         try:
             i = roman_numerals.roman2int(match.group(3))
         except:
-            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
+            raise exceptions.CompilerError(
+                f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return TrefiIntermediateParseTree(
             location=e.location,
             tokens=tokens,
@@ -662,9 +696,9 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
 
 class _NoverbHandler:
     def __init__(
-        self,
-        unnamed: List[TokenWithLocation],
-        named: Dict[str, TokenWithLocation]):
+            self,
+            unnamed: List[TokenWithLocation],
+            named: Dict[str, TokenWithLocation]):
         self.unnamed = unnamed
         self.named = named
 
@@ -684,38 +718,42 @@ class _NoverbHandler:
 
 class SymIntermediateParserTree(IntermediateParseTree):
     PATTERN = re.compile(r'sym([ivx]+)(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        tokens: List[TokenWithLocation],
-        unnamed_args: List[TokenWithLocation],
-        named_args: Dict[str, TokenWithLocation],
-        i: int,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            tokens: List[TokenWithLocation],
+            unnamed_args: List[TokenWithLocation],
+            named_args: Dict[str, TokenWithLocation],
+            i: int,
+            asterisk: bool):
         super().__init__(location)
         self.tokens = tokens
         self.noverb = _NoverbHandler(unnamed_args, named_args)
         self.i = i
         self.asterisk = asterisk
         if i != len(tokens):
-            raise CompilerError(f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
+            raise exceptions.CompilerError(
+                f'Symi argument count mismatch: Expected {i} vs actual {len(tokens)}.')
 
     @property
     def name(self) -> str:
         return '-'.join(token.text for token in self.tokens)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[SymIntermediateParserTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[SymIntermediateParserTree]:
         match = SymIntermediateParserTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerError('Argument count mismatch (expected at least 1, found 0).')
+            raise exceptions.CompilerError(
+                'Argument count mismatch (expected at least 1, found 0).')
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         try:
             i = roman_numerals.roman2int(match.group(1))
-        except:
-            raise CompilerError(f'Invalid environment (are the roman numerals correct?): {e.env_name}')
+        except Exception as err:
+            raise exceptions.CompilerError(
+                f'Invalid environment (are the roman numerals correct?): {e.env_name}') from err
         return SymIntermediateParserTree(
             location=e.location,
             tokens=list(map(TokenWithLocation.from_node, e.rargs)),
@@ -731,25 +769,27 @@ class SymIntermediateParserTree(IntermediateParseTree):
 
 class SymdefIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'symdef(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        name: TokenWithLocation,
-        unnamed_oargs: List[TokenWithLocation],
-        named_oargs: Dict[str, TokenWithLocation],
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            name: TokenWithLocation,
+            unnamed_oargs: List[TokenWithLocation],
+            named_oargs: Dict[str, TokenWithLocation],
+            asterisk: bool):
         super().__init__(location)
         self.name: TokenWithLocation = name
         self.noverb = _NoverbHandler(unnamed_oargs, named_oargs)
         self.asterisk: bool = asterisk
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[SymdefIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[SymdefIntermediateParseTree]:
         match = SymdefIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if not e.rargs:
-            raise CompilerError('Argument count mismatch: At least one argument required.')
+            raise exceptions.CompilerError(
+                'Argument count mismatch: At least one argument required.')
         name = TokenWithLocation.from_node(e.rargs[0])
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return SymdefIntermediateParseTree(
@@ -766,18 +806,19 @@ class SymdefIntermediateParseTree(IntermediateParseTree):
 
 class ImportModuleIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'(import|use)(mh)?module(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        module: TokenWithLocation,
-        mhrepos: Optional[TokenWithLocation],
-        repos: Optional[TokenWithLocation],
-        dir: Optional[TokenWithLocation],
-        load: Optional[TokenWithLocation],
-        path: Optional[TokenWithLocation],
-        export: bool,
-        mh_mode: bool,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            module: TokenWithLocation,
+            mhrepos: Optional[TokenWithLocation],
+            repos: Optional[TokenWithLocation],
+            dir: Optional[TokenWithLocation],
+            load: Optional[TokenWithLocation],
+            path: Optional[TokenWithLocation],
+            export: bool,
+            mh_mode: bool,
+            asterisk: bool):
         super().__init__(location)
         self.module = module
         self.mhrepos = mhrepos
@@ -789,7 +830,8 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         self.mh_mode = mh_mode
         self.asterisk = asterisk
         if len(list(self.location.path.parents)) < 4:
-            raise CompilerWarning(f'Unable to compile module with a path depth of less than 4: {self.location.path}')
+            raise exceptions.CompilerWarning(
+                f'Unable to compile module with a path depth of less than 4: {self.location.path}')
         if mh_mode:
             # mhimport{}
             # mhimport[dir=..]{}
@@ -797,26 +839,31 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
             # mhimport[mhrepos=..,dir=..]{}
             # mhimport[mhrepos=..,path=..]{}
             if dir and path:
-                raise CompilerError('Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
+                raise exceptions.CompilerError(
+                    'Invalid argument configuration in importmhmodule: "dir" and "path" must not be specified at the same time.')
             if mhrepos and not (dir or path):
-                raise CompilerError('Invalid argument configuration in importmhmodule: "mhrepos" requires a "dir" or "path" argument.')
+                raise exceptions.CompilerError(
+                    'Invalid argument configuration in importmhmodule: "mhrepos" requires a "dir" or "path" argument.')
             elif load:
-                raise CompilerError('Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
+                raise exceptions.CompilerError(
+                    'Invalid argument configuration in importmhmodule: "load" argument must not be specified.')
         elif mhrepos or dir or path:
-            raise CompilerError('Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
+            raise exceptions.CompilerError(
+                'Invalid argument configuration in importmodule: "mhrepos", "dir" or "path" must not be specified.')
         elif not load:
             # import[load=..]{}
-            raise CompilerError('Invalid argument configuration in importmodule: Missing "load" argument.')
+            raise exceptions.CompilerError(
+                'Invalid argument configuration in importmodule: Missing "load" argument.')
 
     @staticmethod
     def build_path_to_imported_module(
-        root: Path,
-        current_file: Path,
-        mhrepo: Optional[str],
-        path: Optional[str],
-        dir: Optional[str],
-        load: Optional[str],
-        module: str):
+            root: Path,
+            current_file: Path,
+            mhrepo: Optional[str],
+            path: Optional[str],
+            dir: Optional[str],
+            load: Optional[str],
+            module: str):
         """ Reconstructs the path to the module imported by a Import statement. (Warning: not gimport!)
 
         Parameters:
@@ -841,7 +888,8 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         elif path:
             result = source / (path + '.tex')
         else:
-            raise ValueError('Invalid arguments: "path" or "dir" must be specified if "mhrepo" is.')
+            raise ValueError(
+                'Invalid arguments: "path" or "dir" must be specified if "mhrepo" is.')
         return result.expanduser().resolve().absolute()
 
     def path_to_imported_file(self, root: Path) -> Path:
@@ -860,16 +908,17 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
             from_ = f' from "{self.path_to_imported_file(Path.cwd())}"'
         except:
             from_ = ''
-        access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
+        access = symbols.AccessModifier.PUBLIC if self.export else symbols.AccessModifier.PRIVATE
         return f'[{access.value} ImportModule "{self.module.text}"{from_}]'
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[ImportModuleIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[ImportModuleIntermediateParseTree]:
         match = ImportModuleIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise CompilerError(f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
+            raise exceptions.CompilerError(
+                f'Argument count mismatch: Expected exactly 1 argument but found {len(e.rargs)}')
         module = TokenWithLocation.from_node(e.rargs[0])
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         return ImportModuleIntermediateParseTree(
@@ -888,13 +937,14 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
 
 class GImportIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'g(import|use)(\*)?')
+
     def __init__(
-        self,
-        location: Location,
-        module: TokenWithLocation,
-        repository: Optional[TokenWithLocation],
-        export: bool,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            module: TokenWithLocation,
+            repository: Optional[TokenWithLocation],
+            export: bool,
+            asterisk: bool):
         super().__init__(location)
         self.module = module
         self.repository = repository
@@ -903,10 +953,10 @@ class GImportIntermediateParseTree(IntermediateParseTree):
 
     @staticmethod
     def build_path_to_imported_module(
-        root: Path,
-        current_file: Path,
-        repo: Optional[Union[Path, str]],
-        module: str):
+            root: Path,
+            current_file: Path,
+            repo: Optional[Union[Path, str]],
+            module: str) -> Path:
         """ A static helper method to get the targeted filepath by a gimport environment.
 
         Parameters:
@@ -924,7 +974,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
         else:
             # TODO: What is the path to imported module if repo in gimport[repo] is not given?
             source = current_file.parent
-        path = source / (module + '.tex')
+        path = (source / module).with_suffix('.tex')
         return path.expanduser().resolve().absolute()
 
     def path_to_imported_file(self, root: Path) -> Path:
@@ -936,16 +986,18 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             module=self.module.text.strip() if self.module else None)
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[GImportIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[GImportIntermediateParseTree]:
         match = GImportIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 1:
-            raise CompilerError(f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
+            raise exceptions.CompilerError(
+                f'Argument count mismatch (expected 1, found {len(e.rargs)}).')
         module = TokenWithLocation.from_node(e.rargs[0])
         unnamed, _ = TokenWithLocation.parse_oargs(e.oargs)
         if len(unnamed) > 1:
-            raise CompilerError(f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
+            raise exceptions.CompilerError(
+                f'Optional argument count mismatch (expected at most 1, found {len(e.oargs)})')
         return GImportIntermediateParseTree(
             location=e.location,
             module=module,
@@ -957,22 +1009,22 @@ class GImportIntermediateParseTree(IntermediateParseTree):
     def __repr__(self):
         try:
             from_ = f' from "{self.path_to_imported_file(Path.cwd())}"'
-        except:
+        except Exception:
             from_ = ''
-        access = AccessModifier.PUBLIC if self.export else AccessModifier.PRIVATE
+        access = symbols.AccessModifier.PUBLIC if self.export else symbols.AccessModifier.PRIVATE
         return f'[{access.value} gimport{"*"*self.asterisk} "{self.module.text}"{from_}]'
-
 
 
 class TassignIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'(?P<at>[tv])assign(?P<asterisk>\*?)')
+
     def __init__(
-        self,
-        location: Location,
-        torv : bool,
-        source_symbol : TokenWithLocation,
-        target_term : TokenWithLocation,
-        asterisk: bool):
+            self,
+            location: vscode.Location,
+            torv: str,
+            source_symbol: TokenWithLocation,
+            target_term: TokenWithLocation,
+            asterisk: bool):
         super().__init__(location)
         self.torv = torv
         self.source_symbol = source_symbol
@@ -980,20 +1032,21 @@ class TassignIntermediateParseTree(IntermediateParseTree):
         self.asterisk = asterisk
 
     @classmethod
-    def from_environment(cls, e: Environment) -> Optional[TassignIntermediateParseTree]:
+    def from_environment(cls, e: parser.Environment) -> Optional[TassignIntermediateParseTree]:
         match = TassignIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if match is None:
             return None
         if len(e.rargs) != 2:
-            raise CompilerError(f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+            raise exceptions.CompilerError(
+                f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         source_symbol = TokenWithLocation.from_node(e.rargs[0])
         target_term = TokenWithLocation.from_node(e.rargs[1])
         if len(e.oargs) > 0:
-            raise CompilerError(f'Unexpected optional arguments.')
+            raise exceptions.CompilerError('Unexpected optional arguments.')
         return TassignIntermediateParseTree(
             location=e.location,
-            torv = match.group('at'),
-            source_symbol = source_symbol,
-            target_term = target_term,
+            torv=match.group('at'),
+            source_symbol=source_symbol,
+            target_term=target_term,
             asterisk=match.group('asterisk') is not None,
         )

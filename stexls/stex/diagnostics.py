@@ -3,7 +3,7 @@ from typing import List, Iterator, Set, Dict
 from pathlib import Path
 from enum import Enum
 import numpy as np
-from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, MessageActionItem, Undefined
+from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location
 from stexls.vscode import Location, Range
 from stexls.util.format import format_enumeration
 from stexls.stex.references import ReferenceType

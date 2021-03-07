@@ -9,6 +9,7 @@ import urllib.request
 import zipfile
 from glob import glob
 from os.path import exists, isdir, join, splitext
+from pathlib import Path
 
 from .git import clone
 
@@ -61,7 +62,7 @@ class Downloader:
             out_file.flush()
 
 
-def maybe_download_git(repo_url: str, save_dir: str):
+def maybe_download_git(repo_url: str, save_dir: Path):
     ''' Downloads a git repository if it doesn't exist.
     Parameters:
         repo_url: git repository to download.
@@ -73,7 +74,7 @@ def maybe_download_git(repo_url: str, save_dir: str):
     repo_name = splitext(repo_url)[0].split("/")[-1]
 
     # path to repo target directory
-    clone_dir = join(save_dir, repo_name)
+    clone_dir = save_dir / repo_name
 
     if exists(clone_dir) and not isdir(clone_dir):
         raise Exception(

@@ -1,15 +1,15 @@
-from typing import Iterable, Dict, List
-import numpy as np
 from collections import Counter
+from typing import Dict, Iterable, List
 
 __all__ = ['CountVectorizer']
+
 
 class CountVectorizer:
     def __init__(self):
         self.word_counts: Dict[str, int] = None
         self.word_index: Dict[str, int] = None
         self.vocab: Iterable[str] = None
-    
+
     def fit_on_tokens(self, documents: Iterable[Iterable[str]]):
         self.word_counts = Counter(a for b in documents for a in b)
         self.word_index = {
@@ -22,7 +22,7 @@ class CountVectorizer:
                     reverse=True))
         }
         self.vocab = tuple(self.word_counts)
-    
+
     def transform(self, documents: Iterable[Iterable[str]]) -> List[List[int]]:
         return [
             [
@@ -31,7 +31,7 @@ class CountVectorizer:
             ]
             for doc in documents
         ]
-    
+
     def inverse_transform(self, sequences: Iterable[Iterable[int]]) -> List[List[str]]:
         inverse = {
             b: a
@@ -44,7 +44,7 @@ class CountVectorizer:
             ]
             for seq in sequences
         ]
-    
+
     def fit_transform(self, documents: Iterable[Iterable[str]]) -> List[List[int]]:
         self.fit_on_tokens(documents)
         return self.transform(documents)

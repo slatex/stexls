@@ -1,6 +1,9 @@
 from __future__ import annotations
-import numpy as np
+
 import collections
+from typing import Dict, Optional
+
+import numpy as np
 
 
 class TfIdfModel:
@@ -10,11 +13,11 @@ class TfIdfModel:
             X: List of lists of tokens.
             norm_order: Order to normalize with or None for no normalization.
         """
-        self.dfs = None
-        self.idfs = None
-        self._num_documents:int = None
-        self._epsilon = 1e-12
-        self.norm_order = norm_order
+        self.dfs: Optional[Dict[str, int]] = None
+        self.idfs: Optional[Dict[str, float]] = None
+        self._num_documents: Optional[int] = None
+        self._epsilon: float = 1e-12
+        self.norm_order: int = norm_order
         if X is not None:
             self.fit(X)
 
@@ -31,10 +34,12 @@ class TfIdfModel:
         self._num_documents = len(X)
 
         # document frequencies: Number of documents a word appears in
-        self.dfs = dict(collections.Counter([word for doc in X for word in set(doc)]))
+        self.dfs = dict(collections.Counter(
+            [word for doc in X for word in set(doc)]))
 
         # inverse document frequncies
-        self.idfs = {word: self._idf(self._num_documents, df) for word, df in self.dfs.items()}
+        self.idfs = {word: self._idf(self._num_documents, df)
+                     for word, df in self.dfs.items()}
 
     def fit_transform(self, X):
         """Fits and transforms a corpus.
@@ -60,7 +65,8 @@ class TfIdfModel:
         for doc in X:
             tfs = self._tf(doc)
             vec = np.array([
-                tfs[word] * self._idf(self._num_documents - 1, self.dfs[word] - 1)
+                tfs[word] * self._idf(self._num_documents -
+                                      1, self.dfs[word] - 1)
                 for word in doc
             ])
             if self.norm_order is not None:
@@ -83,12 +89,14 @@ class TfIdfModel:
 
     @staticmethod
     def test_transform():
-        X = ['this is document # 1 .'.split(), 'this is document number 2 .'.split(), 'that is the doc number 3 .'.split()]
+        X = ['this is document # 1 .'.split(), 'this is document number 2 .'.split(),
+             'that is the doc number 3 .'.split()]
 
         t1 = TfIdfModel(X[1:]).transform([X[0]])[0]
         t2 = TfIdfModel().fit_transform(X)[0]
 
-        assert all(np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)), "transform() and fit_transform() result not equal."
+        assert all(np.abs(x1 - x2) < 1e-6 for x1, x2 in zip(t1, t2)
+                   ), "transform() and fit_transform() result not equal."
 
     def _idf(self, num_documents: int, document_frequency: int):
         """Calculates the inverse-document-frequency value for phrase.

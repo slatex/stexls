@@ -1,9 +1,8 @@
-from typing import Tuple
 import numpy as np
 from stexls.util.latex.tokenizer import LatexToken
 
-
 __all__ = ['Tag']
+
 
 class Tag:
     def __init__(self, label: np.ndarray, token: LatexToken):

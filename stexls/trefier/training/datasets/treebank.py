@@ -1,8 +1,8 @@
 
 from stexls.util import download
-from stexls.util.parsing.
 
 __all__ = ['load']
+
 
 def _parse(path, lower):
     with open(path) as file:
@@ -19,8 +19,10 @@ def _parse(path, lower):
                 sentence, pos_doc = [], []
     return pos_tags, sentences
 
+
 def load(lower=True, return_sentences=True, save_dir='data/', silent=False):
-    train_path, test_path = download.maybe_download_and_extract(save_dir=save_dir, silent=silent)
+    train_path, test_path = download.maybe_download_and_extract(
+        save_dir=save_dir, silent=silent)
     train_pos_tags, train_sentences = _parse(train_path, lower=lower)
     test_pos_tags, test_sentences = _parse(test_path, lower=lower)
     if return_sentences:
@@ -30,6 +32,8 @@ def load(lower=True, return_sentences=True, save_dir='data/', silent=False):
 
 def maybe_download_and_extract(save_dir='data/', silent=False):
     return (
-        download.maybe_download_and_extract('https://www.clips.uantwerpen.be/conll2000/chunking/train.txt.gz', silent=silent, save_dir=save_dir),
-        download.maybe_download_and_extract('https://www.clips.uantwerpen.be/conll2000/chunking/test.txt.gz', silent=silent, save_dir=save_dir),
+        download.maybe_download_and_extract(
+            'https://www.clips.uantwerpen.be/conll2000/chunking/train.txt.gz', silent=silent, save_dir=save_dir),
+        download.maybe_download_and_extract(
+            'https://www.clips.uantwerpen.be/conll2000/chunking/test.txt.gz', silent=silent, save_dir=save_dir),
     )

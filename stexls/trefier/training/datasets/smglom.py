@@ -1,11 +1,12 @@
-from typing import Tuple, List, Callable
+import multiprocessing as mp
+import os
+import pickle
+import re
+import sys
 from enum import IntEnum
 from glob import glob
-import sys
-import os
-import re
-import pickle
-import multiprocessing as mp
+from pathlib import Path
+from typing import Callable, List, Sequence, Tuple
 
 from stexls.util import download
 from stexls.util.latex import tokenizer
@@ -16,11 +17,12 @@ _DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')
 
 class Label(IntEnum):
     ' Possible labels. '
-    TEXT=0
-    TREFI=1
-    DEFI=2
+    TEXT = 0
+    TREFI = 1
+    DEFI = 2
 
-def load_and_cache(*args, cache: str = '/home/marian/smglom.bin', **kwargs):
+
+def load_and_cache(*args, cache: Path = Path('smglom.bin'), **kwargs):
     ''' Loads the dataset from cache if it exists,
         else loads the dataset using load() and writes
         the cache file with the given path if not None.
@@ -42,19 +44,21 @@ def load_and_cache(*args, cache: str = '/home/marian/smglom.bin', **kwargs):
             write_cache(x, y, path=cache)
     return x, y
 
-def write_cache(x, y, path: str = '/home/marian/smglom.bin', force: bool = False):
+
+def write_cache(x, y, path: Path = Path('smglom.bin'), force: bool = False):
     ' Helper that writes a (x, y) tuple to a file if it doesn\'t exist. '
-    if not force and os.path.exists(path):
+    if not force and path.exists():
         raise ValueError(f'File {path} already exists.')
-    with open(path, 'wb') as file:
-        pickle.dump((x, y), file)
+    with path.open('wb') as fd:
+        pickle.dump((x, y), fd)
+
 
 def load(
-    download_dir: str = 'data/',
-    lang: str = 'en',
-    binary: bool = True,
-    progress: Callable = None,
-    limit: int = None) -> Tuple[List[List[str]], List[List[int]]]:
+        download_dir: Path = Path('data'),
+        lang: str = 'en',
+        binary: bool = True,
+        progress: Callable = None,
+        limit: int = None) -> Tuple[List[List[str]], List[List[int]]]:
     ''' Loads smglom repositories as dataset. Files that fail to parse
         or parse with no tokens are ignored.
     Parameters:
@@ -79,21 +83,25 @@ def load(
     with mp.Pool() as pool:
         print('Parsing', len(files), 'files.')
         if progress:
-            it = progress(pool.imap_unordered(tokenizer.LatexTokenizer.from_file, files))
+            it = progress(pool.imap_unordered(
+                tokenizer.LatexTokenizer.from_file, files))
         else:
             it = pool.map(tokenizer.LatexTokenizer.from_file, files)
         for i, latex_tokens in filter(None, enumerate(it)):
             tokens, labels = _parse_file(list(latex_tokens), binary)
             if not tokens:
-                print('File', '"?"' if progress else files[i], 'failed to generate tokens.', file=sys.stderr)
+                print(
+                    'File', '"?"' if progress else files[i], 'failed to generate tokens.', file=sys.stderr)
             elif len(tokens) != len(labels):
-                raise RuntimeError('Unexpected lengths for tokens (%i) and labels (%i).' % (len(tokens), len(labels)))
+                raise RuntimeError('Unexpected lengths for tokens (%i) and labels (%i).' % (
+                    len(tokens), len(labels)))
             else:
                 x.append(tokens)
                 y.append(labels)
     return x, y
 
-def maybe_download(download_dir: str) -> List[str]:
+
+def maybe_download(download_dir: Path) -> List[str]:
     ''' Downloads smglom git repositories and returns the paths to them.
     Parameters:
         download_dir: Root directory to where the repositories should be cloned to.
@@ -104,7 +112,7 @@ def maybe_download(download_dir: str) -> List[str]:
     repositories = [
         "physics",
         "cs",
-        #"lmfdb",
+        # "lmfdb",
         "probability",
         "measure-theory",
         "tannakian",
@@ -135,7 +143,6 @@ def maybe_download(download_dir: str) -> List[str]:
         "chevahir",
         "SMGloM"
     ]
-    download_dir = download_dir if download_dir.endswith('/smglom') else os.path.join(download_dir, 'smglom')
     print('Saving repositories to', download_dir)
     paths = []
     for repo in repositories:
@@ -147,6 +154,7 @@ def maybe_download(download_dir: str) -> List[str]:
             print(f'Download of {repo} failed with:', e, file=sys.stderr)
     return paths
 
+
 def _parse_file(tokens: List[tokenizer.LatexToken], binary: bool) -> Tuple[List[str], List[Label]]:
     ''' Parses a list of latex tokens into a tuple of lexemes and their labels
     Parameters:
@@ -157,12 +165,13 @@ def _parse_file(tokens: List[tokenizer.LatexToken], binary: bool) -> Tuple[List[
     '''
     x = []
     y = []
-    for lexeme, _, _, envs in tokens:
-        x.append(lexeme)
-        y.append(_envs2label(envs, binary))
+    for token in tokens:
+        x.append(token.lexeme)
+        y.append(_envs2label(token.envs, binary))
     return x, y
 
-def _envs2label(envs: List[str], binary_labels: bool) -> Label:
+
+def _envs2label(envs: Sequence[str], binary_labels: bool) -> Label:
     ' Determines label by looking a list of environments. '
     if any(map(_TREFI_PATTERN.fullmatch, envs)):
         return Label.TREFI

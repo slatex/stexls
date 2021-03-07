@@ -1,18 +1,21 @@
-from typing import Dict, Optional, Union, Iterable, List
+from typing import Dict, Iterable, List, Literal, Optional
+
 import numpy as np
 from sklearn.decomposition import PCA
 from stexls.util import download
 
+
 class GloVe:
     ' Implements transformation of tokens to glove embedding vectors. '
+
     def __init__(
-        self,
-        n_components: Optional[int] = None,
-        oov_vector: Union['random', 'zero', None] = None,
-        word_limit: Optional[int] = None,
-        source_dim: int = 50,
-        download_dir: str = '/tmp',
-        extract_dir: str = None):
+            self,
+            n_components: Optional[int] = None,
+            oov_vector: Optional[Literal['random', 'zero']] = None,
+            word_limit: Optional[int] = None,
+            source_dim: int = 50,
+            download_dir: str = '/tmp',
+            extract_dir: str = None):
         ''' Initializes the embedding transform.
         Parameters:
             n_components: Performs PCA on the loaded embeddings to fit the given number of components.
@@ -28,7 +31,8 @@ class GloVe:
             if f'{source_dim}d' in path:
                 embeddings = GloVe.parse(path, limit=word_limit)
                 if n_components and n_components < source_dim:
-                    reduced = PCA(n_components).fit_transform(np.array(list(embeddings.values())))
+                    reduced = PCA(n_components).fit_transform(
+                        np.array(list(embeddings.values())))
                     self.embeddings = {
                         word: vector
                         for word, vector in zip(embeddings, reduced)
@@ -39,13 +43,14 @@ class GloVe:
         matrix = np.array(list(self.embeddings.values()))
         self.mean = matrix.mean()
         self.std = matrix.std()
-        self.embedding_size = n_components or len(list(self.embeddings.values())[0])
+        self.embedding_size = n_components or len(
+            list(self.embeddings.values())[0])
         self.oov_vec = {
             'random': np.random.normal(self.mean, self.std, size=self.embedding_size),
             'zero': np.zeros(self.embedding_size),
-        }.get(oov_vector)
+        }.get(oov_vector) if isinstance(oov_vector, str) else None
 
-    def transform(self, x: Iterable[Iterable[str]]) -> List[List[np.ndarray]]:
+    def transform(self, x: Iterable[Iterable[str]]) -> List[np.ndarray]:
         ''' Transforms a list of lists of tokens to their respective GloVe embedding.
         Parameters:
             x: List of list of token lexemes.

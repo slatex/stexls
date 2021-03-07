@@ -11,6 +11,7 @@ from .tags import Tag
 
 __all__ = ['Model']
 
+
 class PredictionType(Enum):
     ''' Possible prediction types for a model are
     discrete: Predicts an integer representation for the class.
@@ -18,16 +19,16 @@ class PredictionType(Enum):
         This may be a single float in the case of a two-class case,
         or a list of probabilities that sum up to 1, in the multi-class case.
     '''
-    discrete='discrete'
-    probabilities='probabilities'
+    discrete = 'discrete'
+    probabilities = 'probabilities'
 
 
 class Model:
     def __init__(
-        self,
-        prediction_type: PredictionType,
-        class_names: List[str],
-        version: str):
+            self,
+            prediction_type: PredictionType,
+            class_names: List[str],
+            version: str):
         """ Initializes a model base by initializing the settings member with
             information about this model.
         Parameters:
@@ -73,7 +74,8 @@ class Model:
         '''
         try:
             with ZipFile(path) as package:
-                settings = json.loads(package.read('settings.json').decode('utf-8'))
+                settings = json.loads(package.read(
+                    'settings.json').decode('utf-8'))
             return settings['model_class'] == self.__name__
-        except:
+        except Exception:
             return False

@@ -21,6 +21,7 @@ import functools
 import logging
 import pickle
 from hashlib import sha1
+from os import PathLike
 from pathlib import Path
 from time import time
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -312,7 +313,7 @@ class Compiler:
         sha = sha1(file.parent.as_posix().encode()).hexdigest()
         return self.outdir / sha / (file.name + '.stexobj')
 
-    def load_from_objectfile(self, file: Path) -> Optional[StexObject]:
+    def load_from_objectfile(self, file: Path) -> StexObject:
         ''' Loads the cached objectfile for <file> if it exists.
 
         Parameters:
@@ -355,7 +356,7 @@ class Compiler:
             return True
         return False
 
-    def compile(self, file: Path, content: str = None, dryrun: bool = False) -> StexObject:
+    def compile(self, file: PathLike, content: str = None, dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.
 
         The compiled stex object will be stored into the provided outdir.
@@ -371,6 +372,7 @@ class Compiler:
         Raises:
             FileNotFoundError: If the source file is not a file.
         """
+        file = Path(file)
         file = file.expanduser().resolve().absolute()
         if not file.is_file():
             raise FileNotFoundError(file)

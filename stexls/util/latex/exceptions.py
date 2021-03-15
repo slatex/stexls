@@ -1,4 +1,0 @@
-
-
-class LatexException(Exception):
-    pass

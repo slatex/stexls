@@ -6,6 +6,7 @@ environment, location and parse tree structure.
 from __future__ import annotations
 
 import re
+from os import PathLike
 from pathlib import Path
 from typing import Iterator, List, Tuple, Union
 
@@ -84,7 +85,7 @@ class LatexTokenizer:
                         token.envs)
 
     @staticmethod
-    def from_file(file: Union[str, Path, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
+    def from_file(file: Union[PathLike, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
         ' Creates this tokenizer directly from a file, parsing it beforehand. '
         if not isinstance(file, parser.LatexParser):
             file = parser.LatexParser(file)

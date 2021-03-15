@@ -1,12 +1,13 @@
 """ This module provides an uniform way to create and accumulate diagnostics. """
-from typing import List, Iterator, Set, Dict
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
+from typing import Dict, Iterator, List, Set
+
 import numpy as np
-from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location
-from stexls.vscode import Location, Range
-from stexls.util.format import format_enumeration
+from stexls import vscode
+from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticTag, DiagnosticSeverity
 from stexls.stex.references import ReferenceType
+from stexls.util.format import format_enumeration
 
 __all__ = ['Diagnostics']
 
@@ -24,7 +25,8 @@ class DiagnosticCodeName(Enum):
     PARSER_EXCEPTION = 'parser-exception'
     ' For modules which dictate what name the file the module is defined inside should be '
     MODULE_FILE_NAME_MISMATCH = 'filename-mismatch-check'
-    ' Used when an environment cant semantically be placed somewhere, where it doesnt make sense (e.g. Two \\modsigs in a single file or \\symdef not inside a \\modsig) '
+    ' Used when an environment cant semantically be placed somewhere,'
+    ' where it doesnt make sense (e.g. Two \\modsigs in a single file or \\symdef not inside a \\modsig) '
     SEMANTIC_LOCATION_CHECK = 'location-check'
     ' \\mtref are deprecated '
     MTREF_DEPRECATION_CHECK = 'mtref-deprecation-check'
@@ -54,6 +56,8 @@ class DiagnosticCodeName(Enum):
     TREFIER_TAG_HINT = 'generic-trefier-tag-hint'
     ' Used when referencing a symdef tagged with noverb '
     REFERENCE_TO_NOVERB_CHECK = 'referenced-noverb-symbol'
+    ' Used when something when access modifier prevents access '
+    SYMBOL_ACCESS_MODIFIER_CHECK = 'access-modifier-check'
 
 
 class Diagnostics:
@@ -70,7 +74,7 @@ class Diagnostics:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
 
-    def trefier_tag(self, range: Range, text: str, label: np.ndarray):
+    def trefier_tag(self, range: vscode.Range, text: str, label: np.ndarray):
         ' Create a simple diagnostic for a trefier tag. '
         message = f'Label for "{text}": {np.round(label, 2)}'
         severity = DiagnosticSeverity.Information
@@ -93,24 +97,24 @@ class Diagnostics:
                                 severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
-    def cant_infer_ref_module_outside_module(self, range: Range):
+    def cant_infer_ref_module_outside_module(self, range: vscode.Range):
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.CANT_INFER_REF_MODULE_OUTSIDE_MODULE.value
-        message = f'Cannot infer what module is referenced outside of any module'
+        message = 'Cannot infer what module is referenced outside of any module'
         diagnostic = Diagnostic(
             range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
-    def module_not_found_semantic_location_check(self, range: Range, env_name: str):
+    def module_not_found_semantic_location_check(self, range: vscode.Range, env_name: str):
         ' Used when an environment is used at locations where a module can\'t be deduced. E.g. outside of modsig or module environments. '
         self.semantic_location_check(
             range, env_name, 'Parent module info not found')
 
-    def parent_must_be_root_semantic_location_check(self, range: Range, env_name: str):
+    def parent_must_be_root_semantic_location_check(self, range: vscode.Range, env_name: str):
         ' Used when the parent of an environment is something different than root. '
         self.semantic_location_check(range, env_name, 'Parent must be root')
 
-    def semantic_location_check(self, range: Range, env_name: str, extra: str = None):
+    def semantic_location_check(self, range: vscode.Range, env_name: str, extra: str = None):
         ' Generic semantic location check failed message: Use @extra to give more information to why the location is invalid. '
         if extra:
             message = f'Invalid location for {env_name}: {extra}'
@@ -122,7 +126,7 @@ class Diagnostics:
             range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
-    def is_current_dir_check(self, range: Range, dir: str):
+    def is_current_dir_check(self, range: vscode.Range, dir: str):
         ' Used when environments can specify paths and the specified path is the same as the default path -> Path can be removed hint. '
         message = f'Already located inside directory "{dir}"'
         severity = DiagnosticSeverity.Warning
@@ -131,21 +135,27 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code, tags=[tag])
         self.diagnostics.append(diagnostic)
 
-    def replace_repos_with_mhrepos(self, range: Range):
+    def replace_repos_with_mhrepos(self, range: vscode.Range):
         ' Used when the deprecated "repos=" optional argument is used. '
         message = 'Argument "repos" is deprecated and should be replaced with "mhrepos".'
         severity = DiagnosticSeverity.Warning
         code = DiagnosticCodeName.REPOS_DEPRECATION_CHECK.value
         deprecated = DiagnosticTag.Deprecated
-        diagnostic = Diagnostic(range, message, severity, code, [deprecated])
+        diagnostic = Diagnostic(
+            range=range,
+            message=message,
+            severity=severity,
+            code=code,
+            tags=[deprecated]
+        )
         self.diagnostics.append(diagnostic)
 
-    def invalid_redefinition(self, range: Range, other_location: Location, info: str):
+    def invalid_redefinition(self, range: vscode.Range, other_location: vscode.Location, info: str):
         ''' Used when redefinitions are allowed (symdef), but the redefeined symbol\'s signature is incompatible (noverb tags different)
 
         Parameters:
-            range: Range of the causing symbol
-            other_location: Location of the symbol with a different signature
+            range: vscode.Range of the causing symbol
+            other_location: vscode.Location of the symbol with a different signature
             info: Information about the signature difference. Just some message string.
         '''
         severity = DiagnosticSeverity.Error
@@ -156,7 +166,7 @@ class Diagnostics:
             range, message=info, severity=severity, code=code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
-    def mtref_deprecated_check(self, range: Range):
+    def mtref_deprecated_check(self, range: vscode.Range):
         ' Used when deprecated "mtref" environment used. '
         message = '"mtref" environments are deprecated'
         severity = DiagnosticSeverity.Warning
@@ -165,7 +175,7 @@ class Diagnostics:
                                 DiagnosticTag.Deprecated])
         self.diagnostics.append(diagnostic)
 
-    def mtref_questionmark_syntax_check(self, range: Range):
+    def mtref_questionmark_syntax_check(self, range: vscode.Range):
         ' If a "mtref" is used, it must use the questionmark syntax. '
         message = 'Invalid "mtref" environment: Target symbol must be clarified by using "?<symbol>" syntax.'
         severity = DiagnosticSeverity.Error
@@ -173,7 +183,7 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
-    def file_name_mismatch(self, range: Range, expected_name: str, actual_name: str):
+    def file_name_mismatch(self, range: vscode.Range, expected_name: str, actual_name: str):
         ' Used when an environment that has authority over the filename (e.g. gmodule) mismatches the actual filename. '
         message = f'Expected the this file name "{expected_name}", but found "{actual_name}"'
         severity = DiagnosticSeverity.Warning
@@ -182,7 +192,7 @@ class Diagnostics:
             range=range, message=message, severity=severity, code=code)
         self.diagnostics.append(diagnostic)
 
-    def duplicate_symbol_definition(self, range: Range, symbol_name: str, previous_def: Location):
+    def duplicate_symbol_definition(self, range: vscode.Range, symbol_name: str, previous_def: vscode.Location):
         ' Used when duplicate symbol definitions are not allowed. '
         message = f'Duplicate definition of symbol: "{symbol_name}"'
         severity = DiagnosticSeverity.Error
@@ -193,7 +203,7 @@ class Diagnostics:
                                 severity=severity, code=code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
-    def parser_exception(self, range: Range, exception: Exception):
+    def parser_exception(self, range: vscode.Range, exception: Exception):
         ' Used for all errors caught during parsing. '
         message = str(exception)
         severity = DiagnosticSeverity.from_string(type(exception).__name__)
@@ -201,7 +211,7 @@ class Diagnostics:
         diag = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diag)
 
-    def exception(self, range: Range, exception: Exception, severity: DiagnosticSeverity = None):
+    def exception(self, range: vscode.Range, exception: Exception, severity: DiagnosticSeverity = None):
         ' Generic exception occured. '
         message = str(exception)
         severity = severity or DiagnosticSeverity.from_string(
@@ -210,7 +220,7 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def unable_to_link_with_non_unique_module(self, range: Range, module_name: str, file: Path):
+    def unable_to_link_with_non_unique_module(self, range: vscode.Range, module_name: str, file: Path):
         ' Error that should be impossible, but raised when a module is defined multiple times and some module attempts to import it. '
         message = f'Module "{module_name}" not unique in "{file}"'
         severity = DiagnosticSeverity.Error
@@ -218,7 +228,12 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def undefined_symbol(self, range: Range, symbol_name: str, reference_type: ReferenceType = None, similar_symbols: Dict[str, Set[Location]] = None):
+    def undefined_symbol(
+            self,
+            range: vscode.Range,
+            symbol_name: str,
+            reference_type: ReferenceType = None,
+            similar_symbols: Dict[str, Set[vscode.Location]] = None):
         ' Generic undefined symbol encountered error. '
         if reference_type:
             message = f'Undefined symbol "{symbol_name}" of type {reference_type.format_enum()}'
@@ -231,14 +246,14 @@ class Diagnostics:
         code = DiagnosticCodeName.UNDEFINED_SYMBOL.value
         related_information = [
             DiagnosticRelatedInformation(location, f'Related symbol: {name}')
-            for name, locations in similar_symbols.items()
+            for name, locations in (similar_symbols or {}).items()
             for location in locations
         ]
         diagnostic = Diagnostic(range, message, severity,
                                 code, relatedInformation=related_information)
         self.diagnostics.append(diagnostic)
 
-    def undefined_module_not_exported_by_file(self, range: Range, module_name: str, file: Path):
+    def undefined_module_not_exported_by_file(self, range: vscode.Range, module_name: str, file: Path):
         ' Used when a module attempts to import a module that is not exported because it is not defined in the first place. '
         message = f'Undefined module "{module_name}" symbol not exported from file: "{file}"'
         severity = DiagnosticSeverity.Error
@@ -246,15 +261,15 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def attempt_access_private_symbol(self, range: Range, symbol_name: str):
+    def attempt_access_private_symbol(self, range: vscode.Range, symbol_name: str):
         ' Private symbol accessed. '
         message = f'Accessed symbol "{symbol_name}" is marked as private'
         severity = DiagnosticSeverity.Error
-        code = DiagnosticCodeName.SYMBOL_ACCESS_CHECK.value
+        code = DiagnosticCodeName.SYMBOL_ACCESS_MODIFIER_CHECK.value
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def cyclic_dependency(self, range: Range, module_name: str, location_of_cyclic_import: Location):
+    def cyclic_dependency(self, range: vscode.Range, module_name: str, location_of_cyclic_import: vscode.Location):
         ' Cyclic dependency encountered during import resolution. '
         message = f'Cyclic dependency create at import of "{module_name}"'
         severity = DiagnosticSeverity.Error
@@ -265,7 +280,7 @@ class Diagnostics:
                                 code, relatedInformation=[related])
         self.diagnostics.append(diagnostic)
 
-    def file_not_found(self, range: Range, file: Path):
+    def file_not_found(self, range: vscode.Range, file: Path):
         ' Generic file not found message. '
         message = f'File not found: "{file}"'
         severity = DiagnosticSeverity.Error
@@ -273,7 +288,7 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def referenced_symbol_type_check(self, range: Range, expected: ReferenceType, actual: ReferenceType):
+    def referenced_symbol_type_check(self, range: vscode.Range, expected: ReferenceType, actual: ReferenceType):
         ' Used when the expected type given by a reference mismatches with the actually resolved symbol. '
         message = f'Expected symbol type is {expected.format_enum()} but the resolved symbol is of type {actual.format_enum()}'
         severity = DiagnosticSeverity.Error
@@ -281,7 +296,7 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def symbol_is_noverb_check(self, range: Range, symbol_name: str, lang: str = None, related_symbol_location: Location = None):
+    def symbol_is_noverb_check(self, range: vscode.Range, symbol_name: str, lang: str = None, related_symbol_location: vscode.Location = None):
         ' Used when a reference to a symbol tagged with "noverb={langs...}" is made. '
         if lang:
             message = f'Symbol "{symbol_name}" is marked as noverb for the language "{lang}"'
@@ -297,7 +312,7 @@ class Diagnostics:
                                 code, relatedInformation=related)
         self.diagnostics.append(diagnostic)
 
-    def redundant_import_check(self, range: Range, module_name: str, previously_at: Location = None):
+    def redundant_import_check(self, range: vscode.Range, module_name: str, previously_at: vscode.Location = None):
         ' Used when a module is already imported by another module and can be removed. '
         message = f'Redundant import of module "{module_name}"'
         severity = DiagnosticSeverity.Warning

@@ -2,26 +2,29 @@ from __future__ import annotations
 
 import re
 import tempfile
+from os import PathLike
 from pathlib import Path
-from typing import (Callable, Dict, Iterator, List, Optional, Pattern, Tuple,
-                    Union)
+from typing import Callable, Dict, Iterator, List, Optional, Pattern, Tuple
 
 import antlr4
 from antlr4.error.ErrorListener import ErrorListener
 from stexls.vscode import Location, Position, Range
 
-from .exceptions import LatexException
-from .grammar import out as _out
-from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
-from .grammar.out.LatexParser import LatexParser as _LatexParser
-from .grammar.out.LatexParserListener import \
-    LatexParserListener as _LatexParserListener
+from .grammar.out.LatexLexer import LatexLexer as _LL
+from .grammar.out.LatexParser import LatexParser as _LP
+from .grammar.out.LatexParserListener import LatexParserListener as _LPL
+
+from stexls.util.unwrap import unwrap
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment',
-           'Token', 'MathToken', 'Node', 'SyntaxErrorException']
+           'Token', 'MathToken', 'Node', 'SyntaxErrorException', 'LatexException']
 
 
 class SyntaxErrorException(Exception):
+    pass
+
+
+class LatexException(Exception):
     pass
 
 
@@ -44,7 +47,7 @@ class Node:
         self.children: List[Node] = []
         self._parent: Optional[Node] = None
 
-    def get_scope(self, filter: Pattern = None) -> Location:
+    def get_scope(self, filter: Optional[Pattern] = None) -> Location:
         ' Returns the largest scope this is contained in. Use the filter to filter out environment names that constitute a scope. '
         if not self._parent or (isinstance(self, Environment) and (not filter or filter.match(self.env_name))):
             return Location(
@@ -115,7 +118,7 @@ class Node:
             yield from child.tokens
 
     @property
-    def envs(self) -> List[Environment]:
+    def envs(self) -> Tuple[str, ...]:
         ' Lists all PARENT environments this node is contained in. '
         env = (self.env_name,) if self.env_name else ()
         if not self.parent:
@@ -133,8 +136,8 @@ class Node:
             yield from child.finditer(env_pattern)
 
     @classmethod
-    def from_ctx(cls, ctx: 'ParserRuleContext', parser, **kwargs):
-        range = _LatexParserListener._get_ctx_range(ctx)
+    def from_ctx(cls, ctx: antlr4.ParserRuleContext, parser, **kwargs):
+        range = _LPL._get_ctx_range(ctx)
         return cls(parser, *range, **kwargs)
 
     def __repr__(self):
@@ -169,8 +172,8 @@ class Token(Node):
 class OArgument(Node):
     def __init__(self, parser: LatexParser, begin: int, end: int):
         super().__init__(parser, begin, end)
-        self.name: Token = None
-        self.value: Token = None
+        self.name: Optional[Token] = None
+        self.value: Optional[Token] = None
 
     @property
     def tokens(self):
@@ -230,7 +233,7 @@ class Environment(Node):
     @property
     def unnamed_args(self) -> List[Node]:
         return [
-            oarg.value
+            unwrap(oarg.value)
             for oarg in self.oargs
             if oarg.name is None
         ]
@@ -238,7 +241,7 @@ class Environment(Node):
     @property
     def named_args(self) -> Dict[str, Node]:
         return {
-            oarg.name.text: oarg.value
+            oarg.name.text: unwrap(oarg.value)
             for oarg in self.oargs
             if oarg.name is not None
         }
@@ -311,7 +314,7 @@ class InlineEnvironment(Environment):
 
 
 class LatexParser:
-    def __init__(self, file: str, encoding: str = 'utf-8'):
+    def __init__(self, file: PathLike, encoding: str = 'utf-8'):
         """ Reads and parses the given file using latex syntax.
 
         Loads the given file and stores the text in self.source.
@@ -320,11 +323,11 @@ class LatexParser:
         retrievable using self.syntax_errors.
 
         Args:
-            file (str): Path to a file.
+            file (PathLike): Path to a file.
             encoding (str): Encoding of the file. Defaults to 'utf-8'.
         """
-        self.file: str = file
-        self._encoding: str = encoding
+        self.file: Path = Path(file)
+        self.encoding: str = encoding
         self.source: Optional[str] = None
         self.root: Optional[Node] = None
         self.syntax_errors: List[Tuple[Location, Exception]] = []
@@ -341,8 +344,8 @@ class LatexParser:
         """
         self.parsed = True
         if content is None:
-            with open(self.file, encoding=self._encoding) as fd:
-                self.source: str = fd.read()
+            with open(self.file, encoding=self.encoding) as fd:
+                self.source = fd.read()
         else:
             self.source = content
         self._line_lengths = [
@@ -351,10 +354,10 @@ class LatexParser:
             in self.source.split('\n')
         ]
         input_stream = antlr4.InputStream(self.source)
-        lexer = _LatexLexer(input_stream)
+        lexer = _LL(input_stream)
         lexer.removeErrorListeners()
         stream = antlr4.CommonTokenStream(lexer)
-        parser = _LatexParser(stream)
+        parser = _LP(stream)
         parser.removeErrorListeners()
         error_listener = _SyntaxErrorErrorListener(self.file)
         parser.addErrorListener(error_listener)
@@ -382,7 +385,7 @@ class LatexParser:
         with tempfile.NamedTemporaryFile(suffix='.tex', encoding='utf-8', delete=False, mode='w') as fd:
             fd.write(source)
             fd.flush()
-        return LatexParser(file=fd.name, encoding='utf-8')
+        return LatexParser(file=Path(fd.name), encoding='utf-8')
 
     def offset_to_position(self, offset: int) -> Position:
         """ Converts offset to tuple of line and character.
@@ -400,18 +403,16 @@ class LatexParser:
             offset -= line_len
         return Position(i, offset)
 
-    def position_to_offset(self, line: Union[int, Position], character: int = None) -> int:
+    def position_to_offset(self, line: int, character: int) -> int:
         """ Converts 0-indexed line and 0-indexed character to an offset.
 
         Args:
-            line (Union[int, Position]): 0-indexed line or Position.
-            character (int, optional): 0-indexed character of that line. If None, then line must be a position.
+            line (int): 0-indexed line or Position.
+            character (int): 0-indexed character of that line.
 
         Returns:
             int: 0-indexed offset of that line and character.
         """
-        if character is None:
-            line, character = line.line, line.character
         return sum(self._line_lengths[:line]) + character
 
     def get_text_by_offset(self, begin: int, end: int) -> str:
@@ -424,6 +425,7 @@ class LatexParser:
         Returns:
             str: String inside the given range.
         """
+        assert self.source is not None, '"source" must not be None'
         return self.source[begin:end]
 
     def walk(self, enter: Callable[[Environment], None], exit: Callable[[Environment], None] = None):
@@ -448,14 +450,16 @@ class LatexParser:
                     stack.append(current)
                     stack.extend(reversed(current.children))
                     visited.append(current)
-            else:
+            elif current is not None:
                 stack.extend(current.children)
+            else:
+                raise RuntimeError('"current" is None')
 
 
 class _SyntaxErrorErrorListener(ErrorListener):
     ' Error listener that captures syntax errors during parsing. '
 
-    def __init__(self, file: str):
+    def __init__(self, file: PathLike):
         """ Initializes the error listener with the filename which is to be parsed.
 
         Args:
@@ -472,7 +476,7 @@ class _SyntaxErrorErrorListener(ErrorListener):
         self.syntax_errors.append((location, exception))
 
 
-class Listener(_LatexParserListener):
+class Listener(_LPL):
     ' Implements the antlr4 methods for parsing a latex file. '
 
     def __init__(self, parser: LatexParser):
@@ -487,33 +491,33 @@ class Listener(_LatexParserListener):
                 'Invalid context encountered during parsing of latex file.')
         return ctx.start.start, ctx.stop.stop + 1
 
-    def enterMain(self, ctx: _LatexParser.MainContext):
+    def enterMain(self, ctx: _LP.MainContext):
         self.stack.append(Node.from_ctx(ctx, self.parser))
 
-    def exitMain(self, ctx: _LatexParser.MainContext):
+    def exitMain(self, ctx: _LP.MainContext):
         if len(self.stack) != 1:
             raise LatexException(f'Broken parser stack: {self.stack}')
 
-    def exitMath(self, ctx: _LatexParser.MathContext):
+    def exitMath(self, ctx: _LP.MathContext):
         lexeme = str(ctx.MATH_ENV())
         node = MathToken.from_ctx(ctx, self.parser, lexeme=lexeme)
         self.stack[-1].add(node)
 
-    def enterBody(self, ctx: _LatexParser.BodyContext):
+    def enterBody(self, ctx: _LP.BodyContext):
         if ctx.body():
             node = Node.from_ctx(ctx, self.parser)
             self.stack.append(node)
 
-    def exitBody(self, ctx: _LatexParser.BodyContext):
+    def exitBody(self, ctx: _LP.BodyContext):
         if ctx.body():
             body = self.stack.pop()
             self.stack[-1].add(body)
 
-    def enterEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
+    def enterEnvBegin(self, ctx: _LP.EnvBeginContext):
         node = Environment.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
+    def exitEnvEnd(self, ctx: _LP.EnvEndContext):
         env: Node = self.stack.pop()
         assert isinstance(env, Environment)
         _end_env = Environment.from_ctx(ctx, self.parser)
@@ -533,7 +537,7 @@ class Listener(_LatexParserListener):
             self.parser.syntax_errors.append((env.location, error))
         self.stack[-1].add(env)
 
-    def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
+    def enterInlineEnv(self, ctx: _LP.InlineEnvContext):
         env = InlineEnvironment.from_ctx(ctx, self.parser)
         env_name_ctx = ctx.INLINE_ENV_NAME()
         env_name_range = (
@@ -544,19 +548,19 @@ class Listener(_LatexParserListener):
         env.add_name(token)
         self.stack.append(env)
 
-    def exitInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
+    def exitInlineEnv(self, ctx: _LP.InlineEnvContext):
         env = self.stack.pop()
         self.stack[-1].add(env)
 
-    def exitText(self, ctx: _LatexParser.TextContext):
+    def exitText(self, ctx: _LP.TextContext):
         token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
         self.stack[-1].add(token)
 
-    def enterRarg(self, ctx: _LatexParser.RargContext):
+    def enterRarg(self, ctx: _LP.RargContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitRarg(self, ctx: _LatexParser.RargContext):
+    def exitRarg(self, ctx: _LP.RargContext):
         rarg = self.stack.pop()
         env: Node = self.stack[-1]
         if not isinstance(env, Environment):
@@ -567,11 +571,11 @@ class Listener(_LatexParserListener):
         else:
             env.add_rarg(rarg)
 
-    def enterArgument(self, ctx: _LatexParser.ArgumentContext):
+    def enterArgument(self, ctx: _LP.ArgumentContext):
         node = OArgument.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgument(self, ctx: _LatexParser.ArgumentContext):
+    def exitArgument(self, ctx: _LP.ArgumentContext):
         node = self.stack.pop()
         if not isinstance(self.stack[-1], Environment):
             loc = Location(node.location.uri, node.location.range.end)
@@ -579,11 +583,11 @@ class Listener(_LatexParserListener):
                 f'Expected stack top to be of typ Environment: {self.stack}')))
         self.stack[-1].add_oarg(node)
 
-    def enterArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
+    def enterArgumentName(self, ctx: _LP.ArgumentNameContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
+    def exitArgumentName(self, ctx: _LP.ArgumentNameContext):
         name = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):
@@ -591,11 +595,11 @@ class Listener(_LatexParserListener):
                 f'Expected stack to be of type OArgument: {self.stack}')))
         oarg.add_name(name)
 
-    def enterArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
+    def enterArgumentValue(self, ctx: _LP.ArgumentValueContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
+    def exitArgumentValue(self, ctx: _LP.ArgumentValueContext):
         value = self.stack.pop()
         oarg: OArgument = self.stack[-1]
         if not isinstance(oarg, OArgument):

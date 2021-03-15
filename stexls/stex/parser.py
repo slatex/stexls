@@ -13,7 +13,6 @@ from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from .. import vscode
 from ..util import roman_numerals
-from ..util.latex.exceptions import LatexException
 from ..util.latex import parser
 from . import util
 from . import exceptions
@@ -196,7 +195,7 @@ class IntermediateParser:
             latex_parser.walk(
                 lambda env: self._enter(env, stack),
                 lambda env: self._exit(env, stack))
-        except (exceptions.CompilerError, LatexException, UnicodeError, FileNotFoundError) as ex:
+        except (exceptions.CompilerError, parser.LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self
 
@@ -245,7 +244,7 @@ class IntermediateParser:
             num_lines = len(lines)
             len_last_line = len(lines[-1])
             return vscode.Location(self.path.as_uri(), vscode.Range(vscode.Position(0, 0), vscode.Position(num_lines - 1, len_last_line - 1)))
-        except:
+        except Exception:
             return vscode.Location(self.path.as_uri(), vscode.Position(0, 0))
 
 

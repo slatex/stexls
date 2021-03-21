@@ -195,7 +195,7 @@ class StexObject:
     def find_similar_symbols(
             self,
             scope: symbols.Symbol,
-            qualified: List[str],
+            qualified: Iterable[str],
             ref_type: references.ReferenceType) -> Dict[str, Set[vscode.Location]]:
         ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
 

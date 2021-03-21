@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, List
 
-from stexls.stex.compiler import StexObject
+from ..stex.compiler import StexObject
 
 
 class WorkspaceSymbols:

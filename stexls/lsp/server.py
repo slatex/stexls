@@ -6,14 +6,13 @@ from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pkg_resources
-from stexls import vscode
-from stexls.linter import Linter
-from stexls.trefier.models.seq2seq import Seq2SeqModel
-from stexls.util.jsonrpc import (Dispatcher, alias, method, notification,
-                                 request)
-from stexls.util.random_string import create_random_string
-from stexls.util.workspace import Workspace
 
+from .. import vscode
+from ..linter import Linter
+from ..trefier.models.seq2seq import Seq2SeqModel
+from ..util.jsonrpc import Dispatcher, alias, method, notification, request
+from ..util.random_string import create_random_string
+from ..util.workspace import Workspace
 from .completions import CompletionEngine
 from .workspace_symbols import WorkspaceSymbols
 
@@ -120,13 +119,6 @@ class Server(Dispatcher):
             self._update_files_and_clear_timeout()
         )
         log.debug('New update timeout: %s', self._update_request_buffer)
-
-    async def __aenter__(self):
-        log.debug('Server async enter')
-
-    async def __aexit__(self, *args):
-        log.debug('Server async exit args: %s', args)
-        log.info('Waiting for update task to finish...')
 
     @method
     @alias('$/progress')

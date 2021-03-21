@@ -1,11 +1,14 @@
 from __future__ import annotations
-from typing import Callable, Set, Optional, Dict, List, Union, Tuple, Iterator
-from enum import Enum, Flag
-from stexls import vscode
-from stexls.stex.exceptions import DuplicateSymbolDefinedError, InvalidSymbolRedifinitionException
-from stexls.util.format import format_enumeration
-from .references import ReferenceType
 
+from enum import Enum, Flag
+from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+
+from stexls import vscode
+from stexls.stex.exceptions import (DuplicateSymbolDefinedError,
+                                    InvalidSymbolRedifinitionException)
+from stexls.util.format import format_enumeration
+
+from .references import ReferenceType
 
 __all__ = [
     'AccessModifier',
@@ -206,7 +209,7 @@ class Symbol:
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
-    def lookup(self, identifier: Union[str, List[str]], accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
+    def lookup(self, identifier: Union[str, List[str], Tuple[str, ...]], accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
         """ Symbol lookup searches for symbols with a given identifier.
         A "lookup" is search operation that can change the root to a parent.
         After a root has been found, the normal "find" operation will take over and only
@@ -244,7 +247,7 @@ class Symbol:
                 return self.find(identifier[1:])
         return resolved_symbols
 
-    def find(self, identifier: Union[str, List[str]]) -> List[Symbol]:
+    def find(self, identifier: Union[str, List[str], Tuple[str, ...]]) -> List[Symbol]:
         """ Searches the identified symbol in sub-trees of this symbols' children.
 
         Parameters:

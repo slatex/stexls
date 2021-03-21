@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 def find_source_dir(root: Path, file: Path) -> Path:
     """ Extracts the source directory from a file inside a subdirectory of root.
 
@@ -44,6 +45,7 @@ def get_repository_name(root: Path, file: Path) -> str:
     i = source.parents.index(root)
     return '/'.join(source.parent.parts[-i:])
 
+
 def get_path(root: Path, file: Path) -> str:
     """ Extracts the relative path between the source directory of a file and the file itself, INCLUDING the file
     but without the extension.
@@ -67,6 +69,7 @@ def get_path(root: Path, file: Path) -> str:
     rel = file.relative_to(source)
     return str(rel.parent / rel.stem)
 
+
 def get_dir(root: Path, file: Path) -> Path:
     """ Extracts the directory relative to the source directory of the file.
 
@@ -85,6 +88,7 @@ def get_dir(root: Path, file: Path) -> Path:
         PosixPath('digidocs/en')
     """
     return file.relative_to(find_source_dir(root, file)).parent
+
 
 def is_file_newer(file: Path, old_file: Path) -> bool:
     ' Checks if file is newer than old_file. '

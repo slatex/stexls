@@ -6,16 +6,18 @@ import asyncio
 import logging
 import re
 from pathlib import Path
+from stexls.util.jsonrpc.dispatcher import Dispatcher
 from typing import Optional, Pattern, List, Dict, Any
 
 import pkg_resources
 from tqdm import tqdm
 
-from stexls.linter import Linter
-from stexls.lsp import Server
-from stexls.util.cli import Arg, Cli, argparse, command
-from stexls.util.workspace import Workspace
-from stexls.vscode import DiagnosticSeverity
+from .linter import Linter
+from .lsp import Server
+from .util.cli import Arg, Cli, argparse, command
+from .util.workspace import Workspace
+from .vscode import DiagnosticSeverity
+from .trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
 
@@ -132,8 +134,10 @@ async def linter(
             trefier_model_path = _get_default_trefier_model_path()
             log.debug('Loading trefier from "%s"', trefier_model_path)
             from stexls.trefier.models.seq2seq import Seq2SeqModel
-            trefier_model = Seq2SeqModel.load(trefier_model_path)
             # TODO: Use the trefier model
+            trefier_model = Seq2SeqModel.load(trefier_model_path)
+            print(trefier_model)
+            del trefier_model
     except Exception:
         log.exception('Failed to load trefier model')
 
@@ -220,7 +224,8 @@ async def lsp(
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
-    server, connection = None, None
+    server: Optional[Dispatcher] = None
+    connection = None
     shared_args: Dict[str, Any] = {
         'num_jobs': num_jobs,
         'update_delay_seconds': update_delay_seconds,
@@ -232,18 +237,16 @@ async def lsp(
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
         server, connection = await Server.open_ipc_connection(**shared_args)
-        async with server:
-            await connection
+        await connection
     elif transport_kind == 'tcp':
         server, connection = await Server.open_connection(host=host, port=port, **shared_args)
-        async with server:
-            await connection
+        await connection
 
 
 if __name__ == '__main__':
     try:
         version = pkg_resources.require('stexls')[0].version
-    except:
+    except Exception:
         version = 'undefined'
     cli = Cli(commands=[linter, lsp], description=__doc__, version=version)
     asyncio.run(cli.dispatch())

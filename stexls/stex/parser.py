@@ -14,9 +14,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 from .. import vscode
 from ..util import roman_numerals
 from ..util.latex import parser
-from . import util
-from . import exceptions
-from . import symbols
+from . import exceptions, symbols, util
 
 __all__ = (
     'IntermediateParser',

@@ -1,9 +1,11 @@
 from enum import Flag
 from typing import List, Sequence, Tuple
 
+# TODO: Circular reference!!!
 import stexls
-from stexls.util.format import format_enumeration
+
 from .. import vscode
+from ..util.format import format_enumeration
 
 __all__ = ['ReferenceType', 'Reference']
 

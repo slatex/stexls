@@ -1,4 +1,4 @@
-from stexls.vscode import Location
+from ..vscode import Location
 
 
 class NotCompiledError(Exception):

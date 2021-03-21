@@ -37,7 +37,7 @@ class JsonStream:
         self.newline = newline.encode(charset or encoding)
         self.with_content_type = with_content_type
 
-    def write_json(self, o: Any):
+    def write_json(self, json_object: Any):
         ' Serializes the object with json and writes it to the underlying stream writer. '
         def serializer(child):
             try:
@@ -48,7 +48,7 @@ class JsonStream:
             except Exception:
                 pass
             return dict(child.__dict__.items())
-        serialized = json.dumps(o, default=serializer)
+        serialized = json.dumps(json_object, default=serializer)
         content = serialized.encode(self.charset)
         length_header = f'Content-Length: {len(content)}'.encode(self.encoding)
         if self.with_content_type:
@@ -60,7 +60,15 @@ class JsonStream:
         self.writer.write(self.newline + content)
 
     async def read_json(self) -> Any:
-        ' Read a json object from stream, parse and return it. '
+        r''' Read a json object from stream, parse and return it.
+
+        Waits for bytes from stream, continuously attempting to read a header object until
+        the empty header is received.
+
+        After the empty header is received of the form "\r\n\r\n", start reading
+        as many bytes as the "content-length" header value.
+        Raises ValueError if "content-length" was not received.
+        '''
         headers: Dict[str, str] = await self.read_headers()
         content_length_header = headers.get('content-length')
         if not content_length_header or not content_length_header.isdigit():
@@ -84,7 +92,16 @@ class JsonStream:
         return json.loads(serialized)
 
     async def read_headers(self) -> Dict[str, str]:
-        ' Reads a dict of headers to header values from stream. '
+        r''' Reads a dict of headers to header values from stream.
+
+        A header is a line of the following HTTP like format:
+
+        <header name>: <value>\r\n
+
+
+        where the header name is a string separated by a colon from the value.
+        The line needs to end with "\r\n".
+        '''
         headers: Dict[str, str] = {}
         while True:
             raw_line: bytes = await self.reader.readline()

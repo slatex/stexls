@@ -3,17 +3,16 @@
 The idea here is that it mirrors the "ln" command for c++.
 The ln command takes a list of c++ objects and resolves the symbol references inside them.
 """
-from pathlib import Path
 from os import PathLike
+from pathlib import Path
 from time import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
-from stexls.stex.compiler import (Compiler, Dependency,
-                                  ObjectfileIsCorruptedError,
-                                  ObjectfileNotFoundError, StexObject)
-from stexls.stex import exceptions
-from stexls.stex import symbols
-from stexls import vscode
+from .. import vscode
+from . import exceptions, symbols
+from .compiler import (Compiler, Dependency,
+                       ObjectfileIsCorruptedError,
+                       ObjectfileNotFoundError, StexObject)
 
 __all__ = ['Linker']
 
@@ -198,7 +197,7 @@ class Linker:
         for ref in linked.references:
             refname = "?".join(ref.name)
             # TODO: Does using ref.reference_type to specify the expected type restrict too much?
-            resolved: List[symbols.Symbol] = ref.scope.lookup(
+            resolved: Iterable[symbols.Symbol] = ref.scope.lookup(
                 ref.name, ref.reference_type)
             if not resolved:
                 similar_symbols = linked.find_similar_symbols(
@@ -220,7 +219,7 @@ class Linker:
                     if defs.noverb:
                         linked.diagnostics.symbol_is_noverb_check(
                             ref.range, refname, related_symbol_location=symbol.location)
-                    binding: symbols.BindingSymbol = defs.get_current_binding()
-                    if binding and binding.lang in defs.noverbs:
+                    binding = defs.get_current_binding()
+                    if binding is not None and binding.lang in defs.noverbs:
                         linked.diagnostics.symbol_is_noverb_check(
                             ref.range, refname, binding.lang, related_symbol_location=symbol.location)

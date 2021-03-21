@@ -2,7 +2,7 @@
 Specification from: https://www.jsonrpc.org/specification#overview
 """
 from __future__ import annotations
-from typing import Optional, Union, List, Dict, Any
+from typing import Optional, Tuple, Union, List, Dict, Any
 from enum import IntEnum
 import json
 from . import exceptions
@@ -34,7 +34,7 @@ class RequestObject(MessageObject):
         the same id the client provided.
     '''
 
-    def __init__(self, id: Union[str, int], method: str, params: Union[Dict[str, Any], List[Any]] = None):
+    def __init__(self, id: Union[str, int], method: str, params: Union[Dict[str, Any], List[Any], Tuple[Any, ...]] = None):
         ''' Initializes the request object.
         Parameters:
             id: Client defined identifier used to re-identify the response.
@@ -59,7 +59,7 @@ class NotificationObject(MessageObject):
         about the results or errors.
     '''
 
-    def __init__(self, method: str, params: Union[Dict[str, Any], List[Any]]):
+    def __init__(self, method: str, params: Optional[Union[Dict[str, Any], Tuple[Any, ...], List[Any]]]):
         ''' Initializes a notification message.
             See RequestObject for information about parameters.
         '''
@@ -142,7 +142,7 @@ class ErrorCodes(IntEnum):
     # (implementation defined)
     # ServerError = range(-32000, -32100)
 
-    @staticmethod
+    @ staticmethod
     def message(code: int) -> Union[str, None]:
         if code == ErrorCodes.ParseError:
             return 'Parse error'

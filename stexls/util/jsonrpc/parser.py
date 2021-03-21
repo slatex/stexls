@@ -1,5 +1,5 @@
 """ Parser for message objects from json string. """
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .core import (ErrorCodes, ErrorObject, MessageObject, NotificationObject,
                    RequestObject, ResponseObject)
@@ -49,33 +49,36 @@ class MessageParser:
             return self.errors
         elif self.valid:
             return list(handle_op)
+        return []
 
 
-def validate_json(o: Any) -> Optional[ResponseObject]:
+def validate_json(json_object: Dict[str, Any]) -> Optional[ResponseObject]:
     """Validates a json object.
 
     Args:
-        o (Any): A json object.
+        json_object (Any): A json object.
 
     Returns:
         Optional[ResponseObject]: A response message with error information if the input object is invalid.
     """
-    if not isinstance(o, dict) or o.get('jsonrpc') != '2.0':
+    if not isinstance(json_object, dict) or json_object.get('jsonrpc') != '2.0':
         return ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest))
-    is_request = isinstance(o.get('id'), (int, str)) and 'method' in o
-    is_notification = 'id' not in o and 'method' in o
+    is_request = isinstance(json_object.get(
+        'id'), (int, str)) and 'method' in json_object
+    is_notification = 'id' not in json_object and 'method' in json_object
     has_error = (
-        isinstance(o.get('error'), dict)
-        and isinstance(o['error'].get('code'), int)
-        and isinstance(o['error'].get('message'), str))
+        isinstance(json_object.get('error'), dict)
+        and isinstance(json_object['error'].get('code'), int)
+        and isinstance(json_object['error'].get('message'), str))
     is_response = (
-        isinstance(o.get('id', False), (str, int, type(None)))
-        and (('result' in o) != has_error))
+        isinstance(json_object.get('id', False), (str, int, type(None)))
+        and (('result' in json_object) != has_error))
     if (is_request + is_notification + is_response) != 1:
-        return ResponseObject(o.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
+        return ResponseObject(json_object.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
+    return None
 
 
-def restore_message(o: object) -> MessageObject:
+def restore_message(o: Dict[str, Any]) -> MessageObject:
     """ Restores the original MessageObject assuming the input object is a valid representation of one.
 
     Args:

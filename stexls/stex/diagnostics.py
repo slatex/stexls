@@ -4,10 +4,12 @@ from pathlib import Path
 from typing import Dict, Iterator, List, Set
 
 import numpy as np
-from stexls import vscode
-from stexls.vscode import Diagnostic, DiagnosticRelatedInformation, DiagnosticTag, DiagnosticSeverity
-from stexls.stex.references import ReferenceType
-from stexls.util.format import format_enumeration
+
+from .. import vscode
+from ..util.format import format_enumeration
+from ..vscode import (Diagnostic, DiagnosticRelatedInformation,
+                      DiagnosticSeverity, DiagnosticTag)
+from .references import ReferenceType
 
 __all__ = ['Diagnostics']
 

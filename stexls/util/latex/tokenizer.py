@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 from os import PathLike
-from pathlib import Path
 from typing import Iterator, List, Tuple, Union
 
 from stexls.util.latex import parser
@@ -15,7 +14,10 @@ from stexls.vscode import Range
 
 __all__ = ['LatexTokenizer', 'LatexToken']
 
-DEFAULT_WORDS = r'''(?:[\w\d_]|(?<!^)\-|\{\\ss\}|\\ss|\\\"(?:a|A|o|O|u|U|s|S))+(?:'s|(?<=n)'t)?|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|;|\"|\||\{|\}|s+'''
+DEFAULT_WORDS = (
+    r'''(?:[\w\d_]|(?<!^)\-|\{\\ss\}|\\ss|\\\"(?:a|A|o|O|u|U|s|S))+'''
+    r'''(?:'s|(?<=n)'t)?|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|;|\"|\||\{|\}|s+'''
+)
 
 DEFAULT_FILTER = r'''\s+|\@|\#|\^|\*|\_|\+|\=|\[|\]|\\|\/|\>|\<|\{|\}'''
 
@@ -78,7 +80,10 @@ class LatexTokenizer:
                     if self.lower:
                         lexeme = lexeme.lower()
                     offsetted_token = parser.Token(
-                        token.parser, token.begin + begin, token.begin + end, token.envs)
+                        token.parser,
+                        token.begin + begin,
+                        token.begin + end,
+                        lexeme)  # token.envs)
                     yield LatexToken(
                         offsetted_token.range,
                         lexeme,
@@ -91,6 +96,9 @@ class LatexTokenizer:
             file = parser.LatexParser(file)
         if not file.parsed:
             file.parse()
+        if file.root is None:
+            raise parser.LatexException(
+                'Failed to parse file: No root was created.')
         return LatexTokenizer(file.root, lower=lower)
 
 

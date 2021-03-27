@@ -519,12 +519,10 @@ class Listener(_LPL):
 
     def exitEnvEnd(self, ctx: _LP.EnvEndContext):
         env: Node = self.stack.pop()
-        assert isinstance(env, Environment)
+        assert isinstance(
+            env, Environment), "Expected Environment on top of stack."
         _end_env = Environment.from_ctx(ctx, self.parser)
         env.end = _end_env.end
-        if not isinstance(env, Environment):
-            raise LatexException(
-                f'Broken parser stack. Environment expected: {self.stack}')
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
@@ -563,10 +561,9 @@ class Listener(_LPL):
     def exitRarg(self, ctx: _LP.RargContext):
         rarg = self.stack.pop()
         env: Node = self.stack[-1]
-        if not isinstance(env, Environment):
-            self.parser.syntax_errors.append((env.location, LatexException(
-                f'Expected stack top to be of type Environment found: {self.stack}')))
-        elif not env.name:
+        assert isinstance(
+            env, Environment), "Expected Environment on top of stack."
+        if env.name is None:
             env.add_name(rarg)
         else:
             env.add_rarg(rarg)
@@ -577,11 +574,12 @@ class Listener(_LPL):
 
     def exitArgument(self, ctx: _LP.ArgumentContext):
         node = self.stack.pop()
-        if not isinstance(self.stack[-1], Environment):
-            loc = Location(node.location.uri, node.location.range.end)
-            self.parser.syntax_errors.append((loc, LatexException(
-                f'Expected stack top to be of typ Environment: {self.stack}')))
-        self.stack[-1].add_oarg(node)
+        assert isinstance(
+            node, OArgument), "Expected Optional Argument on top of stack."
+        top = self.stack[-1]
+        assert isinstance(
+            top, Environment), "Expected Environment on top of stack."
+        top.add_oarg(node)
 
     def enterArgumentName(self, ctx: _LP.ArgumentNameContext):
         node = Node.from_ctx(ctx, self.parser)
@@ -589,10 +587,10 @@ class Listener(_LPL):
 
     def exitArgumentName(self, ctx: _LP.ArgumentNameContext):
         name = self.stack.pop()
-        oarg: OArgument = self.stack[-1]
-        if not isinstance(oarg, OArgument):
-            self.parser.syntax_errors.append((oarg.location, LatexException(
-                f'Expected stack to be of type OArgument: {self.stack}')))
+        assert isinstance(name, Token), "Expected Token on top of stack"
+        oarg = self.stack[-1]
+        assert isinstance(
+            oarg, OArgument), "Expected Optional Argument on top of stack."
         oarg.add_name(name)
 
     def enterArgumentValue(self, ctx: _LP.ArgumentValueContext):
@@ -601,8 +599,8 @@ class Listener(_LPL):
 
     def exitArgumentValue(self, ctx: _LP.ArgumentValueContext):
         value = self.stack.pop()
-        oarg: OArgument = self.stack[-1]
-        if not isinstance(oarg, OArgument):
-            self.parser.syntax_errors.append((value.location, LatexException(
-                f'Expected stack to be of type OArgument: {self.stack}')))
+        oarg = self.stack[-1]
+        assert isinstance(value, Token), "Expected Token on top of stack."
+        assert isinstance(
+            oarg, OArgument), "Expected OArgument on top of stack."
         oarg.add_value(value)

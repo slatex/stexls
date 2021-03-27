@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Awaitable, Callable, List, Optional, Union, Dict
 
-from .core import (ErrorCodes, ErrorObject, NotificationObject, RequestObject,
+from .core import (ErrorCodes, ErrorObject, MessageObject, NotificationObject, RequestObject,
                    ResponseObject)
 from .parser import MessageParser
 from .streams import JsonStream
@@ -94,7 +94,7 @@ class JsonRpcConnection:
         await self.call(
             notification.method, getattr(notification, 'params', None))
 
-    async def _handle_request(self, request: RequestObject) -> Awaitable[Any]:
+    async def _handle_request(self, request: RequestObject) -> Any:
         """ Handles a request.
 
         Calls the contained method with parameters and returns the response object.
@@ -106,7 +106,7 @@ class JsonRpcConnection:
             request.method, getattr(request, 'params', None), request.id)
 
     async def _handle_message(
-            self, message: Union[RequestObject, NotificationObject, ResponseObject]) -> Optional[ResponseObject]:
+            self, message: MessageObject) -> Optional[ResponseObject]:
         " Handles any type of incoming message and returns the response if it is a request. "
         if isinstance(message, ResponseObject):
             self._handle_response(message)
@@ -114,6 +114,7 @@ class JsonRpcConnection:
             await self._handle_notification(message)
         elif isinstance(message, RequestObject):
             return await self._handle_request(message)
+        return None
 
     async def call(
             self,
@@ -134,8 +135,8 @@ class JsonRpcConnection:
         Returns:
             Optional[ResponseObject]: Response object with the given ID if given.
         """
-        if not method in self._methods:
-            log.warning('Method "%s" not found.', method, exc_info=1)
+        if method not in self._methods:
+            log.warning('Method "%s" not found.', method, exc_info=True)
             response = ResponseObject(
                 id, error=ErrorObject(ErrorCodes.MethodNotFound, data=method))
         else:
@@ -150,7 +151,7 @@ class JsonRpcConnection:
                                 f'Found callable "from_json" in type "{param.annotation}" of param {name}.')
                             try:
                                 params[i] = param.annotation.from_json(value)
-                            except:
+                            except Exception:
                                 log.exception(
                                     f'Failed to deserialize param "{name}" in method call "{method}"')
                     result = m(*params)
@@ -162,7 +163,7 @@ class JsonRpcConnection:
                             try:
                                 params[name] = param.annotation.from_json(
                                     params[name])
-                            except:
+                            except Exception:
                                 log.exception(
                                     f'Failed to deserialize param "{name}" in method call "{method}"')
                     result = m(**params)
@@ -176,7 +177,7 @@ class JsonRpcConnection:
                 response = ResponseObject(id, result=result)
             except TypeError as e:
                 log.warning(
-                    'Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=1)
+                    'Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=True)
                 response = ResponseObject(
                     id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
             except Exception as e:
@@ -201,14 +202,15 @@ class JsonRpcConnection:
             "Parsed message (%i valid, %i errors).", len(parser.valid), len(parser.errors))
         responses = await asyncio.gather(
             *map(self._handle_message, parser.valid))
-        responses = filter(None, responses)
-        responses = list(responses) + parser.errors
-        if not responses:
-            log.debug('No responses to send back.')
+        filtered_responses: List[ResponseObject] = list(
+            filter(None, responses))
+        responses_and_errors = filtered_responses + parser.errors
+        if not responses_and_errors:
+            log.debug('No response to send back.')
         elif parser.is_batch:
-            self._stream.write_json(responses)
+            self._stream.write_json(responses_and_errors)
         else:
-            for response in responses:
+            for response in responses_and_errors:
                 self._stream.write_json(response)
 
     async def run_forever(self):

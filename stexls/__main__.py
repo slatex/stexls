@@ -6,7 +6,6 @@ import asyncio
 import logging
 import re
 from pathlib import Path
-from stexls.util.jsonrpc.dispatcher import Dispatcher
 from typing import Optional, Pattern, List, Dict, Any
 
 import pkg_resources
@@ -224,7 +223,6 @@ async def lsp(
     logging.basicConfig(
         filename=logfile,
         level=getattr(logging, loglevel.upper()))
-    server: Optional[Dispatcher] = None
     shared_args: Dict[str, Any] = {
         'num_jobs': num_jobs,
         'update_delay_seconds': update_delay_seconds,
@@ -235,10 +233,10 @@ async def lsp(
     if enable_trefier:
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
-        server, connection = await Server.open_ipc_connection(**shared_args)
+        _server, connection = await Server.open_ipc_connection(**shared_args)
         await connection
     elif transport_kind == 'tcp':
-        server, connection = await Server.open_connection(host=host, port=port, **shared_args)
+        _server, connection = await Server.open_connection(host=host, port=port, **shared_args)
         await connection
 
 

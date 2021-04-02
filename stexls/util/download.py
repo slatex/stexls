@@ -52,8 +52,11 @@ class Downloader:
             while not self.finished:
                 data = response.read(blocksize)
                 if not data:
-                    self.stats = {"begin": begin, "duration": datetime.datetime.now(
-                    )-begin, "downloaded": bytes_downloaded}
+                    self.stats = {
+                        "begin": begin,
+                        "duration": datetime.datetime.now() - begin,
+                        "downloaded": bytes_downloaded
+                    }
                     self.finished = True
                 else:
                     out_file.write(data)

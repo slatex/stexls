@@ -1,15 +1,11 @@
 parser grammar LatexParser;
-options { tokenVocab=LatexLexer; }
+options {
+	tokenVocab = LatexLexer;
+}
 
 main: body* EOF;
 
-body
-    : math
-    | env
-    | inlineEnv
-    | text
-    | '{' body* '}'
-    ;
+body: math | env | inlineEnv | text | '{' body* '}';
 
 math: MATH_ENV;
 
@@ -31,13 +27,8 @@ oarg: '[' arglist ']';
 
 arglist: argument (',' argument)*;
 
-argument
-    : argumentName argumentValue?
-    | argumentValue
-    ;
+argument: argumentName argumentValue? | argumentValue;
 
-argumentName
-    : name=text '='
-    ;
+argumentName: name = TEXT '=';
 
 argumentValue: body;

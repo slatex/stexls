@@ -4,16 +4,17 @@ and parses the parse tree into it's more useful tokens, preserving
 environment, location and parse tree structure.
 '''
 from __future__ import annotations
+from pathlib import Path
 
 import re
-from os import PathLike
-from typing import Iterator, List, Tuple, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
 from stexls.util.latex import parser
 from stexls.vscode import Range
 
 __all__ = ['LatexTokenizer', 'LatexToken']
 
+# TODO: Redo the word regex
 DEFAULT_WORDS = (
     r'''(?:[\w\d_]|(?<!^)\-|\{\\ss\}|\\ss|\\\"(?:a|A|o|O|u|U|s|S))+'''
     r'''(?:'s|(?<=n)'t)?|\!|\@|\#|\$|\%|\^|\&|\*|\(|\)|\_|\+|\=|\-|\[|\]|\'|\\|\.|\/|\?|\>|\<|\,|\:|;|\"|\||\{|\}|s+'''
@@ -51,10 +52,11 @@ class LatexTokenizer:
             self,
             root: parser.Node,
             lower: bool = True,
+            math_token: Optional[str] = '<math>',
             words: str = DEFAULT_WORDS,
             token_filter: str = DEFAULT_FILTER):
         self.lower = lower
-        self.math_token = '<math>'
+        self.math_token = math_token
         self._words = re.compile(words)
         self._token_filter = re.compile(token_filter)
         # buffer the tokens of the root
@@ -83,23 +85,24 @@ class LatexTokenizer:
                         token.parser,
                         token.begin + begin,
                         token.begin + end,
-                        lexeme)  # token.envs)
+                        lexeme)
                     yield LatexToken(
                         offsetted_token.range,
                         lexeme,
                         token.envs)
 
     @staticmethod
-    def from_file(file: Union[PathLike, parser.LatexParser], lower: bool = True) -> LatexTokenizer:
+    def from_file(file: Union[str, Path, parser.LatexParser], lower: bool = True) -> Optional[LatexTokenizer]:
         ' Creates this tokenizer directly from a file, parsing it beforehand. '
-        if not isinstance(file, parser.LatexParser):
-            file = parser.LatexParser(file)
-        if not file.parsed:
-            file.parse()
-        if file.root is None:
-            raise parser.LatexException(
-                'Failed to parse file: No root was created.')
-        return LatexTokenizer(file.root, lower=lower)
+        if isinstance(file, parser.LatexParser):
+            latex_parser = file
+        else:
+            latex_parser = parser.LatexParser(file)
+        if not latex_parser.parsed:
+            latex_parser.parse()
+        if latex_parser.root is None:
+            return None
+        return LatexTokenizer(latex_parser.root, lower=lower)
 
 
 def _replace_german_characters(text: str) -> str:

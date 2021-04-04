@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import re
 import tempfile
-from os import PathLike
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Pattern, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Pattern, Tuple, Union
 
 import antlr4
 from antlr4.error.ErrorListener import ErrorListener
@@ -26,6 +25,13 @@ class SyntaxErrorException(Exception):
 
 class LatexException(Exception):
     pass
+
+
+def _get_ctx_range(ctx):
+    if not ctx.start or not ctx.stop:
+        raise LatexException(
+            'Invalid context encountered during parsing of latex file.')
+    return ctx.start.start, ctx.stop.stop + 1
 
 
 class Node:
@@ -137,7 +143,7 @@ class Node:
 
     @classmethod
     def from_ctx(cls, ctx: antlr4.ParserRuleContext, parser, **kwargs):
-        range = _LPL._get_ctx_range(ctx)
+        range = _get_ctx_range(ctx)
         return cls(parser, *range, **kwargs)
 
     def __repr__(self):
@@ -314,7 +320,7 @@ class InlineEnvironment(Environment):
 
 
 class LatexParser:
-    def __init__(self, file: PathLike, encoding: str = 'utf-8'):
+    def __init__(self, file: Union[str, Path], encoding: str = 'utf-8'):
         """ Reads and parses the given file using latex syntax.
 
         Loads the given file and stores the text in self.source.
@@ -323,21 +329,21 @@ class LatexParser:
         retrievable using self.syntax_errors.
 
         Args:
-            file (PathLike): Path to a file.
+            file (Union[str, Path]): Path to a file.
             encoding (str): Encoding of the file. Defaults to 'utf-8'.
         """
-        self.file: Path = Path(file)
+        self.file: Path = Path(file).absolute()
         self.encoding: str = encoding
         self.source: Optional[str] = None
         self.root: Optional[Node] = None
         self.syntax_errors: List[Tuple[Location, Exception]] = []
         self.parsed = False
 
-    def parse(self, content: str = None) -> Node:
+    def parse(self, content: Optional[str] = None) -> Node:
         """ Actually parses the file given in the constructor.
 
         Parameters:
-            content: Optional content of the file. If None, then the file is read from disk with open.
+            content (str, optional): Optional content of the file. If None, then the file is read from disk with open.
 
         Returns:
             The root node of the parsed file.
@@ -459,7 +465,7 @@ class LatexParser:
 class _SyntaxErrorErrorListener(ErrorListener):
     ' Error listener that captures syntax errors during parsing. '
 
-    def __init__(self, file: PathLike):
+    def __init__(self, file: Union[str, Path]):
         """ Initializes the error listener with the filename which is to be parsed.
 
         Args:
@@ -471,7 +477,7 @@ class _SyntaxErrorErrorListener(ErrorListener):
 
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
         position = Position(line, column)
-        location = Location(self.file.as_uri(), position)
+        location = Location(self.file.absolute().as_uri(), position)
         exception = SyntaxErrorException(msg)
         self.syntax_errors.append((location, exception))
 
@@ -484,19 +490,14 @@ class Listener(_LPL):
         self.parser = parser
         self.stack: List[Node] = []
 
-    @staticmethod
-    def _get_ctx_range(ctx):
-        if not ctx.start or not ctx.stop:
-            raise LatexException(
-                'Invalid context encountered during parsing of latex file.')
-        return ctx.start.start, ctx.stop.stop + 1
-
     def enterMain(self, ctx: _LP.MainContext):
         self.stack.append(Node.from_ctx(ctx, self.parser))
 
     def exitMain(self, ctx: _LP.MainContext):
         if len(self.stack) != 1:
-            raise LatexException(f'Broken parser stack: {self.stack}')
+            env = self.stack.pop()
+            error = LatexException(f'Environment not closed: {env}')
+            self.parser.syntax_errors.append((env.location, error))
 
     def exitMath(self, ctx: _LP.MathContext):
         lexeme = str(ctx.MATH_ENV())
@@ -514,20 +515,20 @@ class Listener(_LPL):
             self.stack[-1].add(body)
 
     def enterEnvBegin(self, ctx: _LP.EnvBeginContext):
-        node = Environment.from_ctx(ctx, self.parser)
-        self.stack.append(node)
+        env = Environment.from_ctx(ctx, self.parser)
+        self.stack.append(env)
 
     def exitEnvEnd(self, ctx: _LP.EnvEndContext):
         env: Node = self.stack.pop()
         assert isinstance(
             env, Environment), "Expected Environment on top of stack."
-        _end_env = Environment.from_ctx(ctx, self.parser)
-        env.end = _end_env.end
+        env_end = Environment.from_ctx(ctx, self.parser)
+        env.end = env_end.end
         expected_env_name = env.env_name
         actual_env_name = str(ctx.TEXT()).strip()
         if expected_env_name != actual_env_name:
             location_str = env.location.range.start.translate(1, 1).format()
-            end_location_str = _end_env.location.range.start.translate(
+            end_location_str = env_end.location.range.start.translate(
                 1, 1).format()
             error = LatexException(
                 f'Environment unbalanced:'
@@ -587,7 +588,6 @@ class Listener(_LPL):
 
     def exitArgumentName(self, ctx: _LP.ArgumentNameContext):
         name = self.stack.pop()
-        assert isinstance(name, Token), "Expected Token on top of stack"
         oarg = self.stack[-1]
         assert isinstance(
             oarg, OArgument), "Expected Optional Argument on top of stack."
@@ -600,7 +600,6 @@ class Listener(_LPL):
     def exitArgumentValue(self, ctx: _LP.ArgumentValueContext):
         value = self.stack.pop()
         oarg = self.stack[-1]
-        assert isinstance(value, Token), "Expected Token on top of stack."
         assert isinstance(
             oarg, OArgument), "Expected OArgument on top of stack."
         oarg.add_value(value)

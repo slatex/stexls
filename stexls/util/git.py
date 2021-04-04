@@ -1,20 +1,28 @@
 ' Interface to git. '
 
+from pathlib import Path
 import subprocess
-
-GIT_EXECUTABLE = 'git'
+from typing import Optional, Union
 
 __all__ = ['clone']
 
 
-def clone(repo: str, dest: str = None, depth: int = None) -> int:
+def clone(
+        repo: str,
+        dest: Optional[Union[Path, str]] = None,
+        depth: Optional[int] = None,
+        executable: str = 'git',
+) -> int:
     ' Clones a repository into the current pwd or dest if given. Returns git process exit code. '
-    args = [GIT_EXECUTABLE, 'clone']
+    args = [executable, 'clone']
     if depth is not None:
         args.extend(('--depth', str(depth)))
     args.append(repo)
     if dest is not None:
-        args.append(dest)
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE)
+        args.append(str(dest))
+    proc = subprocess.Popen(
+        args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE
+    )
     return proc.wait()

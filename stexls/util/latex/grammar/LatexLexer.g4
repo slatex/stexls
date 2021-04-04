@@ -14,28 +14,33 @@ MATH_OPEN_2: '$$' -> more, pushMode(MATH2);
 MATH_OPEN_3: '\\(' -> more, pushMode(MATH3);
 MATH_OPEN_4: '\\[' -> more, pushMode(MATH4);
 
-MATH_ENV
-    : '\\begin' WS? '{' WS? 'math' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '}'
-    | '\\begin' WS? '{' WS? 'math' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'displaymath' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS? '}'
-    | '\\begin' WS? '{' WS? 'displaymath' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'align' WS? '}' .*? '\\end' WS? '{' WS? 'align' WS? '}'
-    | '\\begin' WS? '{' WS? 'align' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'align' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'flalign' WS? '}' .*? '\\end' WS? '{' WS? 'flalign' WS? '}'
-    | '\\begin' WS? '{' WS? 'flalign' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'flalign' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'flmath' WS? '}' .*? '\\end' WS? '{' WS? 'flmath' WS? '}'
-    | '\\begin' WS? '{' WS? 'flmath' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'flmath' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'equation' WS? '}' .*? '\\end' WS? '{' WS? 'equation' WS? '}'
-    | '\\begin' WS? '{' WS? 'equation' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'equation' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'verbatim' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '}'
-    | '\\begin' WS? '{' WS? 'verbatim' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '*' WS? '}'
-    | '\\begin' WS? '{' WS? 'lstlisting' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '}'
-    | '\\begin' WS? '{' WS? 'lstlisting' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '*' WS? '}'
-    ;
+MATH_ENV:
+	'\\begin' WS? '{' WS? 'math' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '}'
+	| '\\begin' WS? '{' WS? 'math' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'math' WS? '*' WS? '}'
+	| '\\begin' WS? '{' WS? 'displaymath' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS? '}'
+	| '\\begin' WS? '{' WS? 'displaymath' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'displaymath' WS?
+		'*' WS? '}'
+	| '\\begin' WS? '{' WS? 'align' WS? '}' .*? '\\end' WS? '{' WS? 'align' WS? '}'
+	| '\\begin' WS? '{' WS? 'align' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'align' WS? '*' WS? '}'
+	| '\\begin' WS? '{' WS? 'flalign' WS? '}' .*? '\\end' WS? '{' WS? 'flalign' WS? '}'
+	| '\\begin' WS? '{' WS? 'flalign' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'flalign' WS? '*' WS?
+		'}'
+	| '\\begin' WS? '{' WS? 'flmath' WS? '}' .*? '\\end' WS? '{' WS? 'flmath' WS? '}'
+	| '\\begin' WS? '{' WS? 'flmath' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'flmath' WS? '*' WS?
+		'}'
+	| '\\begin' WS? '{' WS? 'equation' WS? '}' .*? '\\end' WS? '{' WS? 'equation' WS? '}'
+	| '\\begin' WS? '{' WS? 'equation' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'equation' WS? '*' WS
+		? '}'
+	| '\\begin' WS? '{' WS? 'verbatim' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '}'
+	| '\\begin' WS? '{' WS? 'verbatim' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'verbatim' WS? '*' WS
+		? '}'
+	| '\\begin' WS? '{' WS? 'lstlisting' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS? '}'
+	| '\\begin' WS? '{' WS? 'lstlisting' WS? '*' WS? '}' .*? '\\end' WS? '{' WS? 'lstlisting' WS?
+		'*' WS? '}';
 
 ESCAPE: '\\' -> skip, pushMode(ESCAPE_MODE);
 
-TEXT: ~('$'|'['|'{'|'%'|'}'|']'|'\\'|','|'=')+;
+TEXT: ~('$' | '[' | '{' | '%' | '}' | ']' | '\\' | ',' | '=')+;
 
 mode MATH1;
 MATH_CLOSE_1: '$' -> popMode, type(MATH_ENV);
@@ -54,7 +59,14 @@ MATH_ESCAPE_4: '\\]' -> popMode, type(MATH_ENV);
 MATH_TOKEN_4: '\\'? . -> more;
 
 mode ESCAPE_MODE;
-VERBATIM: ('newenvironment' | 'verbatim' | 'newcommand' | 'lstinline' | 'verb' | 'visible') '*'? -> skip, mode(INLINE_VERBATIM_MODE_WITH_SPECIAL);
+VERBATIM: (
+		'newenvironment'
+		| 'verbatim'
+		| 'newcommand'
+		| 'lstinline'
+		| 'verb'
+		| 'visible'
+	) '*'? -> skip, mode(INLINE_VERBATIM_MODE_WITH_SPECIAL);
 BEGIN: 'begin' -> popMode;
 END: 'end' -> popMode;
 INLINE_ENV_NAME: [a-zA-Z_]+ '*'? -> popMode;
@@ -73,7 +85,9 @@ NO_SPECIAL_VERBATIM_FOUND: -> skip, mode(INLINE_VERBATIM_MODE);
 mode INLINE_VERBATIM_MODE;
 
 INLINE_VERBATIM_ENV: '\\' [a-zA-Z0-9_]+ -> skip;
-INLINE_VERBATIM_RARG: '{' (INLINE_VERBATIM_RARG | INLINE_VERBATIM_OARG | .)*? '}' -> type(TEXT);
-INLINE_VERBATIM_OARG: '[' (INLINE_VERBATIM_OARG | INLINE_VERBATIM_RARG | .)*? ']' -> skip;
+INLINE_VERBATIM_RARG:
+	'{' (INLINE_VERBATIM_RARG | INLINE_VERBATIM_OARG | .)*? '}' -> type(TEXT);
+INLINE_VERBATIM_OARG:
+	'[' (INLINE_VERBATIM_OARG | INLINE_VERBATIM_RARG | .)*? ']' -> skip;
 
 INLINE_VERBATIM_END: -> skip, popMode;

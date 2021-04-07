@@ -35,11 +35,11 @@ class PreprocessedDataset(Dataset):
         return item
 
     @staticmethod
-    def collate_fn(batch, device: str = 'cpu'):
+    def collate_fn(batch):
         batch = list(
             sorted(batch, key=lambda x: len(x[0]), reverse=True))
         lengths = torch.tensor(
-            list(map(lambda x: len(x[0]), batch)), device=device)
+            list(map(lambda x: len(x[0]), batch)))
         features = zip(*batch)  # transpose
         padded_features: List[Tensor] = []
         for feature in features:
@@ -49,7 +49,6 @@ class PreprocessedDataset(Dataset):
             # indicated by an empty padded_features list
             if len(padded_features):
                 padded_feature = padded_feature.unsqueeze(-1)
-            padded_feature = padded_feature.to(device)
             padded_features.append(padded_feature)
         return (lengths, *padded_features)
 

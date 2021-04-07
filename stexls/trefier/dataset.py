@@ -191,14 +191,12 @@ class SmglomDataModule(pl.LightningDataModule):
             num_workers: int = 0,
             max_num_tokens: int = None,
             val_split: float = 0.2,
-            data_dir: Union[str, Path] = 'downloads/smglom',
-            device: str = 'cpu'):
+            data_dir: Union[str, Path] = 'downloads/smglom'):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.val_split = val_split
-        self.device = device
         self.preprocess = Preprocessor(max_num_tokens=max_num_tokens)
         self.is_data_prepared = False
 
@@ -234,13 +232,12 @@ class SmglomDataModule(pl.LightningDataModule):
             self.data_dir, train=False, target_transform=self.target_transform, download=True, **kwargs)
         self.test_ds: PreprocessedDataset = self.preprocess.transform(
             test_data.documents, test_data.targets)
-        return super().prepare_data()
 
     def setup(self, stage: Optional[str] = None):
-        return super().setup(stage)
+        pass
 
     def collate_fn(self, batch):
-        return PreprocessedDataset.collate_fn(batch, device=self.device)
+        return PreprocessedDataset.collate_fn(batch)
 
     def train_dataloader(self) -> Any:
         return DataLoader(

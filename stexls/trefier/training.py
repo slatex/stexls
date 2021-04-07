@@ -32,8 +32,7 @@ def train(
         batch_size=batch_size,
         num_workers=num_workers,
         val_split=val_split,
-        data_dir=data_dir,
-        device=device)
+        data_dir=data_dir)
     data.prepare_data(show_progress=True)
     model = TrainSeq2SeqModule(
         epochs=epochs,
@@ -86,8 +85,20 @@ class TrainSeq2SeqModule(pl.LightningModule):
         )
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+    def forward(
+            self,
+            lengths: Tensor,
+            tokens: Tensor,
+            keyphraseness: Tensor,
+            tfidf: Tensor,
+            targets: Tensor):
+        return self.model(
+            lengths.to(self.device),
+            tokens.to(self.device),
+            keyphraseness.to(self.device),
+            tfidf.to(self.device),
+            targets.to(self.device),
+        )
 
     def configure_optimizers(self):
         optimizer = optim.Adam(

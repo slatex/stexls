@@ -125,14 +125,12 @@ class TrainSeq2SeqModule(pl.LightningModule):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--epochs', type=int, default=1)
-    parser.add_argument('--batch_size', type=int, default=10)
+    parser.add_argument('--batch-size', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--weight-decay', type=float, default=1e-5)
     parser.add_argument('--embedding-size', type=int, default=10)
     parser.add_argument('--hidden-size', type=int, default=32)
     parser.add_argument('--num-workers', type=int, default=4)
-    parser.add_argument('--device', const='gpu', default='cpu')
+    parser.add_argument('--device', nargs='?', const='gpu', default='cpu')
     args = parser.parse_args()
-    train(
-        **vars(args)
-    )
+    train(**vars(args))

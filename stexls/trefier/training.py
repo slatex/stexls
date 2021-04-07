@@ -5,6 +5,7 @@ from typing import Literal, Union
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.metrics.functional import accuracy, f1
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch import nn, optim
 from torch.functional import Tensor
 
@@ -13,6 +14,7 @@ from .model import Seq2SeqModel
 
 
 def train(
+    experiment_name: str,
     epochs: int = 1,
     batch_size: int = 10,
     lr: float = 1e-4,
@@ -24,6 +26,7 @@ def train(
     val_split: float = 0.2,
     dropout: float = 0.1,
     data_dir: Union[str, Path] = 'downloads/smglom',
+    checkpoint_dir: Union[str, Path] = 'checkpoints',
 ):
     data = dataset.SmglomDataModule(
         batch_size=batch_size,
@@ -41,9 +44,16 @@ def train(
         weight_decay=weight_decay,
         dropout=dropout,
     ).to(device)
+    checkpoints = ModelCheckpoint(
+        checkpoint_dir,
+        filename=experiment_name + '-{epoch}-val:{val_loss:.2f}-{val_f1:.2f}',
+        monitor='val_loss',
+        mode='min',
+    )
     trainer = pl.Trainer(
         gpus=0 if device == 'cpu' else -1,
-        max_epochs=epochs
+        max_epochs=epochs,
+        callbacks=[checkpoints]
     )
     trainer.fit(model, data)
 
@@ -124,6 +134,7 @@ class TrainSeq2SeqModule(pl.LightningModule):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
+    parser.add_argument('--experiment-name', default='test')
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--batch-size', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-4)

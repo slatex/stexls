@@ -87,18 +87,13 @@ class TrainSeq2SeqModule(pl.LightningModule):
 
     def forward(
             self,
-            lengths: Tensor,
             tokens: Tensor,
             keyphraseness: Tensor,
-            tfidf: Tensor,
-            targets: Tensor):
-        return self.model(
-            lengths.to(self.device),
+            tfidf: Tensor):
+        return self.model.forward(
             tokens.to(self.device),
             keyphraseness.to(self.device),
-            tfidf.to(self.device),
-            targets.to(self.device),
-        )
+            tfidf.to(self.device))
 
     def configure_optimizers(self):
         optimizer = optim.Adam(
@@ -110,9 +105,7 @@ class TrainSeq2SeqModule(pl.LightningModule):
     def _step(self, subset: str, batch, index):
         lengths, tokens, key, tfidf, targets = batch
         output_logits, state = self(
-            tokens,
-            keyphraseness_values=key,
-            tfidf_values=tfidf)
+            tokens, key, tfidf)
         logit_acc = []
         target_acc = []
         for logits, target, length in zip(output_logits, targets, lengths):

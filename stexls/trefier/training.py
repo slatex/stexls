@@ -1,4 +1,5 @@
 from pathlib import Path
+from argparse import ArgumentParser
 from typing import Literal, Union
 
 import pytorch_lightning as pl
@@ -122,13 +123,16 @@ class TrainSeq2SeqModule(pl.LightningModule):
 
 
 if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=10)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--weight-decay', type=float, default=1e-5)
+    parser.add_argument('--embedding-size', type=int, default=10)
+    parser.add_argument('--hidden-size', type=int, default=32)
+    parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument('--device', const='gpu', default='cpu')
+    args = parser.parse_args()
     train(
-        epochs=200,
-        batch_size=10,
-        lr=1e-4,
-        weight_decay=1e-5,
-        hidden_size=32,
-        embedding_size=10,
-        device='cpu',
-        num_workers=4,
+        **vars(args)
     )

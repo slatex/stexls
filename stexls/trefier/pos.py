@@ -11,6 +11,7 @@ __all__ = ['PosTagModel']
 
 class PosTagModel:
     def __init__(self):
+        nltk.download('averaged_perceptron_tagger', quiet=True)
         self.tagger = nltk.tag.PerceptronTagger()
         categories = np.unique(list(self.tagger.tagdict.values()))
         tags = OneHotEncoder(

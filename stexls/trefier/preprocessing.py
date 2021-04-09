@@ -62,7 +62,8 @@ class Preprocessor:
         self.tfidf = TfIdfModel[str]()
 
     def save(self, file: Path):
-        with file.open('wb') as fd:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        with file.open('w+b') as fd:
             pickle.dump(self, fd)
 
     @staticmethod

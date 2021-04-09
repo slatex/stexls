@@ -39,6 +39,7 @@ def train(
         vocab_size=len(data.preprocess.vocab),
         word_embedding_size=embedding_size,
         gru_hidden_size=hidden_size,
+        class_weights=data.class_weights[-1],
         lr=lr,
         weight_decay=weight_decay,
         dropout=dropout,
@@ -51,7 +52,8 @@ def train(
         mode='min',
     )
     assert checkpoints.dirpath is not None
-    data.preprocess.save(Path(checkpoints.dirpath) / 'preprocess.bin')
+    data.preprocess.save(Path(checkpoints.dirpath) /
+                         f'{experiment_name}-preprocess.bin')
     trainer = pl.Trainer(
         gpus=0 if device == 'cpu' else -1,
         max_epochs=epochs,

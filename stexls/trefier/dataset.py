@@ -1,18 +1,19 @@
 import multiprocessing
-import pickle
 import os
+import pickle
 import re
 import subprocess
 import traceback
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
+from typing import (Any, Callable, Counter, List, Optional, Sequence, Tuple,
+                    Union)
 
+import numpy as np
 import pytorch_lightning as pl
-import torch
-from torch.utils.data import random_split
+from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset, Subset
+from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
 
 from ..util.latex.tokenizer import LatexToken, LatexTokenizer
@@ -228,8 +229,13 @@ class SmglomDataModule(pl.LightningDataModule):
         def subset(inputs, indices):
             return [inputs[i] for i in indices]
 
+        train_targets = subset(data.targets, train_indices)
+        targets = list(
+            target for targets in train_targets for target in targets)
+        self.class_weights = compute_class_weight(
+            'balanced', classes=np.unique(targets), y=targets).tolist()
         self.train_ds: PreprocessedDataset = self.preprocess.fit_transform(
-            subset(data.documents, train_indices), subset(data.targets, train_indices))
+            subset(data.documents, train_indices), train_targets)
         self.val_ds: PreprocessedDataset = self.preprocess.transform(
             subset(data.documents, val_indices), subset(data.targets, val_indices))
         self.test_ds: PreprocessedDataset = self.preprocess.transform(

@@ -17,7 +17,7 @@ def train(
     experiment_name: str,
     epochs: int = 1,
     batch_size: int = 10,
-    lr: float = 1e-4,
+    learning_rate: float = 1e-4,
     weight_decay: float = 1e-5,
     hidden_size: int = 32,
     embedding_size: int = 10,
@@ -40,7 +40,7 @@ def train(
         word_embedding_size=embedding_size,
         gru_hidden_size=hidden_size,
         class_weights=data.class_weights[-1],
-        lr=lr,
+        lr=learning_rate,
         weight_decay=weight_decay,
         dropout=dropout,
     ).to(device)
@@ -142,7 +142,7 @@ if __name__ == '__main__':
     parser.add_argument('--experiment-name', default='test')
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--batch-size', type=int, default=10)
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--learning-rate', '--lr', type=float, default=1e-4)
     parser.add_argument('--weight-decay', type=float, default=1e-5)
     parser.add_argument('--embedding-size', type=int, default=10)
     parser.add_argument('--hidden-size', type=int, default=32)

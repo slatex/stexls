@@ -21,8 +21,10 @@ echo "python3: $(which python3)"
 
 # Start training
 python3 -m stexls.trefier.training --device cuda \
-   --epochs 200 \
-   --batch-size 10 \
+   --epochs 2000 \
+   --batch-size 128 \
+   --learning-rate 1e-4 \
+   --weight-decay 1e-2 \
    --experiment-name test \
    $@
 

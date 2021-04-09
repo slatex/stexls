@@ -1,6 +1,6 @@
 from pathlib import Path
 from argparse import ArgumentParser
-from typing import Literal, Union
+from typing import List, Literal, Union
 
 import pytorch_lightning as pl
 import torch
@@ -45,10 +45,13 @@ def train(
     ).to(device)
     checkpoints = ModelCheckpoint(
         checkpoint_dir,
-        filename=experiment_name + '-{epoch}-val:{val_loss:.2f}-{val_f1:.2f}',
+        filename=experiment_name +
+        '-epoch:{epoch}-loss:{val_loss:.2f}-f1:{val_f1:.2f}',
         monitor='val_loss',
         mode='min',
     )
+    assert checkpoints.dirpath is not None
+    data.preprocess.save(Path(checkpoints.dirpath) / 'preprocess.bin')
     trainer = pl.Trainer(
         gpus=0 if device == 'cpu' else -1,
         max_epochs=epochs,
@@ -64,6 +67,7 @@ class TrainSeq2SeqModule(pl.LightningModule):
         vocab_size: int,
         word_embedding_size: int,
         gru_hidden_size: int,
+        class_weights: List[float],
         lr: float = 1e-4,
         weight_decay: float = 1e-5,
         dropout: float = 0.1,
@@ -83,17 +87,12 @@ class TrainSeq2SeqModule(pl.LightningModule):
             with_keyphraseness=True,
             dropout=dropout,
         )
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = nn.BCEWithLogitsLoss(
+            pos_weight=torch.tensor(class_weights))
 
     def forward(
-            self,
-            tokens: Tensor,
-            keyphraseness: Tensor,
-            tfidf: Tensor):
-        return self.model.forward(
-            tokens.to(self.device),
-            keyphraseness.to(self.device),
-            tfidf.to(self.device))
+            self, tokens: Tensor, keyphraseness: Tensor, tfidf: Tensor):
+        return self.model.forward(tokens, keyphraseness, tfidf)
 
     def configure_optimizers(self):
         optimizer = optim.Adam(
@@ -105,14 +104,14 @@ class TrainSeq2SeqModule(pl.LightningModule):
     def _step(self, subset: str, batch, index):
         lengths, tokens, key, tfidf, targets = batch
         output_logits, state = self(
-            tokens, key, tfidf)
+            tokens.to(self.device), key.to(self.device), tfidf.to(self.device))
         logit_acc = []
         target_acc = []
         for logits, target, length in zip(output_logits, targets, lengths):
             logit_acc.append(logits[:length].flatten())
             target_acc.append(target[:length].flatten())
         logits = torch.cat(logit_acc)
-        targets = torch.cat(target_acc)
+        targets = torch.cat(target_acc).to(self.device)
         loss = self.criterion(logits, targets.float())
         pred = torch.sigmoid(logits)
         self.log_metrics(subset, pred, targets, loss)

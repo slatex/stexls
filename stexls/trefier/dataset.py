@@ -1,4 +1,5 @@
 import multiprocessing
+import pickle
 import os
 import re
 import subprocess
@@ -8,13 +9,15 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import pytorch_lightning as pl
+import torch
 from torch.utils.data import random_split
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
+from torch.utils.data.dataset import Dataset, Subset
 from tqdm import tqdm
 
 from ..util.latex.tokenizer import LatexToken, LatexTokenizer
 from .preprocessing import PreprocessedDataset, Preprocessor
+from .stratify import stratify_sequences
 
 
 class Label(Enum):
@@ -42,8 +45,7 @@ class SmglomDataset(Dataset[Tuple[Tuple[str, ...], Tuple[Label, ...]]]):
 
     def __init__(
             self,
-            source_directory: Union[str, Path],
-            train: bool,
+            source_directory: Union[str, Path] = 'downloads/smglom',
             download: bool = False,
             url: str = 'https://gl.mathhub.info/smglom',
             show_progress: bool = False,
@@ -97,14 +99,6 @@ class SmglomDataset(Dataset[Tuple[Tuple[str, ...], Tuple[Label, ...]]]):
             'SMGloM',
         ]
         source_directory = Path(source_directory)
-        if train:
-            repositories = repositories[len(repositories)//10:]
-            if source_directory.name != 'train':
-                source_directory = source_directory / 'train'
-        else:
-            repositories = repositories[:len(repositories)//10]
-            if source_directory.name != 'test':
-                source_directory = source_directory / 'test'
         if download:
             download_dir = source_directory
             download_dir.mkdir(parents=True, exist_ok=True)
@@ -191,47 +185,55 @@ class SmglomDataModule(pl.LightningDataModule):
             num_workers: int = 0,
             max_num_tokens: int = None,
             val_split: float = 0.2,
+            test_split: float = 0.1,
             data_dir: Union[str, Path] = 'downloads/smglom'):
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.val_split = val_split
+        self.test_split = test_split
         self.preprocess = Preprocessor(max_num_tokens=max_num_tokens)
         self.is_data_prepared = False
 
     @staticmethod
-    def target_transform(target: Label):
-        return target != Label.TEXT
+    def target_transform(target: Label) -> int:
+        return int(target != Label.TEXT)
 
-    def prepare_data(self, **kwargs):
-        if self.is_data_prepared:
-            return
+    def prepare_data(self, use_pickle: Optional[Union[str, Path]] = 'smglom.bin', **kwargs):
+        assert not self.is_data_prepared, 'Data already prepared once.'
         self.is_data_prepared = True
-        data = SmglomDataset(
-            self.data_dir, train=True, target_transform=self.target_transform, download=True, **kwargs)
-        val_size = int(self.val_split * len(data))
-        train_size = len(data) - val_size
-        train_data, val_data = random_split(
-            data, [train_size, val_size])
+        if use_pickle is not None and Path(use_pickle).is_file():
+            with Path(use_pickle).open('rb') as fd:
+                data = pickle.load(fd)
+        else:
+            data = SmglomDataset(
+                self.data_dir, target_transform=self.target_transform, download=True, **kwargs)
+        if use_pickle is not None and not Path(use_pickle).is_file():
+            with Path(use_pickle).open('wb') as fd:
+                pickle.dump(data, fd)
+        train_val_test_indices = list(range(len(data)))
+        train_val_indices, test_indices = stratify_sequences(
+            train_val_test_indices,
+            sequence_of_targets=data.targets,
+            test_size=self.test_split,
+            random_state=42)
+        train_val_targets = [data.targets[i] for i in train_val_indices]
+        train_indices, val_indices = stratify_sequences(
+            train_val_indices,
+            sequence_of_targets=train_val_targets,
+            test_size=self.val_split,
+            random_state=480237)
 
-        def from_subset_indices(indices):
-            return (
-                [data.documents[index] for index in indices],
-                [data.targets[index] for index in indices],
-            )
+        def subset(inputs, indices):
+            return [inputs[i] for i in indices]
 
-        train_doc, train_targ = from_subset_indices(train_data.indices)
         self.train_ds: PreprocessedDataset = self.preprocess.fit_transform(
-            train_doc, train_targ)
-        val_doc, val_targ = from_subset_indices(val_data.indices)
+            subset(data.documents, train_indices), subset(data.targets, train_indices))
         self.val_ds: PreprocessedDataset = self.preprocess.transform(
-            val_doc, val_targ)
-
-        test_data = SmglomDataset(
-            self.data_dir, train=False, target_transform=self.target_transform, download=True, **kwargs)
+            subset(data.documents, val_indices), subset(data.targets, val_indices))
         self.test_ds: PreprocessedDataset = self.preprocess.transform(
-            test_data.documents, test_data.targets)
+            subset(data.documents, test_indices), subset(data.targets, test_indices))
 
     def setup(self, stage: Optional[str] = None):
         pass

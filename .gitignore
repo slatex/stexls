@@ -1,11 +1,10 @@
 .*/
-venv/
 *.ipynb
 __pycache__/
-logs/
-build/
-dist/
-develop/
-smglom/
+/venv/
+/build/
+/dist/
+/develop/
 /checkpoints/
-/*logs*
+/*logs*/
+/downloads/

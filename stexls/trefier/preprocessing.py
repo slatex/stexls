@@ -1,4 +1,5 @@
 from pathlib import Path
+import pickle
 
 import torch
 from torch.functional import Tensor
@@ -59,6 +60,15 @@ class Preprocessor:
         self.vocab = Vocab(max_num_tokens=self.max_num_tokens)
         self.keyphraseness = KeyphrasenessModel[str, int]()
         self.tfidf = TfIdfModel[str]()
+
+    def save(self, file: Path):
+        with file.open('wb') as fd:
+            pickle.dump(self, fd)
+
+    @staticmethod
+    def load(self, file: Path):
+        with file.open('rb') as fd:
+            return pickle.load(fd)
 
     def fit_transform(
             self,

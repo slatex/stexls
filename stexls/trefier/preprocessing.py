@@ -87,7 +87,7 @@ class Preprocessor:
                                 for doc in documents for tok in doc)
         tokens = [[self.vocab[token] for token in doc] for doc in documents]
         token_bags = [self.bow_vectorizer.transform(
-            map(lambda tok: Counter(tok), doc)) for doc in documents]
+            [Counter(tok) for tok in doc]) for doc in documents]
         key = self.keyphraseness.fit_transform(documents, targets)
         tfidf = self.tfidf.fit_transform(documents)
         return PreprocessedDataset(
@@ -101,7 +101,7 @@ class Preprocessor:
             self, documents: Sequence[Sequence[str]], targets: Sequence[Sequence[int]] = None):
         tokens = [[self.vocab[token] for token in doc] for doc in documents]
         token_bags = [self.bow_vectorizer.transform(
-            map(lambda tok: Counter(tok), doc)) for doc in documents]
+            [Counter(tok) for tok in doc]) for doc in documents]
         key = self.keyphraseness.transform(documents)
         tfidf = self.tfidf.transform(documents)
         return PreprocessedDataset(

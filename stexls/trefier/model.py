@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
-from unicodedata import bidirectional
-import icecream
+
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.functional import Tensor
 
@@ -12,27 +12,27 @@ class Seq2SeqModel(nn.Module):
         vocab_size: int,
         word_embedding_size: int,
         gru_hidden_size: int,
+        bow_size: int,
         num_classes: int = 1,
         num_pos_tags: int = 0,
-        with_tfidf: bool = False,
-        with_keyphraseness: bool = False,
-        dropout: float = 0.1,
+        bow_embedding_size: int = 10,
+        dropout: float = 0.2,
     ):
         super().__init__()
         self.num_input_features = (
-            word_embedding_size
-            + num_pos_tags
-            + int(with_keyphraseness)
-            + int(with_tfidf)
+            word_embedding_size  # token embedding
+            + num_pos_tags  # pos tags
+            + 1  # with_keyphraseness
+            + 1  # with_tfidf
+            + bow_embedding_size  # from embedding bow_size into bow_embedding_size
         )
         self.num_classes = num_classes
         self.num_pos_tags = num_pos_tags
-        self.with_keyphraseness = with_keyphraseness
-        self.with_tfidf = with_tfidf
         self.hidden_size = gru_hidden_size * 2
         self.embedding = nn.Embedding(
             vocab_size, word_embedding_size)
         self.dropout = nn.Dropout(p=dropout)
+        self.embed_bow = nn.Linear(bow_size, bow_embedding_size)
         self.features = nn.GRU(
             input_size=self.num_input_features,
             hidden_size=gru_hidden_size,
@@ -55,6 +55,7 @@ class Seq2SeqModel(nn.Module):
     def forward(
         self,
         tokens: Tensor,
+        bow: Tensor,
         keyphraseness_values: Optional[Tensor] = None,
         tfidf_values: Optional[Tensor] = None,
         state: Optional[Tensor] = None,
@@ -63,18 +64,15 @@ class Seq2SeqModel(nn.Module):
         batch_size, num_tokens = tokens.shape
         # Embedd the tokens
         embeddings = self.dropout(self.embedding(tokens))
+        # Bow embedding
+        bow_embedding = self.dropout(F.relu(self.embed_bow(bow)))
         # Create buffer for the gru inputs
         gru_input_features = [
-            embeddings
+            embeddings,
+            tfidf_values,
+            keyphraseness_values,
+            bow_embedding,
         ]
-        # Add tfidf if given
-        if self.with_tfidf:
-            assert tfidf_values is not None, "Tf-Idf input expected."
-            gru_input_features.append(tfidf_values)
-        # Add keyphraseness if given
-        if self.with_keyphraseness:
-            assert keyphraseness_values is not None, "Keyphraseness input expected."
-            gru_input_features.append(keyphraseness_values)
         # Concat features
         gru_inputs = torch.cat(gru_input_features, dim=2)
         # Let GRU extract features from each sample in the sequence

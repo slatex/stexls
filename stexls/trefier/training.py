@@ -1,13 +1,14 @@
-from pathlib import Path
 from argparse import ArgumentParser
+from pathlib import Path
 from typing import List, Literal, Union
 
 import pytorch_lightning as pl
 import torch
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.metrics.functional import accuracy, f1
-from pytorch_lightning.callbacks import ModelCheckpoint
 from torch import nn, optim
 from torch.functional import Tensor
+from torch.nn.modules.loss import BCEWithLogitsLoss
 
 from . import dataset
 from .model import Seq2SeqModel
@@ -20,6 +21,7 @@ def train(
     learning_rate: float = 1e-4,
     weight_decay: float = 1e-5,
     hidden_size: int = 32,
+    bow_embedding_size: int = 10,
     embedding_size: int = 10,
     device: Literal['cpu', 'cuda'] = 'cpu',
     num_workers: int = 0,
@@ -39,17 +41,21 @@ def train(
         vocab_size=len(data.preprocess.vocab),
         word_embedding_size=embedding_size,
         gru_hidden_size=hidden_size,
-        class_weights=data.class_weights[-1],
+        bow_size=len(data.preprocess.bow_vectorizer.get_feature_names()),
+        bow_embedding_size=bow_embedding_size,
+        class_weights=data.class_weights,
         lr=learning_rate,
         weight_decay=weight_decay,
         dropout=dropout,
     ).to(device)
+    lr_monitor = LearningRateMonitor()
     checkpoints = ModelCheckpoint(
         checkpoint_dir,
         filename=experiment_name +
         '-epoch:{epoch}-loss:{val_loss:.2f}-f1:{val_f1:.2f}',
         monitor='val_loss',
         mode='min',
+        save_last=True,
     )
     assert checkpoints.dirpath is not None
     data.preprocess.save(Path(checkpoints.dirpath) /
@@ -57,7 +63,9 @@ def train(
     trainer = pl.Trainer(
         gpus=0 if device == 'cpu' else -1,
         max_epochs=epochs,
-        callbacks=[checkpoints]
+        callbacks=[checkpoints, lr_monitor],
+        stochastic_weight_avg=True,
+        track_grad_norm=2,
     )
     trainer.fit(model, data)
 
@@ -69,53 +77,67 @@ class TrainSeq2SeqModule(pl.LightningModule):
         vocab_size: int,
         word_embedding_size: int,
         gru_hidden_size: int,
-        class_weights: List[float],
+        bow_size: int,
+        bow_embedding_size: int = 10,
+        class_weights: List[float] = None,
         lr: float = 1e-4,
         weight_decay: float = 1e-5,
+        num_classes: int = 2,
         dropout: float = 0.1,
     ):
         super().__init__()
-        self.save_hyperparameters(
-            'vocab_size', 'word_embedding_size', 'gru_hidden_size')
+        self.save_hyperparameters()
         self.epochs = epochs
         self.lr = lr
         self.weight_decay = weight_decay
+        self.num_classes = num_classes
         self.model = Seq2SeqModel(
             vocab_size=vocab_size,
             word_embedding_size=word_embedding_size,
             gru_hidden_size=gru_hidden_size,
-            num_classes=1,
-            with_tfidf=True,
-            with_keyphraseness=True,
+            bow_size=bow_size,
+            bow_embedding_size=bow_embedding_size,
+            num_classes=num_classes,
             dropout=dropout,
         )
-        self.criterion = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor(class_weights))
+
+        self.criterion: Union[nn.BCEWithLogitsLoss, nn.CrossEntropyLoss]
+        if num_classes == 1:
+            self.criterion = nn.BCEWithLogitsLoss(
+                pos_weight=torch.tensor(class_weights[-1]) if class_weights else None)
+        else:
+            self.criterion = nn.CrossEntropyLoss(
+                torch.tensor(class_weights[-num_classes:]) if class_weights else None)
 
     def forward(
-            self, tokens: Tensor, keyphraseness: Tensor, tfidf: Tensor):
-        return self.model.forward(tokens, keyphraseness, tfidf)
+            self, tokens: Tensor, bow: Tensor, keyphraseness: Tensor, tfidf: Tensor):
+        return self.model.forward(tokens, bow, keyphraseness, tfidf)
 
     def configure_optimizers(self):
         optimizer = optim.Adam(
             self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.1, patience=self.epochs, verbose=True, min_lr=1e-7)
+            optimizer, mode='min', factor=0.1, patience=10, verbose=True, min_lr=1e-8)
         return [optimizer], {'scheduler': scheduler, 'monitor': 'val_loss', }
 
     def _step(self, subset: str, batch, index):
-        lengths, tokens, key, tfidf, targets = batch
+        lengths, tokens, bow, key, tfidf, targets = batch
         output_logits, state = self(
-            tokens.to(self.device), key.to(self.device), tfidf.to(self.device))
+            tokens.to(self.device), bow.to(self.device), key.to(self.device), tfidf.to(self.device))
         logit_acc = []
         target_acc = []
         for logits, target, length in zip(output_logits, targets, lengths):
-            logit_acc.append(logits[:length].flatten())
+            logit_acc.append(logits[:length].view(-1, self.num_classes))
             target_acc.append(target[:length].flatten())
         logits = torch.cat(logit_acc)
         targets = torch.cat(target_acc).to(self.device)
-        loss = self.criterion(logits, targets.float())
-        pred = torch.sigmoid(logits)
+        if isinstance(self.criterion, BCEWithLogitsLoss):
+            targets = targets.float()
+        loss = self.criterion(logits, targets)
+        if self.num_classes == 1:
+            pred = torch.sigmoid(logits.flatten())
+        else:
+            pred = torch.softmax(logits, -1)
         self.log_metrics(subset, pred, targets, loss)
         return loss
 

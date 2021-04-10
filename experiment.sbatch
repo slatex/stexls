@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ls
+#SBATCH --job-name=lsp
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=12G
@@ -21,9 +21,10 @@ echo "python3: $(which python3)"
 
 # Start training
 python3 -m stexls.trefier.training --device cuda \
+   --num-workers 4 \
    --epochs 2000 \
    --batch-size 128 \
-   --learning-rate 1e-4 \
+   --learning-rate 1e-5 \
    --weight-decay 1e-2 \
    --experiment-name test \
    $@

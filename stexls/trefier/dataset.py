@@ -6,8 +6,7 @@ import subprocess
 import traceback
 from enum import Enum
 from pathlib import Path
-from typing import (Any, Callable, Counter, List, Optional, Sequence, Tuple,
-                    Union)
+from typing import (Any, Callable, List, Optional, Sequence, Tuple, Union)
 
 import numpy as np
 import pytorch_lightning as pl

@@ -23,7 +23,10 @@ class Vocab:
     def __getitem__(self, index: Hashable) -> int:
         return self.stoi.get(index, self.stoi[self.unk])
 
-    def update_vocab(self, documents: Sequence[Sequence[Hashable]]) -> Vocab:
+    def vocab_size(self) -> int:
+        return len(self.stoi)
+
+    def fit(self, documents: Sequence[Sequence[Hashable]]) -> Vocab:
         for document in documents:
             for token in document:
                 self.counts.setdefault(token, 0)
@@ -43,5 +46,14 @@ class Vocab:
         }
         return self
 
-    def vocab_size(self) -> int:
-        return len(self.stoi)
+    def transform(self, documents: Sequence[Sequence[Hashable]]):
+        return [[self[tok] for tok in doc] for doc in documents]
+
+    def inverse_transform(self, documents: Sequence[Sequence[int]]):
+        return [
+            [
+                self.itos[tok]
+                for tok in doc
+            ]
+            for doc in documents
+        ]

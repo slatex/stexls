@@ -225,20 +225,20 @@ class SmglomDataModule(pl.LightningDataModule):
             test_size=self.val_split,
             random_state=480237)
 
-        def subset(inputs, indices):
-            return [inputs[i] for i in indices]
+        def subset(indices, array):
+            return [array[i] for i in indices]
 
-        train_targets = subset(data.targets, train_indices)
+        train_targets = subset(train_indices, data.targets)
         targets = list(
             target for targets in train_targets for target in targets)
         self.class_weights = compute_class_weight(
             'balanced', classes=np.unique(targets), y=targets).tolist()
         self.train_ds: PreprocessedDataset = self.preprocess.fit_transform(
-            subset(data.documents, train_indices), train_targets)
+            subset(train_indices, data.documents), train_targets)
         self.val_ds: PreprocessedDataset = self.preprocess.transform(
-            subset(data.documents, val_indices), subset(data.targets, val_indices))
+            subset(val_indices, data.documents), subset(val_indices, data.targets))
         self.test_ds: PreprocessedDataset = self.preprocess.transform(
-            subset(data.documents, test_indices), subset(data.targets, test_indices))
+            subset(test_indices, data.documents), subset(test_indices, data.targets))
 
     def setup(self, stage: Optional[str] = None):
         pass

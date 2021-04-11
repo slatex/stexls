@@ -1,6 +1,7 @@
 .*/
 *.ipynb
 *.bin
+*.ckpt
 __pycache__/
 /venv/
 /build/

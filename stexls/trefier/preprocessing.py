@@ -82,10 +82,10 @@ class Preprocessor:
             documents: Sequence[Sequence[str]],
             targets: Sequence[Sequence[int]]):
         self.vocab = Vocab(
-            max_num_tokens=self.max_num_tokens).update_vocab(documents)
-        self.bow_vectorizer.fit(Counter(tok)
-                                for doc in documents for tok in doc)
-        tokens = [[self.vocab[token] for token in doc] for doc in documents]
+            max_num_tokens=self.max_num_tokens).fit(documents)
+        tokens = self.vocab.transform(documents)
+        self.bow_vectorizer.fit(
+            Counter(tok) for doc in documents for tok in doc)
         token_bags = [self.bow_vectorizer.transform(
             [Counter(tok) for tok in doc]) for doc in documents]
         key = self.keyphraseness.fit_transform(documents, targets)
@@ -99,7 +99,7 @@ class Preprocessor:
 
     def transform(
             self, documents: Sequence[Sequence[str]], targets: Sequence[Sequence[int]] = None):
-        tokens = [[self.vocab[token] for token in doc] for doc in documents]
+        tokens = self.vocab.transform(documents)
         token_bags = [self.bow_vectorizer.transform(
             [Counter(tok) for tok in doc]) for doc in documents]
         key = self.keyphraseness.transform(documents)

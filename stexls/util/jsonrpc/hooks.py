@@ -12,6 +12,9 @@ def alias(name: str):
     assert name is not None
 
     def alias_decorator(f):
+        if hasattr(f, 'json_rpc_name'):
+            raise ValueError(
+                f'Function {f!r} already is decorated. Move the alias decorator to the front.')
         f.json_rpc_name = name
         return f
     return alias_decorator

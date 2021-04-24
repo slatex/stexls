@@ -24,6 +24,11 @@ class GetSetClient(dispatcher.Dispatcher):
     def set_value(self, key, value):
         pass
 
+    @hooks.request
+    @hooks.alias('get_value')
+    def will_call_server_get_value(self, key):
+        pass
+
 
 class TestJRPC(IsolatedAsyncioTestCase):
     async def test_get_set(self):
@@ -35,5 +40,9 @@ class TestJRPC(IsolatedAsyncioTestCase):
         await client.set_value(key='key name', value='some random value')
         self.assertDictEqual(
             await client.get_value('key name'),
+            {'key': 'key name', 'value': 'some random value'}
+        )
+        self.assertDictEqual(
+            await client.will_call_server_get_value('key name'),
             {'key': 'key name', 'value': 'some random value'}
         )

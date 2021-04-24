@@ -5,7 +5,7 @@ import itertools
 import logging
 import os
 import sys
-from typing import Any, Awaitable, Dict, List, Literal, Optional, Tuple, Union, Type
+from typing import Any, Awaitable, Dict, List, Literal, Optional, Tuple, Union
 
 from .connection import JsonRpcConnection
 from .core import NotificationObject, RequestObject
@@ -75,12 +75,14 @@ class Dispatcher:
 
     @ classmethod
     async def start_server(
-            dispatcher_factory: type,
+            dispatcher_factory,
             host: str = 'localhost',
             port: int = 0,
+            *args,
             encoding: str = 'utf-8',
             charset: str = None,
-            newline: str = '\r\n') -> Tuple[Tuple[str, int], asyncio.Task]:
+            newline: str = '\r\n',
+            **kwargs) -> Tuple[Tuple[str, int], asyncio.Task[None]]:
         """ Starts a tcp server.
 
         Args:
@@ -94,6 +96,7 @@ class Dispatcher:
         Returns:
             Tuple[Tuple[str, int], asyncio.Task]: Returns a tuple of host name and port the
                 server is running on, as well as the asyncio task the server runs on.
+                The task can be canceled to stop the server.
         """
         def connect_fun(r, w):
             peername = w.get_extra_info('peername')
@@ -101,7 +104,7 @@ class Dispatcher:
             stream = JsonStream(
                 r, w, encoding=encoding, charset=charset, newline=newline)
             conn = JsonRpcConnection(stream)
-            _ = dispatcher_factory(conn)
+            _ = dispatcher_factory(conn, *args, **kwargs)
             asyncio.create_task(conn.run_forever())
         server = await asyncio.start_server(connect_fun, host=host, port=port)
 
@@ -109,15 +112,16 @@ class Dispatcher:
             async with server:
                 await server.serve_forever()
         assert server.sockets is not None
-        server_name = server.sockets[0].getsockname()[:2]
-        server_task = asyncio.create_task(task())
+        server_name: Tuple[str, int] = server.sockets[0].getsockname()[:2]
+        server_task: asyncio.Task[None] = asyncio.create_task(task())
         return server_name, server_task
 
     @ classmethod
     async def open_connection(
-            dispatcher_factory: Type[Dispatcher],
+            dispatcher_factory,
             host: str = 'localhost',
             port: int = 0,
+            *args,
             encoding: str = 'utf-8',
             charset: str = None,
             newline: str = '\r\n',
@@ -144,16 +148,17 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn, **kwargs)
+        dispatcher = dispatcher_factory(conn, *args, **kwargs)
         return dispatcher, conn_task
 
     @ classmethod
     async def open_ipc_connection(
-            dispatcher_factory: Type[Dispatcher],
+            dispatcher_factory,
             input_fd: Union[
                 int, Literal['stdin', 'stdout', 'stderr']] = 'stdin',
             output_fd: Union[
                 int, Literal['stdout', 'stdout', 'stderr']] = 'stdout',
+            *args,
             encoding: str = 'utf-8',
             charset: str = None,
             newline: str = '\r\n',
@@ -207,5 +212,5 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn, **kwargs)
+        dispatcher = dispatcher_factory(conn, *args, **kwargs)
         return dispatcher, conn_task

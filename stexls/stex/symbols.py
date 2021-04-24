@@ -301,6 +301,7 @@ class ModuleSymbol(Symbol):
             return ReferenceType.MODSIG
         if ModuleType.MODULE == self.module_type:
             return ReferenceType.MODULE
+        raise ValueError(self.module_type)
 
     def shallow_copy(self) -> ModuleSymbol:
         cpy = ModuleSymbol(self.module_type, self.location.copy(), self.name)
@@ -347,15 +348,19 @@ class DefSymbol(Symbol):
             return ReferenceType.SYM
         if self.def_type == DefType.SYMDEF:
             return ReferenceType.SYMDEF
+        raise ValueError(self.def_type)
 
     def __repr__(self):
         return f'[{self.access_modifier.name} DefSymbol "{self.name}"/{self.def_type.name} at {self.location.range.start.format()}]'
 
     def shallow_copy(self) -> DefSymbol:
-        cpy = DefSymbol(self.def_type, self.location.copy(),
-                        self.name, self.noverb, self.noverbs.copy())
-        cpy.access_modifier = self.access_modifier
-        return cpy
+        return DefSymbol(
+            self.def_type,
+            self.location.copy(),
+            self.name,
+            self.noverb,
+            self.noverbs.copy(),
+            self.access_modifier)
 
 
 class BindingSymbol(Symbol):
@@ -380,13 +385,13 @@ class BindingSymbol(Symbol):
 
 
 class RootSymbol(Symbol):
-    NAME = '__root__'
+    ROOT_NAME = '__root__'
 
     def __init__(self, location: vscode.Location):
-        super().__init__(location, RootSymbol.NAME)
+        super().__init__(location, RootSymbol.ROOT_NAME)
 
     @property
-    def qualified(self) -> List[str]:
+    def qualified(self) -> Tuple[str, ...]:
         return ()
 
     def shallow_copy(self):
@@ -394,18 +399,18 @@ class RootSymbol(Symbol):
 
 
 class ScopeSymbol(Symbol):
-    COUNTER = 0
+    count = 0
 
     def __init__(self, location: vscode.Location, name: str = 'UNNAMED_SCOPE'):
-        super().__init__(location, f'__{name}#{ScopeSymbol.COUNTER}__')
-        ScopeSymbol.COUNTER += 1
-        self._name = name
+        super().__init__(location, f'__{name}#{ScopeSymbol.count}__')
+        ScopeSymbol.count += 1
+        self.name = name
         self.access_modifier = AccessModifier.PUBLIC
 
     def __repr__(self):
         return f'[{self.access_modifier.name} Scope "{self.name}" at {self.location.range.start.format()}]'
 
     def shallow_copy(self) -> ScopeSymbol:
-        cpy = ScopeSymbol(self.location.copy(), name=self._name)
+        cpy = ScopeSymbol(self.location.copy(), name=self.name)
         cpy.access_modifier = self.access_modifier
         return cpy

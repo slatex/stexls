@@ -46,6 +46,36 @@ class TestLatexParser(SetupEnvironment, TestCase):
         self.assertListEqual(expected_token_contents,
                              list(map(lambda x: x.lexeme.strip(), parser.root.tokens)))
 
+    def test_math_environments(self):
+        self.file.write_text(r'''
+        $math 1. Also ignore escaped sequences: \$$
+        $$math 2$$
+        \(math 3\)
+        \[math 4\]
+        \begin{math}math 5\end{math}
+        \begin{displaymath}math 6\end{displaymath}
+        \begin{align}math 7\end{align}
+        \begin{flalign}math 8\end{flalign}
+        \begin{flmath}math 9\end{flmath}
+        \begin{equation}math 10\end{equation}
+        \begin{verbatim}
+            math 11. All these environments should ignore
+            nested environemnts like
+            \begin{document}
+                this is not an environemnt!
+            \end{document}
+        \end{verbatim}
+        \begin{lstlisting}math 12\end{lstlisting}
+        ''')
+        parser = LatexParser(self.file)
+        parser.parse()
+        self.assertTrue(parser.parsed)
+        self.assertEqual(len(list(parser.root.tokens)), 12)
+        self.assertEqual(next(parser.root.tokens).lexeme,
+                         '$math 1. Also ignore escaped sequences: \\$$')
+        for token in parser.root.tokens:
+            self.assertTupleEqual(('$',), token.envs)
+
 
 class TestLatexTokenizer(SetupEnvironment, TestCase):
     def test_tokenize(self):

@@ -3,15 +3,13 @@
 The idea here is that it mirrors the "ln" command for c++.
 The ln command takes a list of c++ objects and resolves the symbol references inside them.
 """
-from os import PathLike
 from pathlib import Path
 from time import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 from .. import vscode
 from . import exceptions, symbols
-from .compiler import (Compiler, Dependency,
-                       ObjectfileIsCorruptedError,
+from .compiler import (Compiler, Dependency, ObjectfileIsCorruptedError,
                        ObjectfileNotFoundError, StexObject)
 
 __all__ = ['Linker']
@@ -28,26 +26,27 @@ class Linker:
     objects.
 
     A "ln dep1.o dep2.o main.o -o a.out" command is the same as "aout = Linker(...).link(main.tex)"
-    Notice the main.o and main.tex inputs respectively.
     """
 
-    def __init__(self, compiler_outdir: PathLike):
+    def __init__(self, compiler_outdir: Union[str, Path]):
         # Directory in which the compiler stores the compiled objects
         self.outdir = Path(compiler_outdir)
         # Dict[usemodule_on_stack?, [File, [ModuleName, (TimeModified, StexObject)]]]
         # ModuleName is the name of the Module that is guaranteed to be fully linked inside StexObject
+        # This means, that the objects linked by calling `link` from the user, will never be cached
+        # and will always be linked again.
         self.cache: Dict[Optional[bool], Dict[Path, Dict[str, Tuple[float, StexObject]]]] = {
             True: dict(), False: dict()}
 
     def link_dependency(self, obj: StexObject, dependency: Dependency, imported: StexObject):
-        ''' Links the module specified in @dependency from @imported with @obj at the scope declared in the
+        ''' Links the module specified in `dependency` from `imported` with `obj` at the scope declared in the
         dependency.
 
         The module and it's public child symbols will be copied into the scope specified in the dependency.
 
         Parameters:
-            obj: Object that has the @dependency to @imported
-            dependency: Dependency of the object @obj
+            obj: Object that has the `dependency` to `imported`
+            dependency: Dependency of the object `obj`
             imported: The Object that contains the file and module specified in @dependency
         '''
         resolved = imported.symbol_table.lookup(dependency.module_name)
@@ -74,7 +73,7 @@ class Linker:
 
     def link(
             self,
-            file: PathLike,
+            file: Union[str, Path],
             objects: Dict[Path, StexObject],
             compiler: Compiler,
             required_symbol_names: List[str] = None,
@@ -115,15 +114,19 @@ class Linker:
                 continue
             update_usemodule_on_stack = _usemodule_on_stack or not dep.export
             if dep.file_hint not in objects:
+                # In order to keep everything simple
+                # we do not allow loading or compiling the object file here.
+                # The objectfile should have been compiled previously and
+                # provided in the `objects` dictionary when calling this method
                 obj.diagnostics.file_not_found(dep.range, dep.file_hint)
                 continue
             if self._relink_required(objects, dep.file_hint, dep.module_name, update_usemodule_on_stack):
                 # compile and link the dependency if the context is not on stack, the file is not index and the file requires recompilation
                 _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
                 if _toplevel_module is None:
-                    current_module = dep.scope.get_current_module()
-                    assert current_module is not None, "Invalid state: If toplevel is not set, then the scope must have a module in scope."
-                    _toplevel_module = current_module.name
+                    # TODO: I can't remember why setting toplevel module is required at all times and not conditional.
+                    _toplevel_module = dep.scope.get_current_module_name()
+                    assert _toplevel_module is not None, "Invalid state: If toplevel is not set, then the scope must have a module in scope."
                 try:
                     imported = self.link(
                         objects=objects,
@@ -133,7 +136,7 @@ class Linker:
                         _stack=_stack,
                         _toplevel_module=_toplevel_module,
                         _usemodule_on_stack=update_usemodule_on_stack)
-                    self._store_linked(
+                    self._store_linked_in_cache(
                         update_usemodule_on_stack, dep.file_hint, dep.module_name, imported)
                 except (ObjectfileNotFoundError, ObjectfileIsCorruptedError):
                     log.exception('Failed to link dependency: %s', path)
@@ -142,18 +145,19 @@ class Linker:
                     del _stack[(dep.file_hint, dep.module_name)]
             else:
                 # If the linked file is already indexed for the current context, than load it
-                _mtime, imported = self._load_linked(
+                _mtime, imported = self._load_linked_from_cache(
                     update_usemodule_on_stack, dep.file_hint, dep.module_name)
-                assert imported, "Invalid state: Cached file not found even though it should be present."
             # Link the single dependency to the current object
             self.link_dependency(obj, dep, imported)
         return obj
 
     def _relink_required(self, compiled_objects: Dict[Path, StexObject], file: Path, module_name: str, usemodule_on_stack: bool) -> bool:
         ' Returns True if the module in the file was not linked yet or if a newer version can be created. '
-        mtime, obj = self._load_linked(usemodule_on_stack, file, module_name)
-        if not obj:
-            # Module not cached
+        try:
+            mtime, obj = self._load_linked_from_cache(
+                usemodule_on_stack, file, module_name)
+        except ObjectfileNotFoundError:
+            # Module not cached -> Linking required
             return True
         if file in compiled_objects and mtime < compiled_objects[file].creation_time:
             # The sourcefile has been recompiled for some reason
@@ -169,19 +173,19 @@ class Linker:
             log.exception('Failed relink check')
         return True
 
-    def _load_linked(self, usemodule_on_stack: bool, file: Path, module: str) -> Tuple[float, StexObject]:
-        ' Return the tuple of (timestamp added, stexobj) from cache or (None, None) if not cached. '
-        linked = self.cache.get(
-            usemodule_on_stack, {}
-        ).get(
-            str(file), {}
-        ).get(module, (None, None))
+    def _load_linked_from_cache(self, usemodule_on_stack: bool, file: Path, module: str) -> Tuple[float, StexObject]:
+        ' Return the tuple of (timestamp added, stexobj) from cache or raises ObjectfileNotFound if not cached. '
+        context = self.cache.get(usemodule_on_stack, {})
+        modules = context.get(file, {})
+        linked = modules.get(module)
+        if linked is None:
+            raise ObjectfileNotFoundError(file)
         return linked
 
-    def _store_linked(self, usemodule_on_stack: bool, file: Path, module: str, obj: StexObject):
+    def _store_linked_in_cache(self, usemodule_on_stack: bool, file: Path, module: str, obj: StexObject):
         ' Store an obj in cache. '
         self.cache[usemodule_on_stack].setdefault(
-            str(file), {})[module] = (time(), obj)
+            file, {})[module] = (time(), obj)
 
     def validate_object_references(self, linked: StexObject, more_objects: Dict[Path, StexObject] = None):
         ''' Validate the references inside an object.

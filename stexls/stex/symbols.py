@@ -159,6 +159,15 @@ class Symbol:
             return self.parent.get_current_module()
         return None
 
+    def get_current_module_name(self) -> Optional[str]:
+        module = self.get_current_module()
+        if module is not None:
+            return module.name
+        binding = self.get_current_binding()
+        if binding is not None:
+            return binding.name
+        return None
+
     def get_current_binding(self) -> Optional[BindingSymbol]:
         ' Find the first parent BindingSymbol. '
         if self.parent:
@@ -210,13 +219,12 @@ class Symbol:
         self.children.setdefault(child.name, []).append(child)
 
     def lookup(self, identifier: Union[str, List[str], Tuple[str, ...]], accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
-        """ Symbol lookup searches for symbols with a given identifier.
+        """ Symbol lookup searches for symbols with a given identifier in this symbol's children and all ancestor's children.
         A "lookup" is search operation that can change the root to a parent.
-        After a root has been found, the normal "find" operation will take over and only
-        look through a child sub-tree.
 
         Parameters:
-            identifier: Symbol identifier.
+            identifier (Union[str, List[str], Tuple[str, ...]]): Symbol identifier.
+            accepted_ref_type (ReferenceType, optional): Optional reference type. Others will be filtered out.
 
         Returns:
             All symbols with the specified id.

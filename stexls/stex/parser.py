@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import (Any, Callable, Collection, Dict, List, Optional, Sequence,
+                    Set, Tuple, Union)
 
 from .. import vscode
 from ..util import roman_numerals
@@ -185,48 +186,69 @@ class IntermediateParser:
         '''
         if self.roots:
             raise ValueError('File already parsed.')
+        subclass_constructors: Tuple[Callable[[parser.Environment], Any], ...] = tuple(
+            getattr(cls, 'from_environment')
+            for cls
+            in IntermediateParseTree.__subclasses__()
+            if hasattr(cls, 'from_environment')
+        )
         try:
             latex_parser = parser.LatexParser(self.path)
             latex_parser.parse(content)
-            stack: List[Tuple[parser.Environment, Callable]] = [
+            stack: List[Tuple[Optional[parser.Environment], Callable]] = [
                 (None, self.roots.append)]
             latex_parser.walk(
-                lambda env: self._enter(env, stack),
+                lambda env: self._enter(env, stack, subclass_constructors),
                 lambda env: self._exit(env, stack))
         except (exceptions.CompilerError, parser.LatexException, UnicodeError, FileNotFoundError) as ex:
             self.errors.setdefault(self.default_location, []).append(ex)
         return self
 
-    def _enter(self, env, stack_of_add_child_operations: List[Tuple[parser.Environment, Callable]]):
+    def _enter(
+            self,
+            env: parser.Environment,
+            stack_of_add_child_operations: List[Tuple[Optional[parser.Environment], Callable]],
+            parse_tree_constructors: Collection[Callable[[parser.Environment], Any]]):
+        """ Handles entering an environment while walking through the from the parser generated syntax tree.
+
+        Args:
+            env (parser.Environment): The current environment.
+            stack_of_add_child_operations (List[Tuple[Optional[parser.Environment], Callable]]): A stack that keeps track of
+                which environments are currently entered.
+                The top if this stack will be used to add the current environment to after it is parased.
+            parse_tree_constructors (Collection[Callable[[parser.Environment], Any]]): A collection of constructors
+                that generate a IntermediateParseTree subclass instance.
+                The first constructor that does not return None will be accepted the correct parsing of the given environment.
+        """
         try:
-            tree = next(filter(None, map(
-                lambda cls_: cls_.from_environment(env),
-                [
-                    ScopeIntermediateParseTree,
-                    ModsigIntermediateParseTree,
-                    ModnlIntermediateParseTree,
-                    ModuleIntermediateParseTree,
-                    TassignIntermediateParseTree,
-                    TrefiIntermediateParseTree,
-                    DefiIntermediateParseTree,
-                    SymIntermediateParserTree,
-                    SymdefIntermediateParseTree,
-                    ImportModuleIntermediateParseTree,
-                    GImportIntermediateParseTree,
-                    GStructureIntermediateParseTree,
-                    ViewIntermediateParseTree,
-                    ViewSigIntermediateParseTree,
-                ]
-            )), None)
+            tree: Optional[IntermediateParseTree] = next(
+                filter(
+                    # Remove all constructors that returned None because it decided that the parsing of the environment is not it's job.
+                    None,
+                    # Try out all constructors on the current environment
+                    map(
+                        lambda from_environment: from_environment(env),
+                        parse_tree_constructors)
+                    # Return default None if there is no from_environment method
+                    # that is responsible for the parsing of this environment
+                    # This means that it is some other environment
+                    # that has no inpact on the final symbol structure and can be ignored.
+                ), None)
             if tree:
+                # Get the top stack operation and add this tree as a child
                 if stack_of_add_child_operations[-1]:
                     stack_of_add_child_operations[-1][1](tree)
+                # Add this parse tree's add_child operation to the top
                 stack_of_add_child_operations.append((env, tree.add_child))
                 return
+            # If this is reached, then the environment will be ignored because it does not have a
+            # valid constructor
         except exceptions.CompilerError as e:
+            # Reached if there exists a constructor that is responsible,
+            # but the construction of the parse tree could not be completed
             self.errors.setdefault(env.location, []).append(e)
 
-    def _exit(self, env, stack_of_add_child_operations: List[Tuple[parser.Environment, Callable]]):
+    def _exit(self, env, stack_of_add_child_operations: List[Tuple[Optional[parser.Environment], Callable]]):
         if stack_of_add_child_operations[-1][0] == env:
             stack_of_add_child_operations.pop()
 
@@ -236,8 +258,7 @@ class IntermediateParser:
             or just the range from 0 to 0 if the file can't be openened.
         """
         try:
-            with open(self.path) as fd:
-                content = fd.read()
+            content = self.path.read_text()
             lines = content.split('\n')
             num_lines = len(lines)
             len_last_line = len(lines[-1])
@@ -980,7 +1001,7 @@ class GImportIntermediateParseTree(IntermediateParseTree):
             root=root,
             current_file=self.location.path,
             repo=self.repository.text.strip() if self.repository else None,
-            module=self.module.text.strip() if self.module else None)
+            module=self.module.text.strip())
 
     @classmethod
     def from_environment(cls, e: parser.Environment) -> Optional[GImportIntermediateParseTree]:

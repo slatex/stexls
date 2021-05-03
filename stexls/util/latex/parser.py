@@ -3,17 +3,18 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Callable, Dict, Iterator, List, Optional, Pattern, Tuple, Union
+from typing import (Callable, Dict, Iterator, List, Optional, Pattern, Tuple,
+                    Union)
 
 import antlr4
 from antlr4.error.ErrorListener import ErrorListener
+from stexls.util.unwrap import unwrap
 from stexls.vscode import Location, Position, Range
 
-from .grammar.out.LatexLexer import LatexLexer as _LL
-from .grammar.out.LatexParser import LatexParser as _LP
-from .grammar.out.LatexParserListener import LatexParserListener as _LPL
-
-from stexls.util.unwrap import unwrap
+from .grammar.out.LatexLexer import LatexLexer as _LatexLexer
+from .grammar.out.LatexParser import LatexParser as _LatexParser
+from .grammar.out.LatexParserListener import \
+    LatexParserListener as _LatexParserListener
 
 __all__ = ['LatexParser', 'InlineEnvironment', 'Environment',
            'Token', 'MathToken', 'Node', 'SyntaxErrorException', 'LatexException']
@@ -35,7 +36,17 @@ def _get_ctx_range(ctx):
 
 
 class Node:
-    ' Base class for the syntax tree content. '
+    """ Base class for the syntax tree content.
+
+    Attributes:
+        parser (LatexParser): The parser this node belongs to.
+        begin (int): Index of the first character that belongs to this node.
+        end (int): Index of the last character that belongs to this node.
+        children: List[Node]: List of all children.
+            Node metadata like optional arguments are stored separately and are not children.
+        _parent (Node, optional): Parent node this node belongs to.
+            Accessed via the `parent` property getter.
+    """
 
     def __init__(self, parser: LatexParser, begin: int, end: int):
         """ Creates a node.
@@ -178,20 +189,20 @@ class Token(Node):
 class OArgument(Node):
     def __init__(self, parser: LatexParser, begin: int, end: int):
         super().__init__(parser, begin, end)
-        self.name: Optional[Token] = None
-        self.value: Optional[Token] = None
+        self.name: Optional[Node] = None
+        self.value: Optional[Node] = None
 
     @property
     def tokens(self):
         yield from ()
 
-    def add_value(self, value: Token):
+    def add_value(self, value: Node):
         if self.value is not None:
             raise ValueError('OArgument already has a value assigned.')
         value.parent = self
         self.value = value
 
-    def add_name(self, name: Token):
+    def add_name(self, name: Node):
         if self.name is not None:
             raise ValueError('OArgument already has a name assigned.')
         name.parent = self
@@ -360,10 +371,10 @@ class LatexParser:
             in self.source.split('\n')
         ]
         input_stream = antlr4.InputStream(self.source)
-        lexer = _LL(input_stream)
+        lexer = _LatexLexer(input_stream)
         lexer.removeErrorListeners()
         stream = antlr4.CommonTokenStream(lexer)
-        parser = _LP(stream)
+        parser = _LatexParser(stream)
         parser.removeErrorListeners()
         error_listener = _SyntaxErrorErrorListener(self.file)
         parser.addErrorListener(error_listener)
@@ -482,7 +493,7 @@ class _SyntaxErrorErrorListener(ErrorListener):
         self.syntax_errors.append((location, exception))
 
 
-class Listener(_LPL):
+class Listener(_LatexParserListener):
     ' Implements the antlr4 methods for parsing a latex file. '
 
     def __init__(self, parser: LatexParser):
@@ -490,35 +501,35 @@ class Listener(_LPL):
         self.parser = parser
         self.stack: List[Node] = []
 
-    def enterMain(self, ctx: _LP.MainContext):
+    def enterMain(self, ctx: _LatexParser.MainContext):
         self.stack.append(Node.from_ctx(ctx, self.parser))
 
-    def exitMain(self, ctx: _LP.MainContext):
+    def exitMain(self, ctx: _LatexParser.MainContext):
         if len(self.stack) != 1:
             env = self.stack.pop()
             error = LatexException(f'Environment not closed: {env}')
             self.parser.syntax_errors.append((env.location, error))
 
-    def exitMath(self, ctx: _LP.MathContext):
+    def exitMath(self, ctx: _LatexParser.MathContext):
         lexeme = str(ctx.MATH_ENV())
         node = MathToken.from_ctx(ctx, self.parser, lexeme=lexeme)
         self.stack[-1].add(node)
 
-    def enterBody(self, ctx: _LP.BodyContext):
+    def enterBody(self, ctx: _LatexParser.BodyContext):
         if ctx.body():
             node = Node.from_ctx(ctx, self.parser)
             self.stack.append(node)
 
-    def exitBody(self, ctx: _LP.BodyContext):
+    def exitBody(self, ctx: _LatexParser.BodyContext):
         if ctx.body():
             body = self.stack.pop()
             self.stack[-1].add(body)
 
-    def enterEnvBegin(self, ctx: _LP.EnvBeginContext):
+    def enterEnvBegin(self, ctx: _LatexParser.EnvBeginContext):
         env = Environment.from_ctx(ctx, self.parser)
         self.stack.append(env)
 
-    def exitEnvEnd(self, ctx: _LP.EnvEndContext):
+    def exitEnvEnd(self, ctx: _LatexParser.EnvEndContext):
         env: Node = self.stack.pop()
         assert isinstance(
             env, Environment), "Expected Environment on top of stack."
@@ -536,7 +547,7 @@ class Listener(_LPL):
             self.parser.syntax_errors.append((env.location, error))
         self.stack[-1].add(env)
 
-    def enterInlineEnv(self, ctx: _LP.InlineEnvContext):
+    def enterInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         env = InlineEnvironment.from_ctx(ctx, self.parser)
         env_name_ctx = ctx.INLINE_ENV_NAME()
         env_name_range = (
@@ -547,19 +558,19 @@ class Listener(_LPL):
         env.add_name(token)
         self.stack.append(env)
 
-    def exitInlineEnv(self, ctx: _LP.InlineEnvContext):
+    def exitInlineEnv(self, ctx: _LatexParser.InlineEnvContext):
         env = self.stack.pop()
         self.stack[-1].add(env)
 
-    def exitText(self, ctx: _LP.TextContext):
+    def exitText(self, ctx: _LatexParser.TextContext):
         token = Token.from_ctx(ctx, self.parser, lexeme=ctx.getText())
         self.stack[-1].add(token)
 
-    def enterRarg(self, ctx: _LP.RargContext):
+    def enterRarg(self, ctx: _LatexParser.RargContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitRarg(self, ctx: _LP.RargContext):
+    def exitRarg(self, ctx: _LatexParser.RargContext):
         rarg = self.stack.pop()
         env: Node = self.stack[-1]
         assert isinstance(
@@ -569,11 +580,11 @@ class Listener(_LPL):
         else:
             env.add_rarg(rarg)
 
-    def enterArgument(self, ctx: _LP.ArgumentContext):
+    def enterArgument(self, ctx: _LatexParser.ArgumentContext):
         node = OArgument.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgument(self, ctx: _LP.ArgumentContext):
+    def exitArgument(self, ctx: _LatexParser.ArgumentContext):
         node = self.stack.pop()
         assert isinstance(
             node, OArgument), "Expected Optional Argument on top of stack."
@@ -582,22 +593,22 @@ class Listener(_LPL):
             top, Environment), "Expected Environment on top of stack."
         top.add_oarg(node)
 
-    def enterArgumentName(self, ctx: _LP.ArgumentNameContext):
+    def enterArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentName(self, ctx: _LP.ArgumentNameContext):
+    def exitArgumentName(self, ctx: _LatexParser.ArgumentNameContext):
         name = self.stack.pop()
         oarg = self.stack[-1]
         assert isinstance(
             oarg, OArgument), "Expected Optional Argument on top of stack."
         oarg.add_name(name)
 
-    def enterArgumentValue(self, ctx: _LP.ArgumentValueContext):
+    def enterArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
         node = Node.from_ctx(ctx, self.parser)
         self.stack.append(node)
 
-    def exitArgumentValue(self, ctx: _LP.ArgumentValueContext):
+    def exitArgumentValue(self, ctx: _LatexParser.ArgumentValueContext):
         value = self.stack.pop()
         oarg = self.stack[-1]
         assert isinstance(

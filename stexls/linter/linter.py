@@ -1,11 +1,11 @@
 import logging
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set, Any
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set
 
-from stexls.stex import Compiler, Linker, StexObject
-from stexls.stex.compiler import ObjectfileNotFoundError
+from stexls.stex.compiler import Compiler, ObjectfileNotFoundError, StexObject
 from stexls.stex.diagnostics import Diagnostic, DiagnosticSeverity
+from stexls.stex.linker import Linker
 from stexls.util.workspace import Workspace
 from stexls.vscode import Location, Position
 

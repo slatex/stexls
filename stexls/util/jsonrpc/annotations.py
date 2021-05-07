@@ -4,6 +4,17 @@ from typing import Literal, get_origin, get_args, Any, Union
 
 class JsonToPyFromAnnotationConstructor:
     def __init__(self, annotation: Any, constructor_member_name: str = 'from_json') -> None:
+        """ Creates a constructor from type annotations.
+
+        The constructor takes a json object as input and parses it according to the provided
+        annotations.
+
+        Args:
+            annotation (Any): Type annotation incoming json objects should be parsed as.
+            constructor_member_name (str, optional): Alterantive constructor function name for the annoation.
+                The ctor will first attempt to parse the object using this function if it exists.
+                Defaults to 'from_json'.
+        """
         self.annotation = annotation
         self.constructor_member_name = constructor_member_name
 

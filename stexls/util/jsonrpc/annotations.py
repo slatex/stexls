@@ -22,6 +22,17 @@ class JsonToPyFromAnnotationConstructor:
         return self.construct(*args, **kwds)
 
     def construct(self, value: Any) -> Any:
+        """ Construct the annoation stored in this object from the input value which is a json object.
+
+        Args:
+            value (Any): Json object or native value.
+
+        Raises:
+            ValueError: Error raised if not constructable.
+
+        Returns:
+            Any: Object with type that satisfies the `self.annotation` typing.
+        """
         # Parse the special constructor function
         if hasattr(self.annotation, self.constructor_member_name):
             return getattr(self.annotation, self.constructor_member_name)(value)

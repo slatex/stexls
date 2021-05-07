@@ -11,14 +11,15 @@ class WorkspaceSymbols:
     some suggestions for similarly named symbols.
 
     Usage:
-        Call @WorkspaceSymbols.add(StexObject) the first time a file is compiled.
-        If the file is changed, remove it first by calling @WorkspaceSymbols.remove(StexObject).
-        Then after the changed file is compiled again, add it again with @WorkspaceSymbols.add(StexObject).
+        Call `WorkspaceSymbols.add(StexObject)` the first time a file is compiled.
+        If the file is changed, remove it first by calling `WorkspaceSymbols.remove(StexObject)`.
+        Then after the changed file is compiled again, add it again with `WorkspaceSymbols.add(StexObject)`.
 
-        All qualified symbol names can be accessed using @WorkspaceSymbols.symbols.
+        All qualified symbol names can be accessed using `WorkspaceSymbols.symbols`.
     """
 
     def __init__(self, resolution_char: str = '?') -> None:
+        # The character that is used to resolve symbols
         self.resolution_char = resolution_char
         # symbol providers is a dict from path to the object because StexObject is not a ValueType.
         self.symbol_providers: Dict[Path, StexObject] = dict()
@@ -26,8 +27,8 @@ class WorkspaceSymbols:
         self.symbols: Dict[str, List[StexObject]] = dict()
 
     def add(self, obj: StexObject):
-        """ Adds @obj as a provider of symbol names.
-        The @obj should be unlinked and only contain it's own symbols.
+        """ Adds `obj` as a provider of symbol names.
+        The `obj` should be unlinked and only contain it's own symbols.
 
         Raises:
             ValueError: If the object is already added and was not removed properly.
@@ -40,7 +41,7 @@ class WorkspaceSymbols:
             self.symbols.setdefault(symbol_name, []).append(obj)
 
     def remove(self, file: Path) -> bool:
-        " Removes @obj as a provider of symbol names. Returns True if the file was removed. "
+        " Removes `obj` as a provider of symbol names. Returns True if the file was removed. "
         if file not in self.symbol_providers:
             return False
         obj = self.symbol_providers[file]

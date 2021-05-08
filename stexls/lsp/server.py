@@ -8,9 +8,10 @@ from urllib.parse import urlparse
 import pkg_resources
 
 from .. import vscode
-from ..linter import Linter
+from ..linter.linter import Linter
 from ..trefier.models.seq2seq import Seq2SeqModel
-from ..util.jsonrpc import Dispatcher, alias, method, notification, request
+from ..util.jsonrpc.dispatcher import Dispatcher
+from ..util.jsonrpc.hooks import alias, method, notification, request
 from ..util.random_string import create_random_string
 from ..util.workspace import Workspace
 from .completions import CompletionEngine

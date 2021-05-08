@@ -5,18 +5,18 @@ stdin and stdout. After the starver has started,  '''
 import asyncio
 import logging
 import re
+from argparse import ArgumentParser, REMAINDER
 from pathlib import Path
-from typing import Optional, Pattern, List, Dict, Any
+from typing import Any, Dict, List, Optional, Pattern
 
 import pkg_resources
 from tqdm import tqdm
 
-from .linter import Linter
-from .lsp import Server
-from .util.cli import Arg, Cli, argparse, command
+from .linter.linter import Linter
+from .lsp.server import Server
+from .trefier.models.seq2seq import Seq2SeqModel
 from .util.workspace import Workspace
 from .vscode import DiagnosticSeverity
-from .trefier.models.seq2seq import Seq2SeqModel
 
 log = logging.getLogger(__name__)
 
@@ -25,46 +25,20 @@ def _get_default_trefier_model_path() -> Path:
     return Path(__file__).parent / 'seq2seq.model'
 
 
-@command(
-    files=Arg(type=Path, nargs=argparse.REMAINDER,
-              help='List of files for which to generate diagnostics.'),
-    root=Arg(type=Path, help="Root directory. Required to resolve imports."),
-    diagnosticlevel=Arg('--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string,
-                        help='Only diagnostics for the specified level and above are printed.'),
-    include=Arg('--include', '-I', nargs='+', type=re.compile,
-                help='List of regex patterns. Only files that match ANY of these patterns will be included.'),
-    ignore=Arg('--ignore', '-i', nargs='+', type=re.compile,
-               help='List of regex pattern. All files that match ANY of these patterns will be excluded.'),
-    enable_trefier=Arg('--enable_trefier', '--enable-trefier',
-                       action='store_true', help="Enables machine learning trefier tagging."),
-    show_progress=Arg('--show-progress', '-p', action='store_true',
-                      help='Enables printing of a progress bar to stderr during update.'),
-    num_jobs=Arg('--num-jobs', '-j', type=int,
-                 help='Specifies the number of processes to use for compiling.'),
-    format=Arg('--format', '-F', help='Formatter for the diagnostics.'),
-    tagfile=Arg('--tagfile', '-t', const='tags', action='store', nargs='?',
-                help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.'),
-    loglevel=Arg('--loglevel', '-l',
-                 choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
-    logfile=Arg('--logfile', '-L', type=Path,
-                help='Optional path to a logfile.'),
-    verbose=Arg('--verbose', '-v', action='store_true',
-                help='If enabled, instead of only printing errors, this will print all infos about each input file.')
-)
 async def linter(
         files: List[Path],
-        root: Path = None,
-        diagnosticlevel: DiagnosticSeverity = DiagnosticSeverity.Hint,
-        include: List[Pattern] = [re.compile(r'.*\.tex')],
-        ignore: List[Pattern] = None,
-        enable_trefier: bool = False,
-        show_progress: bool = False,
-        num_jobs: int = 1,
-        format: str = '{relative_file}:{line}:{column} {severity} - {message} ({code})',
-        tagfile: str = None,
-        loglevel: str = 'error',
-        logfile: Path = Path('stexls.log'),
-        verbose: bool = False):
+        root: Optional[Path],
+        diagnosticlevel: DiagnosticSeverity,
+        include: List[Pattern],
+        ignore: List[Pattern],
+        enable_trefier: bool,
+        show_progress: bool,
+        num_jobs: int,
+        format: str,
+        tagfile: Optional[str],
+        loglevel: str,
+        logfile: Path,
+        verbose: bool):
     """ Run the language server in linter mode.
 
         In this mode only diagnostics and progress are printed to stdout.
@@ -133,6 +107,7 @@ async def linter(
             trefier_model_path = _get_default_trefier_model_path()
             log.debug('Loading trefier from "%s"', trefier_model_path)
             from stexls.trefier.models.seq2seq import Seq2SeqModel
+
             # TODO: Use the trefier model
             trefier_model = Seq2SeqModel.load(trefier_model_path)
             print(trefier_model)
@@ -164,30 +139,6 @@ async def linter(
     print('\n'.join(buffer))
 
 
-@command(
-    num_jobs=Arg('--num_jobs', '-j', type=int,
-                 help="Number of processes used for multiprocessing."),
-    update_delay_seconds=Arg('--update_delay_seconds', '--update-delay', '--delay',
-                             type=float, help='Delay of the linter in seconds after a change is made.'),
-    enable_global_validation=Arg('--enable_global_validation', '--enable-global-validation', '-g', action='store_true',
-                                 help="This will make the server compile every file in the workspace on startup,"
-                                      " enabling global validation and diagnostics."),
-    lint_workspace_on_startup=Arg('--lint_workspace_on_startup', '--lint-workspace-on-startup',
-                                  action='store_true',
-                                  help="Create diagnostics for every file in the workspace on startup."),
-    enable_trefier=Arg('--enable_trefier', '--enable-trefier',
-                       action='store_true', help="Enables machine learning trefier tagging."),
-    enable_linting_of_related_files=Arg('--enable_linting_of_related_files', '--enable-linting-of-related-files',
-                                        action='store_true',
-                                        help="The server will lint every file that reference a changed file, directly or transitively."),
-    transport_kind=Arg('--transport-kind', '-t',
-                       choices=['ipc', 'tcp'], help='Which transport protocol to use.'),
-    host=Arg('--host', '-H', help='Hostname to bind server to.'),
-    port=Arg('--port', '-p', help='Port number to bind server to.'),
-    loglevel=Arg('--loglevel', '-l',
-                 choices=['error', 'warning', 'info', 'debug'], help='Logger loglevel.'),
-    logfile=Arg('--logfile', '-L',  type=Path, help='Logfile name.'),
-)
 async def lsp(
         num_jobs: int = 1,
         update_delay_seconds: float = 2.0,
@@ -241,9 +192,86 @@ async def lsp(
 
 
 if __name__ == '__main__':
+    parser = ArgumentParser()
     try:
         version = pkg_resources.require('stexls')[0].version
     except Exception:
         version = 'undefined'
-    cli = Cli(commands=[linter, lsp], description=__doc__, version=version)
-    asyncio.run(cli.dispatch())
+    parser.add_argument('--version', '-V', action='version', version=version)
+    subparsers = parser.add_subparsers(dest='command', required=True)
+    linter_cmd = subparsers.add_parser('linter')
+    linter_cmd.add_argument(
+        'files', type=Path, nargs=REMAINDER, help='List of files for which to generate diagnostics.')
+    linter_cmd.add_argument(
+        '--root', type=Path, help="Root directory. Required to resolve imports.")
+    linter_cmd.add_argument(
+        '--diagnosticlevel', '-d', type=DiagnosticSeverity.from_string,
+        help='Only diagnostics for the specified level and above are printed.',
+        default=DiagnosticSeverity.Hint)
+    linter_cmd.add_argument(
+        '--include', '-I', nargs='+', type=lambda x: re.compile(x),
+        help='List of regex patterns. Only files that match ANY of these patterns will be included.',
+        default=[re.compile(r'.*\.tex')])
+    linter_cmd.add_argument(
+        '--ignore', '-i', nargs='+', type=lambda x: re.compile(x),
+        help='List of regex pattern. All files that match ANY of these patterns will be excluded.')
+    linter_cmd.add_argument(
+        '--enable-trefier', action='store_true',
+        help="Enables machine learning trefier tagging.")
+    linter_cmd.add_argument(
+        '--show-progress', '-p', action='store_true',
+        help='Enables printing of a progress bar to stderr during update.')
+    linter_cmd.add_argument(
+        '--num-jobs', '-j', type=int, default=1,
+        help='Specifies the number of processes to use for compiling.')
+    linter_cmd.add_argument(
+        '--format', '-F', help='Formatter for the diagnostics.',
+        default='{relative_file}:{line}:{column} {severity} - {message} ({code})')
+    linter_cmd.add_argument(
+        '--tagfile', '-t', const='tags', action='store', nargs='?',
+        help='Optional name for a vim tagfile. If used without a value "tags" will be used. If not specified, no tagfile will be generated.')
+    linter_cmd.add_argument(
+        '--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], default='error', help='Logger loglevel.')
+    linter_cmd.add_argument(
+        '--logfile', '-L', type=Path, help='Path to a logfile.', default=Path('stexls.log'))
+    linter_cmd.add_argument(
+        '--verbose', '-v', action='store_true',
+        help='If enabled, instead of only printing errors, this will print all infos about each input file.')
+
+    lsp_cmd = subparsers.add_parser('lsp')
+    lsp_cmd.add_argument(
+        '--num-jobs', '-j', type=int, default=1,
+        help="Number of processes used for multiprocessing.")
+    lsp_cmd.add_argument(
+        '--update-delay-seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.')
+    lsp_cmd.add_argument(
+        '--enable-global-validation', '-g', action='store_true',
+        help=(
+            "This will make the server compile every file in the workspace on startup,"
+            " enabling global validation and diagnostics."
+        ))
+    lsp_cmd.add_argument(
+        '--lint-workspace-on-startup', action='store_true',
+        help="Create diagnostics for every file in the workspace on startup.")
+    lsp_cmd.add_argument(
+        '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging.")
+    lsp_cmd.add_argument(
+        '--enable-linting-of-related-files', action='store_true',
+        help="The server will lint every file that reference a changed file, directly or transitively.")
+    lsp_cmd.add_argument(
+        '--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.')
+    lsp_cmd.add_argument('--host', '-H', help='Hostname to bind server to.')
+    lsp_cmd.add_argument('--port', '-p', help='Port number to bind server to.')
+    lsp_cmd.add_argument(
+        '--loglevel', '-l', choices=['error', 'warning', 'info', 'debug'], default='error', help='Logger loglevel.')
+    lsp_cmd.add_argument(
+        '--logfile', '-L',  type=Path, help='Logfile name.', default=Path('stexls.log')),
+
+    args = vars(parser.parse_args())
+    cmd = args.pop('command')
+    if cmd == 'linter':
+        asyncio.run(linter(**args))
+    elif cmd == 'lsp':
+        asyncio.run(lsp(**args))
+    else:
+        raise ValueError(args)

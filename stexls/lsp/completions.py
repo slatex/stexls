@@ -1,34 +1,45 @@
-from typing import Dict, Iterable, List, Optional, Set
-import re
 import logging
+import re
 from pathlib import Path
-from stexls.stex import Linker
-from stexls.stex.compiler import StexObject
-from stexls.stex.symbols import DefSymbol, Symbol
+from typing import Dict, Iterable, List, Optional, Set
+
 import stexls.vscode as vscode
+from stexls.stex.compiler import StexObject
+from stexls.stex.linker import Linker
+from stexls.stex.symbols import DefSymbol, Symbol
 
 __all__ = ['CompletionEngine']
 
 log = logging.getLogger(__name__)
 
-_regex_gimport_repo = re.compile(r'\\g(use|import)\*?\[(?P<repository>[^\]]*)$')
-_regex_gimport_module = re.compile(r'\\g(use|import)\*?(\[(?P<repository>.*)\])?\{(?P<module>[^\}]*)$')
-_regex_named_values = re.compile(r'(?P<name>\w+)=(?P<value>[^,\]]*)') # extracts all named arguments with their values
-_regex_unnamed_arg = re.compile(r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>[^\],=]*)$') # matches \\<env>[<arg> or \\<env>[a=b,<arg>
-_regex_named_arg = re.compile(r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>\w+)=(?P<value>[^\],]*)$') # matches \\<env>*[aihaih,<arg>=<value>
+_regex_gimport_repo = re.compile(
+    r'\\g(use|import)\*?\[(?P<repository>[^\]]*)$')
+_regex_gimport_module = re.compile(
+    r'\\g(use|import)\*?(\[(?P<repository>.*)\])?\{(?P<module>[^\}]*)$')
+# extracts all named arguments with their values
+_regex_named_values = re.compile(r'(?P<name>\w+)=(?P<value>[^,\]]*)')
+# matches \\<env>[<arg> or \\<env>[a=b,<arg>
+_regex_unnamed_arg = re.compile(
+    r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>[^\],=]*)$')
+# matches \\<env>*[aihaih,<arg>=<value>
+_regex_named_arg = re.compile(
+    r'\\(?P<env>\w+)\*?[^\]]*[\[,](?P<arg>\w+)=(?P<value>[^\],]*)$')
 _regex_rarg = re.compile(r'\\(?P<env>\w+)\*?(\[[^\]]*\])?{(?P<value>[^}]*)$')
 _regex_env_importmodule = re.compile(r'(use|import)(?P<mh>mh)?module')
-_regex_env_trefi = re.compile(r'(?P<flags>[ma]*)(?P<type>t|T|d|D)ref(?P<argcount>[ivx]+)s?')
+_regex_env_trefi = re.compile(
+    r'(?P<flags>[ma]*)(?P<type>t|T|d|D)ref(?P<argcount>[ivx]+)s?')
 _regex_env_defi = re.compile(r'[ma]*(d|D)ef(?P<argcount>[ivx]+)s?')
 _regex_env_symi = re.compile(r'sym(?P<argcount>[ivx]+)s?')
 
 __all__ = ['CompletionEngine']
+
 
 class CompletionEngine:
     """ Helper class for compltion item creation.
 
     Adapts a linker for completion item creation.
     """
+
     def __init__(self, linker: Linker):
         self.linker = linker
 
@@ -36,8 +47,10 @@ class CompletionEngine:
         ' Only method that should be used by the user. Creates a list of completion items for a file, given the position and the buffered lines in that file. '
         log.debug('Completion for file: %s at %s', file, position.format())
         try:
-            obj: StexObject = next(self.linker.relevant_objects(file, position.line, position.character, unlinked=True), None)
-            link: StexObject = next(self.linker.relevant_objects(file, position.line, position.character, unlinked=False), None)
+            obj: StexObject = next(self.linker.relevant_objects(
+                file, position.line, position.character, unlinked=True), None)
+            link: StexObject = next(self.linker.relevant_objects(
+                file, position.line, position.character, unlinked=False), None)
             if not obj or not link:
                 return []
             if lines is None:
@@ -49,6 +62,7 @@ class CompletionEngine:
             return []
         log.debug('Completion line: %s', line)
         log.debug('Completion context: %s', context)
+
         def wrapper():
             yield from self.complete_gimport(obj, context, position)
             yield from self.complete_importmodule(obj, line, context, position)
@@ -75,14 +89,16 @@ class CompletionEngine:
             repo = match.group('repository')
             fragment = match.group('module')
             return [
-                self._make_completion_item(fragment, module, vscode.CompletionItemKind.Module, position)
+                self._make_completion_item(
+                    fragment, module, vscode.CompletionItemKind.Module, position)
                 for module in self.get_gimport_modules(object, repo)
                 if module.startswith(fragment)
             ]
         for match in _regex_gimport_repo.finditer(context):
             fragment = match.group('repository')
             return [
-                self._make_completion_item(fragment, repository, vscode.CompletionItemKind.Folder, position)
+                self._make_completion_item(
+                    fragment, repository, vscode.CompletionItemKind.Folder, position)
                 for repository in self.get_gimport_repositories()
                 if repository.startswith(fragment)
             ]
@@ -125,7 +141,8 @@ class CompletionEngine:
             fragment = match.group('value')
             if arg in ('mhrepos', 'repos'):
                 return [
-                    self._make_completion_item(fragment, repo, vscode.CompletionItemKind.Folder, position)
+                    self._make_completion_item(
+                        fragment, repo, vscode.CompletionItemKind.Folder, position)
                     for repo in self.get_mhrepos(object)
                     if repo.startswith(fragment)
                 ]
@@ -133,18 +150,21 @@ class CompletionEngine:
                 mhrepos = named.get('mhrepos', named.get('repos'))
                 if arg == 'dir':
                     return [
-                        self._make_completion_item(fragment, dir, vscode.CompletionItemKind.Folder, position)
+                        self._make_completion_item(
+                            fragment, dir, vscode.CompletionItemKind.Folder, position)
                         for dir in self.get_dirs(object, mhrepos)
                         if dir.startswith(fragment)
                     ]
                 return [
-                    self._make_completion_item(fragment, path, vscode.CompletionItemKind.File, position)
+                    self._make_completion_item(
+                        fragment, path, vscode.CompletionItemKind.File, position)
                     for path in self.get_paths(object, mhrepos)
                     if path.startswith(fragment)
                 ]
             elif arg == 'load':
                 return [
-                    self._make_completion_item(fragment, module.location.path.as_posix(), vscode.CompletionItemKind.File, position)
+                    self._make_completion_item(fragment, module.location.path.as_posix(
+                    ), vscode.CompletionItemKind.File, position)
                     for module in self.linker.get_all_modules(DefinitionType.MODULE)
                     if module.location.path.as_posix().startswith(fragment)
                 ]
@@ -154,17 +174,20 @@ class CompletionEngine:
             fragment = match.group('value')
             named = self.get_named_arguments(line)
             for current_module in object.symbol_table.get(object.module, []):
-                current_module: Symbol # simply extract the last module symbol, ignore the rest (no others should exist anyway)
+                # simply extract the last module symbol, ignore the rest (no others should exist anyway)
+                current_module: Symbol
             mhrepos = named.get('mhrepos', named.get('repos'))
             if not mhrepos and current_module:
-                mhrepos = current_module.get_repository_identifier(self.linker.root)
+                mhrepos = current_module.get_repository_identifier(
+                    self.linker.root)
             dir = named.get('dir')
             path = named.get('path')
             load = named.get('load')
             if not (dir or path or load) and current_module:
                 path = current_module.get_path(self.linker.root).as_posix()
             return [
-                self._make_completion_item(fragment, module.identifier.identifier, vscode.CompletionItemKind.Module, position)
+                self._make_completion_item(
+                    fragment, module.identifier.identifier, vscode.CompletionItemKind.Module, position)
                 for module in self.linker.get_all_modules(DefinitionType.MODULE)
                 if module.identifier.identifier.startswith(fragment)
                 and (not mhrepos or mhrepos == module.get_repository_identifier(self.linker.root))
@@ -194,7 +217,8 @@ class CompletionEngine:
             if match.group('env') != 'symdef':
                 continue
             fragment = match.group('arg')
-            choices = ('name', 'gfc=', 'assocarg=', 'bvars=', 'bargs=', 'noverb')
+            choices = ('name', 'gfc=', 'assocarg=',
+                       'bvars=', 'bargs=', 'noverb')
             return self._completions_from_choices(fragment, choices, vscode.CompletionItemKind.Keyword, position)
         for match in _regex_named_arg.finditer(context):
             if match.group('env') != 'symdef':
@@ -234,7 +258,9 @@ class CompletionEngine:
             if '?' in fragment:
                 # complete module?symbol
                 kind = vscode.CompletionItemKind.Field
-                target_module = fragment.split('?')[0] or object.scope_identifier.identifier # default to scope of object
+                # default to scope of object
+                target_module = fragment.split(
+                    '?')[0] or object.scope_identifier.identifier
                 choices = (
                     symbol.identifier.identifier
                     for id, symbols in link.symbol_table.items()
@@ -294,5 +320,6 @@ class CompletionEngine:
 
     def _make_completion_item(self, old_text: str, new_text: str, kind: vscode.CompletionItemKind, position: vscode.Position):
         assert new_text.startswith(old_text)
-        range = vscode.Range(position.translate(characters=-len(old_text)), position)
+        range = vscode.Range(position.translate(
+            characters=-len(old_text)), position)
         return vscode.CompletionItem(new_text, kind=kind, textEdit=vscode.TextEdit(range, new_text))

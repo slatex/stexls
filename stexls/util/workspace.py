@@ -15,6 +15,13 @@ __all__ = ['Workspace']
 
 class TextDocument:
     def __init__(self, path: Path, version: int, text: str) -> None:
+        """ Versioned text document being tracked because it's in the workspace.
+
+        Args:
+            path (Path): Path to the text document.
+            version (int): Version number.
+            text (str): Buffered contents of the file.
+        """
         self.path: Path = path
         self.version: int = version
         self.text: str = text
@@ -29,10 +36,13 @@ class TextDocument:
 
 class Workspace:
     def __init__(self, root: Path):
-        """ Opens a workspace with the specified root as root.
+        """ Opens a workspace folder `root`.
 
         The workspace allows to query and filter the files in the workspace
         and additionally can keep track of the state of modified files.
+
+        Args:
+            root (Path): Path to workspace folder.
         """
         self.root = Path(root).expanduser().resolve().absolute()
         # Map of files to a tuple of file time modified and content

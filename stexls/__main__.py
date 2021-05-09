@@ -5,7 +5,7 @@ stdin and stdout. After the starver has started,  '''
 import asyncio
 import logging
 import re
-from argparse import ArgumentParser, REMAINDER
+from argparse import REMAINDER, ArgumentParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Pattern
 

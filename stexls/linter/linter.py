@@ -3,11 +3,11 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set
 
-from stexls.stex.compiler import Compiler, ObjectfileNotFoundError, StexObject
-from stexls.stex.diagnostics import Diagnostic, DiagnosticSeverity
-from stexls.stex.linker import Linker
-from stexls.util.workspace import Workspace
-from stexls.vscode import Location, Position
+from ..stex.compiler import Compiler, ObjectfileNotFoundError, StexObject
+from ..stex.diagnostics import Diagnostic, DiagnosticSeverity
+from ..stex.linker import Linker
+from ..util.workspace import Workspace
+from ..vscode import Location, Position
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +112,14 @@ class Linter:
         return None
 
     def get_objectfile(self, file: Path) -> Optional[StexObject]:
-        ' Gets the objectfile by compiling it or loading it from disk if already compiled and no recompilation is required. '
+        """ Retrieves the object of `file`.
+
+        If the file already has been compiled and not changed, a
+        buffered StexObject will be returned.
+
+        Returns:
+            Optional[StexObject]: Object compiled from `file`. None if `file` does not contain an object.
+        """
         try:
             if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
                 return self.compile_file_with_respect_to_workspace(file)
@@ -167,14 +174,14 @@ class Linter:
 
         return WorkspaceCompileIter(self)
 
-    def compile_related(self, file: Path, on_progress_fun: Callable[..., Any] = None) -> Dict[Path, StexObject]:
+    def compile_related(self, file: Path) -> Dict[Path, StexObject]:
         ''' Compiles all dependencies of the file, the file itself and updates the buffer.
 
         Parameters:
-            file: The file which will be compiled and from which the related files will be extracted.
+            file (Path): The file which will be compiled and from which the related files will be extracted.
 
         Returns:
-            Index of objects with their file path as key.
+            Dict[Path, StexObject]: Index of objects with their file path as key.
         '''
         queue = {file}
         visited: Dict[Path, StexObject] = {}
@@ -182,14 +189,11 @@ class Linter:
             file = queue.pop()
             if file in visited:
                 continue
-            # TODO: Review on_progress_fun arg
-            if on_progress_fun:
-                on_progress_fun(str(file), len(visited), None)
             # TODO: Currently forced to reload every file that is used from disk and overwrite the _object_buffer, this should not be necessary
             # TODO: Only overwrite files that actually changed
             # TODO: Only load files that are not already in self._object_buffer
             obj = self.get_objectfile(file)
-            if not obj:
+            if obj is None:
                 continue
             visited[file] = obj
             self._object_buffer[file] = obj
@@ -199,50 +203,38 @@ class Linter:
                 queue.add(dep.file_hint)
         return visited
 
-    def lint(self, file: Path, on_progress_fun: Callable[..., Any] = None) -> LintingResult:
-        ''' Lints the provided @file.
-
-        An optional progress tracking function can be supplied.
-        The arguments are current step information (str), number of steps done (int).
-        The last argument is a bool flag indicating that the process is done if set to True.
+    def lint(self, file: Path) -> LintingResult:
+        ''' Lint a file.
 
         Parameters:
-            file: The file to lint.
-            on_progress_fun: Optional progress tracking function which takes step information, steps done
-                and a flag indicating that the process is done if True.
+            file (Path): The file to lint.
 
         Returns:
-            The result of the linting process for the provided @file path.
+            LintingResult: The result of the linting process.
         '''
-        # TODO: Maybe on_progress_fun is overkill here, as its genereally really fast anyway
-        # TODO: Review on_progress_fun arg
-        if on_progress_fun:
-            on_progress_fun('Preparing', 0, False)
         if (file in self._linked_object_buffer
             and not self._linked_object_buffer[file]
                 .check_if_any_related_file_is_newer_than_this_object(self.workspace)):
             ln = self._linked_object_buffer[file]
-            if on_progress_fun:
-                on_progress_fun('Done', 1, True)
         else:
-            objects: Dict[Path, StexObject] = self.compile_related(
-                file=file,
-                on_progress_fun=lambda *args: on_progress_fun(*args, False) if on_progress_fun else None)
-            if on_progress_fun:
-                on_progress_fun('Linking', len(objects), False)
+            objects: Dict[Path, StexObject] = self.compile_related(file=file)
             ln = self.linker.link(file, objects, self.compiler)
             self._linked_object_buffer[file] = ln
             more_objects = self._object_buffer if self.enable_global_validation else {}
-            if on_progress_fun:
-                on_progress_fun('Validating', len(objects) + 1, False)
             self.linker.validate_object_references(
                 ln, more_objects=more_objects)
-            if on_progress_fun:
-                on_progress_fun('Done', len(objects) + 2, True)
         return LintingResult(ln)
 
     def find_dependent_files_of(self, file: Path, *, _already_added_set: Set[Path] = None) -> Set[Path]:
-        """ Finds all files that somehow depend on or reference the argument @file, given that their object is buffered. """
+        """ Find all files that depend on `file`.
+
+        Args:
+            file (Path): Path to file.
+            _already_added_set (Set[Path], optional): Accumulator for the result. Defaults to None.
+
+        Returns:
+            Set[Path]: A set of paths that contain objects that reference `file`.
+        """
         dependent_files_set = _already_added_set or set()
         for obj in self._object_buffer.values():
             if file in obj.related_files:
@@ -255,7 +247,15 @@ class Linter:
         return dependent_files_set
 
     def definitions(self, file: Path, position: Position) -> List[Location]:
-        ' Finds definitions for the symbol under @position in @file. '
+        """ Get list of definition locations for all symbols under the position.
+
+        Args:
+            file (Path): File of the position.
+            position (Position): Position of the cursor.
+
+        Returns:
+            List[Location]: List of locations to where any symbols under the cursor are defined at.
+        """
         obj = self._linked_object_buffer.get(file)
         if not obj:
             return []

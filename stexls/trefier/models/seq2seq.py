@@ -1,29 +1,26 @@
-from stexls.util.latex.parser import LatexParser
-from typing import Union, Optional, List, Callable
-import json
-import pickle
-import os
 import datetime
-import numpy as np
-from pathlib import Path
+import json
+import os
+import pickle
 from collections import Counter
-from sklearn.model_selection import train_test_split
-from zipfile import ZipFile
+from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Callable, List, Optional, Union
+from zipfile import ZipFile
 
+import numpy as np
 import tensorflow as tf
-from tensorflow.keras import models
-from tensorflow.keras import layers
-from tensorflow.keras import regularizers
-from tensorflow.keras import callbacks
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-
-from stexls.util.latex.tokenizer import LatexTokenizer
+from sklearn.model_selection import train_test_split
+from stexls.latex.parser import LatexParser
+from stexls.latex.tokenizer import LatexTokenizer
 from stexls.trefier.training.datasets import smglom
 from stexls.trefier.training.features.embedding import GloVe
-from stexls.trefier.training.features.tfidf import TfIdfModel
 from stexls.trefier.training.features.keyphraseness import KeyphrasenessModel
 from stexls.trefier.training.features.pos import PosTagModel
+from stexls.trefier.training.features.tfidf import TfIdfModel
+from tensorflow.keras import callbacks, layers, models, regularizers
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
 from . import base, tags
 
 __all__ = ['Seq2SeqModel']
@@ -328,7 +325,7 @@ class Seq2SeqModel(base.Model):
 
 
 if __name__ == '__main__':
-    from stexls.util.cli import Cli, command, Arg
+    from stexls.util.cli import Arg, Cli, command
 
     @command(
         epochs=Arg('--epochs', '-e', default=1, type=int,

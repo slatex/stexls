@@ -2,8 +2,8 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
-from stexls.util.latex.parser import LatexParser
-from stexls.util.latex.tokenizer import LatexTokenizer
+from stexls.latex.parser import LatexParser
+from stexls.latex.tokenizer import LatexTokenizer
 
 
 class SetupEnvironment:

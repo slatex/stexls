@@ -3,7 +3,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 from unittest import TestCase
 
 from stexls import vscode
-from stexls.util.jsonrpc.annotations import JsonToPyFromAnnotationConstructor
+from stexls.jsonrpc.annotations import JsonToPyFromAnnotationConstructor
 
 
 class TestAnnotations(TestCase):

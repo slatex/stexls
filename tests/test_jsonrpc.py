@@ -1,6 +1,6 @@
 from unittest import IsolatedAsyncioTestCase
 
-from stexls.util.jsonrpc import exceptions, hooks, dispatcher
+from stexls.jsonrpc import exceptions, hooks, dispatcher
 
 
 class GetSetServer(dispatcher.Dispatcher):

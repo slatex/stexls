@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, List, Sequence, Tuple
 
 from stexls.util import download
-from stexls.util.latex import tokenizer
+from stexls.latex import tokenizer
 
 _TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?')
 _DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')

@@ -1,5 +1,5 @@
 import numpy as np
-from stexls.util.latex.tokenizer import LatexToken
+from stexls.latex.tokenizer import LatexToken
 
 __all__ = ['Tag']
 

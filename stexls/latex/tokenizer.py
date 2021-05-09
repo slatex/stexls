@@ -1,15 +1,15 @@
 ''' This is an important module which
-takes a parsed latex file using the stex.util.latex.parser.LatexParser
+takes a parsed latex file using the stex.latex.parser.LatexParser
 and parses the parse tree into it's more useful tokens, preserving
 environment, location and parse tree structure.
 '''
 from __future__ import annotations
-from pathlib import Path
 
 import re
+from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
 
-from stexls.util.latex import parser
+from stexls.latex import parser
 from stexls.vscode import Range
 
 __all__ = ['LatexTokenizer', 'LatexToken']
@@ -28,7 +28,7 @@ class LatexToken:
         data from it's latex parent token.
 
         Why does this exists?
-        Because the Token defined in util.latex contains a reference to the parser which is not needed anymore.
+        Because the Token defined in latex contains a reference to the parser which is not needed anymore.
     '''
 
     def __init__(self, range: Range, lexeme: str, envs: Tuple[str, ...]):

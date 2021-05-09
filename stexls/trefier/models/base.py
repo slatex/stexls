@@ -1,5 +1,5 @@
 from __future__ import annotations
-from stexls.util.latex.parser import LatexParser
+from stexls.latex.parser import LatexParser
 from typing import List, Union
 from pathlib import Path
 from enum import Enum

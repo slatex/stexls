@@ -29,6 +29,10 @@ class JsonRpcConnection:
         self._methods: Dict[str, Callable] = {}
         self._requests: Dict[Union[str, int], asyncio.Future] = {}
 
+    def close(self):
+        """ Closes the underlaying stream. """
+        self._stream.close()
+
     def on(self, method: str, callback: Callable):
         """ Registers a method as a request and notification handler.
 
@@ -231,5 +235,6 @@ class JsonRpcConnection:
                     self._stream.write_json(response)
         except (EOFError, asyncio.CancelledError, asyncio.IncompleteReadError) as e:
             log.debug('Connection task closing because of exception: %s', type(e))
+            self._stream.close()
         finally:
             log.info('Connection task closed.')

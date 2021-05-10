@@ -37,6 +37,9 @@ class JsonStream:
         self.newline = newline.encode(charset or encoding)
         self.with_content_type = with_content_type
 
+    def close(self):
+        self.writer.close()
+
     def write_json(self, json_object: Any):
         ' Serializes the object with json and writes it to the underlying stream writer. '
         def serializer(child):

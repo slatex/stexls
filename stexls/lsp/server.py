@@ -94,7 +94,7 @@ class Server(Dispatcher):
                 await progress.update(i, message=file.name, cancellable=cancellable)
                 # TODO: Need all the changed unlinked objects to properly add workspace symbols
                 self._workspace_symbols.remove(file)
-                ln = self._linter.lint(file, on_progress_fun=progress_fun)
+                ln = self._linter.lint(file)
                 await self.publish_diagnostics(uri=file.as_uri(), diagnostics=ln.diagnostics)
                 obj = self._linter._object_buffer.get(file)
                 if obj:

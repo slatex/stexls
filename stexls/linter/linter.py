@@ -131,48 +131,40 @@ class Linter:
             log.warning('ObjectfileNotFound: "%s"', file)
         return None
 
-    def compile_workspace(self) -> Iterable[Optional[Path]]:
+    def compile_workspace(self) -> Iterable[Path]:
         ''' Compiles or loads all files in the workspace and bufferes them in ram.
 
-        This should be called after creating a linter with the @enable_global_validation flag on.
+        This should be called after creating a linter with the `enable_global_validation` flag on.
         Doings so will enable the linter to take every single file in the workspace and create better diagnostics.
 
-        Every file present in self.workspace.files will be iterated over.
+        Every file present in `self.workspace.files` will be iterated over.
 
         Returns:
-            Iterable that yields the path to the file currently being compiled.
+            Iterable[Path]: Iterable that yields the path to the file currently being compiled.
         '''
-        class WorkspaceCompileIter:
-            def __init__(self, linter: Linter) -> None:
-                self.linter = linter
-                self._files = list(self.linter.workspace.files)
-                # Length is -1 because the last file has no "next"
-                self._len = max(0, len(self._files) - 1)
-                self.compiled_object_buffer: Dict[Path, StexObject] = dict()
-
-            def __iter__(self) -> Iterator[Optional[Path]]:
-                with Pool(self.linter.num_jobs) as pool:
-                    mapfn: Callable[..., Any] = map
-                    if self.linter.num_jobs > 1:
-                        mapfn = pool.imap
-                    it: Iterable[StexObject] = mapfn(
-                        self.linter.get_objectfile, self._files)
-                    # Rotate the file list by one in order be able to view the file being compiled after the current obj
-                    next_files = [*self._files[1:], None]
-                    # Iterate through the list next files paired with the object of the currently compiled file
-                    for next_file, obj in zip(next_files, it):
-                        if obj:
-                            # Need to buffer the dict update because of multiprocessing pickling the whole linter
-                            self.compiled_object_buffer[obj.file] = obj
-                        if next_file:
-                            # The last element has no next, don't yield anything
-                            yield next_file
-                self.linter._object_buffer.update(self.compiled_object_buffer)
+        class CompilationIterator:
+            compiled_object_buffer: Dict[Path, StexObject] = dict()
+            files = list(self.workspace.files)
+            linter = self
 
             def __len__(self) -> int:
-                return self._len
+                return len(self.files)
 
-        return WorkspaceCompileIter(self)
+            def __iter__(self) -> Iterator[Path]:
+                compiled_object_buffer: Dict[Path, StexObject] = dict()
+                if not self.files:
+                    return
+                with Pool(self.linter.num_jobs) as pool:
+                    it: Iterable[Optional[StexObject]] = pool.imap(
+                        self.linter.get_objectfile, self.files)
+                    yield self.files[0]
+                    for i, obj in enumerate(it, 1):
+                        if obj:
+                            compiled_object_buffer[obj.file] = obj
+                        if i < len(self.files):
+                            yield self.files[i]
+                self.linter._object_buffer.update(compiled_object_buffer)
+        return CompilationIterator()
 
     def compile_related(self, file: Path) -> Dict[Path, StexObject]:
         ''' Compiles all dependencies of the file, the file itself and updates the buffer.

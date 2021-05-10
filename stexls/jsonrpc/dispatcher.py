@@ -116,9 +116,9 @@ class Dispatcher:
         server_task: asyncio.Task[None] = asyncio.create_task(task())
         return server_name, server_task
 
-    @ classmethod
+    @classmethod
     async def open_connection(
-            dispatcher_factory,
+            cls,
             host: str = 'localhost',
             port: int = 0,
             *args,
@@ -148,12 +148,12 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn, *args, **kwargs)
+        dispatcher = cls(conn, *args, **kwargs)
         return dispatcher, conn_task
 
-    @ classmethod
+    @classmethod
     async def open_ipc_connection(
-            dispatcher_factory,
+            cls,
             input_fd: Union[
                 int, Literal['stdin', 'stdout', 'stderr']] = 'stdin',
             output_fd: Union[
@@ -212,5 +212,5 @@ class Dispatcher:
             reader, writer, encoding=encoding, charset=charset, newline=newline)
         conn = JsonRpcConnection(stream)
         conn_task = asyncio.create_task(conn.run_forever())
-        dispatcher = dispatcher_factory(conn, *args, **kwargs)
+        dispatcher = cls(conn, *args, **kwargs)
         return dispatcher, conn_task

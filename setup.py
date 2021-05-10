@@ -22,10 +22,12 @@ setuptools.setup(
     install_requires=[
         'antlr4-python3-runtime>=4.8',
         'tqdm',
+        # TODO: Separate for non-ml users
+        'numpy',
+        'scikit-learn',
+        'nltk',
+        'tensorflow'
     ],
-    extras_require={
-        'ml': ['numpy', 'scikit-learn', 'nltk', 'tensorflow'],
-    },
     package_data={
         'stexls': ['*.model']
     }

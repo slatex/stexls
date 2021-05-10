@@ -2,6 +2,7 @@
 *.ipynb
 *.bin
 *.ckpt
+*.log
 /venv/
 /downloads/
 /logs/

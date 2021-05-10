@@ -371,9 +371,10 @@ class Server(Dispatcher):
             return
         if self._workspace.is_open(textDocument.path):
             for item in contentChanges:
-                # TODO: `item` has to be properly deserialized !
                 status = self._workspace.update_file(
-                    textDocument.path, textDocument.version, item.text)
+                    # TODO: `item` has to be properly deserialized !
+                    # TODO: Implement recursive annotations module
+                    textDocument.path, textDocument.version, item['text'])
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
                 else:
@@ -462,7 +463,9 @@ class ProgressBar:
         if exc_type == asyncio.CancelledError:
             log.info('Progressbar cancelled by user input: %s', exc_value)
             return True
-        log.exception('An exception occured while a progress bar was running')
+        if None not in (exc_type, exc_value, traceback):
+            log.exception(
+                'An exception occured while a progress bar was running')
 
     def cancel(self) -> bool:
         ' Cancels the underlying @on_finished_event future object. Returns true if cancelling was successful. '

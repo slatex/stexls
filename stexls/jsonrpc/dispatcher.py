@@ -73,9 +73,9 @@ class Dispatcher:
         self.connection.send_notification(message)
         return asyncio.sleep(0)
 
-    @ classmethod
+    @classmethod
     async def start_server(
-            dispatcher_factory,
+            cls,
             host: str = 'localhost',
             port: int = 0,
             *args,
@@ -104,7 +104,7 @@ class Dispatcher:
             stream = JsonStream(
                 r, w, encoding=encoding, charset=charset, newline=newline)
             conn = JsonRpcConnection(stream)
-            _ = dispatcher_factory(conn, *args, **kwargs)
+            _ = cls(conn, *args, **kwargs)
             asyncio.create_task(conn.run_forever())
         server = await asyncio.start_server(connect_fun, host=host, port=port)
 

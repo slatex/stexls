@@ -201,7 +201,7 @@ class Server(Dispatcher):
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
             try:
-                from stexls.trefier.models import Seq2SeqModel
+                from stexls.trefier.models.seq2seq import Seq2SeqModel
                 self._trefier_model: Seq2SeqModel = Seq2SeqModel.load(
                     self.path_to_trefier_model)
             except (ImportError, ModuleNotFoundError):

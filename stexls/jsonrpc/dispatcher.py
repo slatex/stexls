@@ -5,7 +5,8 @@ import itertools
 import logging
 import os
 import sys
-from typing import Any, Awaitable, Dict, List, Literal, Optional, Tuple, Union
+from typing import (Any, Awaitable, Dict, List, Literal, Optional, TextIO,
+                    Tuple, Union)
 
 from .connection import JsonRpcConnection
 from .core import NotificationObject, RequestObject
@@ -98,22 +99,39 @@ class Dispatcher:
                 server is running on, as well as the asyncio task the server runs on.
                 The task can be canceled to stop the server.
         """
-        def connect_fun(r, w):
+        active_connections = []
+
+        async def connect_fun(r, w):
             peername = w.get_extra_info('peername')
             log.info('Incoming connection from %s', peername)
             stream = JsonStream(
                 r, w, encoding=encoding, charset=charset, newline=newline)
             conn = JsonRpcConnection(stream)
             _ = cls(conn, *args, **kwargs)
-            asyncio.create_task(conn.run_forever())
+            active_connections.append(conn)
+            log.debug('Active connection added %s: Now %i',
+                      conn, len(active_connections))
+            try:
+                await conn.run_forever()
+            finally:
+                active_connections.remove(conn)
+                log.debug(
+                    'connection callback removed from active connections: %s', conn)
         server = await asyncio.start_server(connect_fun, host=host, port=port)
 
-        async def task():
-            async with server:
-                await server.serve_forever()
+        async def task(connections: List[JsonRpcConnection]):
+            try:
+                async with server:
+                    await server.serve_forever()
+            finally:
+                log.debug(
+                    'Server task exited: Closing %i active connections.', len(connections))
+                for con in connections:
+                    con.close()
         assert server.sockets is not None
         server_name: Tuple[str, int] = server.sockets[0].getsockname()[:2]
-        server_task: asyncio.Task[None] = asyncio.create_task(task())
+        server_task: asyncio.Task[None] = asyncio.create_task(
+            task(active_connections))
         return server_name, server_task
 
     @classmethod
@@ -187,15 +205,15 @@ class Dispatcher:
             Tuple[Dispatcher, asyncio.Task]: Returns the dispatcher for the connection
                 as well as the task the protocol runs on.
         """
-        translate: Dict[str, int] = {
-            'stdin': sys.stdin.fileno(),
-            'stdout': sys.stdout.fileno(),
-            'stderr': sys.stderr.fileno(),
+        translate: Dict[str, TextIO] = {
+            'stdin': sys.stdin,
+            'stdout': sys.stdout,
+            'stderr': sys.stderr,
         }
         if isinstance(input_fd, str):
-            input_fd = translate[input_fd]
+            input_fd = translate[input_fd].fileno()
         if isinstance(output_fd, str):
-            output_fd = translate[output_fd]
+            output_fd = translate[output_fd].fileno()
         input_pipe = os.fdopen(input_fd, 'rb', 0)
         output_pipe = os.fdopen(output_fd, 'wb', 0)
         loop = loop or asyncio.get_event_loop()

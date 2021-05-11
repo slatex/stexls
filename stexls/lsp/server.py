@@ -1,5 +1,4 @@
 import asyncio
-from enum import Enum
 import logging
 import sys
 import uuid
@@ -12,7 +11,6 @@ import pkg_resources
 from .. import vscode
 from ..jsonrpc.dispatcher import Dispatcher
 from ..jsonrpc.hooks import alias, method, notification, request
-from ..jsonrpc.exceptions import JsonRpcException
 from ..linter.linter import Linter
 from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
@@ -156,6 +154,7 @@ class Server(Dispatcher):
         initializedOptions: Any = None,
         workDoneProgress: Union[
             int, str, vscode.Undefined] = vscode.undefined,
+        initializationOptions: Any = None,
         **kwargs,
     ):
         ''' Initializes the serverside.
@@ -172,6 +171,12 @@ class Server(Dispatcher):
         the server is also allowed to use that token (and only that token)
         using the $/progress notification sent from the server to the client.
         '''
+        with open('/tmp/initializationOptions.json', 'w+') as fd:
+            import json
+            json.dump(initializationOptions, fd)
+        with open('/tmp/kwargs.json', 'w+') as fd:
+            import json
+            json.dump(kwargs, fd)
         if self.state != ServerState.UNINITIALIZED:
             raise ValueError('Server not uninitialized.')
 

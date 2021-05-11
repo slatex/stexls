@@ -1000,11 +1000,11 @@ class SymbolInformation:
             self.containerName = containerName
 
     def to_json(self) -> dict:
-        j = {
+        obj = {
             'name': self.name,
             'kind': self.kind.to_json(),
             'location': self.location.to_json()
         }
         if getattr(self, 'containerName', undefined):
-            j['containerName'] = self.containerName
-        return j
+            obj['containerName'] = self.containerName
+        return obj

@@ -4,7 +4,7 @@ from __future__ import annotations
 import urllib.parse
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Sequence
 
 
 class SerializableEnum(Enum):
@@ -975,7 +975,7 @@ class DocumentSymbol:
         self.tags: List[SymbolTag] = []
 
     def to_json(self) -> dict:
-        j = {
+        obj = {
             'name': self.name,
             'detail': self.detail,
             'kind': self.kind.to_json(),
@@ -984,8 +984,8 @@ class DocumentSymbol:
             'children': [child.to_json() for child in self.children]
         }
         if self.tags:
-            j['tags'] = [tag.to_json() for tag in self.tags]
-        return j
+            obj['tags'] = [tag.to_json() for tag in self.tags]
+        return obj
 
     def __repr__(self):
         return f'[DocumentSymbol {self.name} of {self.kind} at {self.range}]'
@@ -1008,3 +1008,44 @@ class SymbolInformation:
         if getattr(self, 'containerName', undefined):
             obj['containerName'] = self.containerName
         return obj
+
+
+class WorkspaceFolder:
+    def __init__(self, uri: DocumentUri, name: str) -> None:
+        self.uri = uri
+        self.name = name
+
+    def to_json(self) -> dict:
+        return {'uri': self.uri, 'name': self.name}
+
+    @staticmethod
+    def from_json(obj: dict):
+        return WorkspaceFolder(obj['uri'], obj['name'])
+
+
+class ClientCapabilities:
+    def __init__(
+        self,
+        workspace: Union[dict, Undefined] = undefined,
+        textDocument: Union[dict, Undefined] = undefined,
+        window: Union[dict, Undefined] = undefined,
+        general: Union[dict, Undefined] = undefined,
+        experimental: Union[dict, Undefined] = undefined,
+    ) -> None:
+        self.workspace = workspace if isinstance(workspace, dict) else {}
+        self.textDocument = textDocument if isinstance(
+            textDocument, dict) else {}
+        self.window = window if isinstance(window, dict) else {}
+        self.general = general if isinstance(general, dict) else {}
+        self.experimental = experimental if isinstance(
+            experimental, dict) else {}
+
+    @staticmethod
+    def from_json(obj: dict):
+        return ClientCapabilities(
+            workspace=obj.get('workspace', undefined),
+            textDocument=obj.get('textDocument', undefined),
+            window=obj.get('window', undefined),
+            general=obj.get('general', undefined),
+            experimental=obj.get('experimental', undefined),
+        )

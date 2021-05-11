@@ -1,7 +1,7 @@
 # Copied from https://microsoft.github.io/language-server-protocol/specifications/specification-3-14/
 from __future__ import annotations
 
-import urllib
+import urllib.parse
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, Sequence

@@ -1,19 +1,20 @@
 import asyncio
 import logging
 import sys
+import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pkg_resources
 
 from .. import vscode
-from ..linter.linter import Linter
-from ..trefier.models.seq2seq import Seq2SeqModel
 from ..jsonrpc.dispatcher import Dispatcher
 from ..jsonrpc.hooks import alias, method, notification, request
-from ..util.random_string import create_random_string
+from ..linter.linter import Linter
+from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
+from .capabilities import WorkDoneProgressCapability
 from .completions import CompletionEngine
 from .workspace_symbols import WorkspaceSymbols
 
@@ -26,7 +27,8 @@ log = logging.getLogger(__name__)
 class Server(Dispatcher):
     def __init__(
             self,
-            connection, *,
+            connection,
+            *,
             num_jobs: int = 1,
             update_delay_seconds: float = 1.0,
             enable_global_validation: bool = False,
@@ -36,7 +38,7 @@ class Server(Dispatcher):
         """ Creates a server dispatcher.
 
         Parameters:
-            connection: The connection object required by asyncio processes from the inherited dispatcher class.
+            connection: Inherited from Dispatcher. This argument is automatically provided by the class' initialization method.
 
         Keyword Arguments:
             num_jobs: Number of processes to use for multiprocessing when compiling.
@@ -50,7 +52,7 @@ class Server(Dispatcher):
         super().__init__(connection=connection)
         self.num_jobs = num_jobs
         self.update_delay_seconds = update_delay_seconds
-        self.work_done_progress_capability_is_set: Optional[bool] = None
+        self.work_done_progress_capability: WorkDoneProgressCapability = WorkDoneProgressCapability()
         self.enable_global_validation: bool = enable_global_validation
         self.lint_workspace_on_startup: bool = lint_workspace_on_startup
         self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
@@ -59,6 +61,8 @@ class Server(Dispatcher):
         self._root: Optional[Path] = None
         # trefier model loaded from path_to_trefier_model
         self._trefier_model: Optional[Seq2SeqModel] = None
+        # Event set after `initialize`: Before that: respond to all with -32002, but let exit through.
+        self._initialize_event: asyncio.Event = asyncio.Event()
         # Event used to prevent the server from answering requests before the server finished initialization
         self._initialized_event: asyncio.Event = asyncio.Event()
         # Workspace instance, used to keep track of file buffers
@@ -139,10 +143,19 @@ class Server(Dispatcher):
 
     @method
     def initialize(
-            self,
-            workDoneProgress: Union[int, str,
-                                    vscode.Undefined] = vscode.undefined,
-            **params: Any):
+        self,
+        capabilities: vscode.ClientCapabilities,
+        workspaceFolders: Optional[List[vscode.WorkspaceFolder]] = None,
+        processId: Optional[int] = None,
+        clientInfo: Optional[Dict[Literal['name', 'version'], str]] = None,
+        locale: Optional[str] = None,
+        rootPath: Optional[str] = None,
+        rootUri: Optional[vscode.DocumentUri] = None,
+        initializedOptions: Any = None,
+        workDoneProgress: Union[
+            int, str, vscode.Undefined] = vscode.undefined,
+        **kwargs,
+    ):
         ''' Initializes the serverside.
         This method is called by the client that starts the server.
         The server may only respond to other requests after this method successfully returns.
@@ -150,16 +163,17 @@ class Server(Dispatcher):
         if self._initialized_event.is_set():
             raise RuntimeError('Server already initialized')
 
-        self.work_done_progress_capability_is_set = params.get(
-            'capabilities', {}).get('window', {}).get('workDoneProgress', False)
-        log.info('Progress information enabled: %s',
-                 self.work_done_progress_capability_is_set)
+        # Work done progress may only be sent if the capability is set
+        self.work_done_progress_capability = WorkDoneProgressCapability(
+            capabilities.window.get('workDoneProgress', False))
+        log.info('Work done progress capability: %s',
+                 self.work_done_progress_capability.enabled)
 
-        if 'rootUri' in params and params['rootUri']:
-            self._root = Path(urlparse(params['rootUri']).path)
-        elif 'rootPath' in params:
-            # @rootPath is deprecated and must only be used if @rootUri is not defined
-            self._root = params.get('rootPath')
+        if isinstance(rootUri, vscode.DocumentUri):
+            self._root = Path(urlparse(rootUri).path)
+        elif isinstance(rootPath, str):
+            # rootPath is deprecated and must only be used if @rootUri is not defined
+            self._root = Path(rootPath)
         else:
             raise RuntimeError('No root path in initialize.')
         log.info('root at: %s', self._root)
@@ -441,7 +455,7 @@ class ProgressBar:
         self._server = server
         self._title = title
         self._end_message = end_message
-        self.token = create_random_string(16)
+        self.token = str(uuid.uuid4())
         self._cancellable = cancellable
         self._total = total
         self._begin_message_sent: bool = False

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import random
-import tempfile
 from asyncio.streams import StreamReader, StreamWriter
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
@@ -18,26 +17,27 @@ class TestLSP(IsolatedAsyncioTestCase):
             "jsonrpc": "2.0",
             "id": "test message",
             "method": None,
-            "params": None,
+            "params": {
+                'capabilities': {},
+                'rootUri': Path('/tmp/stexls-tests-root-dir').as_uri(),
+            },
         }
 
     async def test_initialize(self):
-        with tempfile.TemporaryDirectory() as dir:
-            async def callback(reader: StreamReader, writer: StreamWriter):
-                self.stub['id'] = 'initialize'
-                self.stub['method'] = 'initialize'
-                self.stub['params'] = {'rootUri': Path(dir).as_uri()}
-                content = json.dumps(self.stub).encode()
-                writer.write(
-                    f'content-length: {len(content)}\r\n\r\n'.encode() + content)
-                raw_content_length = await reader.readline()
-                content_length = int(
-                    raw_content_length.decode().split(':')[-1].strip())
-                self.empty_line = await reader.readline()
-                raw_response = await reader.readexactly(content_length)
-                writer.close()
-                self.response = json.loads(raw_response.decode())
-                print(self.response)
+        async def callback(reader: StreamReader, writer: StreamWriter):
+            self.stub['id'] = 'initialize'
+            self.stub['method'] = 'initialize'
+            content = json.dumps(self.stub).encode()
+            writer.write(
+                f'content-length: {len(content)}\r\n\r\n'.encode() + content)
+            raw_content_length = await reader.readline()
+            content_length = int(
+                raw_content_length.decode().split(':')[-1].strip())
+            self.empty_line = await reader.readline()
+            raw_response = await reader.readexactly(content_length)
+            writer.close()
+            self.response = json.loads(raw_response.decode())
+            print(self.response)
         server = await asyncio.start_server(callback, host='localhost', port=self.port)
         await self.lsp
         server.close()
@@ -72,10 +72,10 @@ class TestLSP(IsolatedAsyncioTestCase):
         self.assertEqual(ErrorCodes.ParseError, self.response['error']['code'])
 
     async def test_internal_error(self):
-        # If initialize is called without a `root` param, it will raise, causing an InternalError
         async def callback(reader: StreamReader, writer: StreamWriter):
             self.stub['method'] = 'initialize'
-            self.stub['params'] = {}
+            # If initialize is called without a `rootUri` param, it will raise, causing an InternalError
+            del self.stub['params']['rootUri']
             content = json.dumps(self.stub).encode()
             writer.write(
                 f'content-length: {len(content)}\r\n\r\n'.encode() + content)
@@ -162,3 +162,6 @@ class TestLSP(IsolatedAsyncioTestCase):
             'error': {'code': ErrorCodes.InvalidRequest, 'message': 'Invalid Request'},
             'id': None, 'jsonrpc': '2.0'}
         self.assertDictEqual(expected_response, self.response)
+
+    async def test_initialized(self):
+        pass

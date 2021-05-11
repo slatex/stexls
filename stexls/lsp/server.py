@@ -171,12 +171,6 @@ class Server(Dispatcher):
         the server is also allowed to use that token (and only that token)
         using the $/progress notification sent from the server to the client.
         '''
-        with open('/tmp/initializationOptions.json', 'w+') as fd:
-            import json
-            json.dump(initializationOptions, fd)
-        with open('/tmp/kwargs.json', 'w+') as fd:
-            import json
-            json.dump(kwargs, fd)
         if self.state != ServerState.UNINITIALIZED:
             raise ValueError('Server not uninitialized.')
 

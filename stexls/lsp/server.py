@@ -10,6 +10,7 @@ import pkg_resources
 
 from .. import vscode
 from ..jsonrpc.dispatcher import Dispatcher
+from ..jsonrpc.exceptions import InvalidRequestException
 from ..jsonrpc.hooks import alias, method, notification, request
 from ..linter.linter import Linter
 from ..trefier.models.seq2seq import Seq2SeqModel
@@ -25,7 +26,6 @@ log = logging.getLogger(__name__)
 
 # pattern_for_environments_that_should_never_display_trefier_annotation_hints = (
 #   re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?'))
-
 
 class Server(Dispatcher):
     def __init__(
@@ -129,8 +129,7 @@ class Server(Dispatcher):
             self,
             token: Union[int, str],
             value: Union[vscode.WorkDoneProgressBegin, vscode.WorkDoneProgressReport, vscode.WorkDoneProgressEnd]):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.info('Progress %s received: %s', token, value)
 
     @notification
@@ -173,6 +172,8 @@ class Server(Dispatcher):
         '''
         if self.state != ServerState.UNINITIALIZED:
             raise ValueError('Server not uninitialized.')
+        if self.state == ServerState.SHUTDOWN:
+            raise InvalidRequestException('The server has shut down')
 
         # Work done progress may only be sent if the capability is set
         self.work_done_progress_capability = WorkDoneProgressCapability(
@@ -332,8 +333,7 @@ class Server(Dispatcher):
             workDoneToken: Union[int, str,
                                  vscode.Undefined] = vscode.undefined,
             **params):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.debug('definitions(%s, %s)', textDocument.path, position.format())
         if not self.linter:
             return None
@@ -351,6 +351,8 @@ class Server(Dispatcher):
             **params):
         if self.state == ServerState.UNINITIALIZED:
             raise ServerNotInitializedException()
+        if self.state == ServerState.SHUTDOWN:
+            raise InvalidRequestException('The server has shut down')
         log.debug('references(%s, %s)', textDocument.path, position.format())
         if not self.linter:
             return None
@@ -367,8 +369,7 @@ class Server(Dispatcher):
             context: Union[vscode.CompletionContext,
                            vscode.Undefined] = vscode.undefined,
             **kwargs):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.debug('completion(%s, %s, context=%s)',
                   textDocument.path, position.format(), context)
         return []
@@ -381,8 +382,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: vscode.TextDocumentItem):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.debug('didOpen(%s)', textDocument)
         if not self.workspace:
             return
@@ -396,8 +396,7 @@ class Server(Dispatcher):
             textDocument: vscode.VersionedTextDocumentIdentifier,
             contentChanges: List[vscode.TextDocumentContentChangeEvent]):
         # NOTE: Because there is no handler for the annotation type "List": contentChanges is a list of dictionaries!
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.debug('Buffering file "%s" with version %i',
                   textDocument.path, textDocument.version)
         if not self.workspace:
@@ -429,8 +428,7 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didClose')
     async def text_document_did_close(self, textDocument: vscode.TextDocumentIdentifier):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         log.debug('Closing document: "%s"', textDocument.path)
         if not self.workspace:
             return
@@ -444,14 +442,27 @@ class Server(Dispatcher):
             self,
             textDocument: vscode.TextDocumentIdentifier,
             text: Union[str, vscode.Undefined] = vscode.undefined):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
+        self.protect_from_uninit_and_shutdown()
         if self.workspace and self.workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
             self.request_update_for_set_of_files({textDocument.path})
         else:
             log.debug('Received didSave event for invalid file: %s',
                       textDocument.uri)
+
+    def protect_from_uninit_and_shutdown(self):
+        """ Raises appropriate exceptions depending on server state.
+
+        Should only be called by methods that are not `shutdown`, `exit`, `initialize` and `initialized`.
+
+        Raises:
+            ServerNotInitializedException: Method called without initializing first.
+            InvalidRequestException: Method called after shutdown.
+        """
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
+        if self.state == ServerState.SHUTDOWN:
+            raise InvalidRequestException('The server has shut down')
 
 
 class ProgressBar:

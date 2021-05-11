@@ -520,7 +520,7 @@ class DiagnosticSeverity(SerializableEnum):
     Hint: int = 4
 
     @staticmethod
-    def from_string(s):
+    def from_string(s: str):
         ' Constructs the object from either the name of the severity as well as the integer value as a string. Default is DiagnosticSeverity.Error. '
         return {
             'error': DiagnosticSeverity.Error,

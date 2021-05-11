@@ -159,9 +159,7 @@ class TestLSP(IsolatedAsyncioTestCase):
         server.close()
         self.assertEqual(self.empty_line, b'\r\n')
         expected_response = {
-            'error': {'code': ErrorCodes.InvalidRequest, 'message': 'Invalid Request'},
-            'id': None, 'jsonrpc': '2.0'}
+            'error': {'code': ErrorCodes.InvalidRequest, 'message': 'Property "jsonrpc" is missing.'},
+            'id': None,
+            'jsonrpc': '2.0'}
         self.assertDictEqual(expected_response, self.response)
-
-    async def test_initialized(self):
-        pass

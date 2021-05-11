@@ -1049,3 +1049,14 @@ class ClientCapabilities:
             general=obj.get('general', undefined),
             experimental=obj.get('experimental', undefined),
         )
+
+
+class ErrorCodes(SerializableEnum):
+    " Error codes defined by JsonRpc as well as VSCode. "
+    ParseError: int = -32700
+    InvalidRequest: int = -32600
+    MethodNotFound: int = -32601
+    InvalidParams: int = -32602
+    InternalError: int = -32603
+    ServerNotInitialized: int = -32002
+    UnknownErrorCode: int = -32001

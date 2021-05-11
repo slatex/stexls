@@ -108,7 +108,7 @@ class ErrorObject:
             data: A primitive or structured value that contains additional information.
         '''
         self.code = code
-        self.message = message or ErrorCodes.message(code)
+        self.message = message
         if data is not None:
             self.data = data
 
@@ -127,8 +127,8 @@ class ErrorObject:
             return exceptions.InvalidParamsException(str(self))
         if self.code == ErrorCodes.InternalError:
             return exceptions.InternalErrorException(str(self))
-        if self.code in range(-32000, -32100):
-            return exceptions.ServerErrorException(str(self))
+        if self.code in range(-32100, -32000):
+            return exceptions.ServerErrorException(self.code, str(self))
         return Exception(str(self))
 
 
@@ -141,19 +141,3 @@ class ErrorCodes(IntEnum):
     InternalError = -32603
     # (implementation defined)
     # ServerError = range(-32000, -32100)
-
-    @ staticmethod
-    def message(code: int) -> Union[str, None]:
-        if code == ErrorCodes.ParseError:
-            return 'Parse error'
-        if code == ErrorCodes.InvalidRequest:
-            return 'Invalid Request'
-        if code == ErrorCodes.MethodNotFound:
-            return 'Method not found'
-        if code == ErrorCodes.InvalidParams:
-            return 'Invalid params'
-        if code == ErrorCodes.InternalError:
-            return 'Internal error'
-        if code in range(-32000, -32100):
-            return 'Server error'
-        raise ValueError(f'Unknown error code: {code}')

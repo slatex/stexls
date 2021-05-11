@@ -62,7 +62,7 @@ def validate_json(json_object: Dict[str, Any]) -> Optional[ResponseObject]:
         Optional[ResponseObject]: A response message with error information if the input object is invalid.
     """
     if not isinstance(json_object, dict) or json_object.get('jsonrpc') != '2.0':
-        return ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest))
+        return ResponseObject(None, error=ErrorObject(ErrorCodes.InvalidRequest, message='Property "jsonrpc" is missing.'))
     is_request = isinstance(json_object.get(
         'id'), (int, str)) and 'method' in json_object
     is_notification = 'id' not in json_object and 'method' in json_object
@@ -74,7 +74,7 @@ def validate_json(json_object: Dict[str, Any]) -> Optional[ResponseObject]:
         isinstance(json_object.get('id', False), (str, int, type(None)))
         and (('result' in json_object) != has_error))
     if (is_request + is_notification + is_response) != 1:
-        return ResponseObject(json_object.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest))
+        return ResponseObject(json_object.get('id'), error=ErrorObject(ErrorCodes.InvalidRequest, message='Unable to infer message type from json.'))
     return None
 
 

@@ -1,4 +1,5 @@
 import asyncio
+from enum import Enum
 import logging
 import sys
 import uuid
@@ -11,18 +12,22 @@ import pkg_resources
 from .. import vscode
 from ..jsonrpc.dispatcher import Dispatcher
 from ..jsonrpc.hooks import alias, method, notification, request
+from ..jsonrpc.exceptions import JsonRpcException
 from ..linter.linter import Linter
 from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
 from .capabilities import WorkDoneProgressCapability
 from .completions import CompletionEngine
 from .workspace_symbols import WorkspaceSymbols
+from .state import ServerState
+from .exceptions import ServerNotInitializedException
 
 log = logging.getLogger(__name__)
 
 
 # pattern_for_environments_that_should_never_display_trefier_annotation_hints = (
 #   re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?'))
+
 
 class Server(Dispatcher):
     def __init__(
@@ -50,6 +55,7 @@ class Server(Dispatcher):
             path_to_trefier_model: Path to a loadable Seq2Seq model used to create trefier tags.
         """
         super().__init__(connection=connection)
+        self.state = ServerState.UNINITIALIZED
         self.num_jobs = num_jobs
         self.update_delay_seconds = update_delay_seconds
         self.work_done_progress_capability: WorkDoneProgressCapability = WorkDoneProgressCapability()
@@ -58,72 +64,66 @@ class Server(Dispatcher):
         self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
         self.path_to_trefier_model = path_to_trefier_model
         # Path to the root directory
-        self._root: Optional[Path] = None
+        self.rootDirectory: Optional[Path] = None
         # trefier model loaded from path_to_trefier_model
-        self._trefier_model: Optional[Seq2SeqModel] = None
-        # Event set after `initialize`: Before that: respond to all with -32002, but let exit through.
-        self._initialize_event: asyncio.Event = asyncio.Event()
-        # Event used to prevent the server from answering requests before the server finished initialization
-        self._initialized_event: asyncio.Event = asyncio.Event()
+        self.trefier_model: Optional[Seq2SeqModel] = None
         # Workspace instance, used to keep track of file buffers
-        self._workspace: Optional[Workspace] = None
+        self.workspace: Optional[Workspace] = None
         # Linter instance, used to create diagnostics
-        self._linter: Optional[Linter] = None
+        self.linter: Optional[Linter] = None
         # Completion engine used to encapsulate the complex process of creating completion suggestions
-        self._completion_engine: Optional[CompletionEngine] = None
+        self.completion_engine: Optional[CompletionEngine] = None
         # Buffer used to buffer changed files, so that lint isn't called everytime something is typed, but called
         # after a certain delay after the user stopped typing
-        self._update_request_buffer: Set[Path] = set()
+        self.update_request_buffer: Set[Path] = set()
         # Timeout instance of current update request. Can be canceled when a new update request is made.
-        self._update_request_timeout: Optional[asyncio.TimerHandle] = None
+        self.update_request_timeout: Optional[asyncio.TimerHandle] = None
         # Manager for work done progress bars
-        self._cancellable_work_done_progresses: Dict[object, ProgressBar] = {}
+        self.cancellable_work_done_progresses: Dict[object, ProgressBar] = {}
         # Accumulator for symbols in workspace, used for suggestions and fast search of missing modules etc
-        self._workspace_symbols = WorkspaceSymbols()
+        self.workspace_symbols = WorkspaceSymbols()
 
-    async def _update_files_and_clear_timeout(self):
+    async def update_files_and_clear_timeout(self):
         ''' Actually update the files in the buffered file update requests.
         '''
-        self._update_request_timeout = None
-        update_requests = list(self._update_request_buffer)
-        self._update_request_buffer.clear()
+        self.update_request_timeout = None
+        update_requests = list(self.update_request_buffer)
+        self.update_request_buffer.clear()
         log.debug('Linting %i files.', len(update_requests))
-        def progress_fun(info, count, done): return log.debug(
-            'Linking "%s": (count=%s, done=%s)', info, count, done)
         cancellable = len(update_requests) > 3
         async with ProgressBar(self, title='Linting', cancellable=cancellable, total=len(update_requests)) as progress:
-            self._cancellable_work_done_progresses[progress.token] = progress
+            self.cancellable_work_done_progresses[progress.token] = progress
             await progress.begin()
             for i, file in enumerate(update_requests):
                 await progress.update(i, message=file.name, cancellable=cancellable)
                 # TODO: Need all the changed unlinked objects to properly add workspace symbols
-                self._workspace_symbols.remove(file)
-                ln = self._linter.lint(file)
+                self.workspace_symbols.remove(file)
+                ln = self.linter.lint(file)
                 await self.publish_diagnostics(uri=file.as_uri(), diagnostics=ln.diagnostics)
-                obj = self._linter._object_buffer.get(file)
+                obj = self.linter._object_buffer.get(file)
                 if obj:
-                    self._workspace_symbols.add(obj)
-        del self._cancellable_work_done_progresses[progress.token]
+                    self.workspace_symbols.add(obj)
+        del self.cancellable_work_done_progresses[progress.token]
         log.debug('Finished linting %i files.', len(update_requests))
 
-    def _request_update_for_set_of_files(self, files: Set[Path]):
+    def request_update_for_set_of_files(self, files: Set[Path]):
         ''' Request update for a set of files.
 
         The update will be executed after a set amount of time
         and will be delayed again, if @_request_update_for_set_of_files is called again before the timer runs out.
         '''
         log.debug('Update request for the files: %s', files)
-        self._update_request_buffer.update(files)
-        if self._update_request_timeout:
+        self.update_request_buffer.update(files)
+        if self.update_request_timeout:
             log.debug('Canceling old update request timeout: %s',
-                      self._update_request_timeout)
-            self._update_request_timeout.cancel()
-        self._update_request_timeout = asyncio.get_running_loop().call_later(
+                      self.update_request_timeout)
+            self.update_request_timeout.cancel()
+        self.update_request_timeout = asyncio.get_running_loop().call_later(
             self.update_delay_seconds,
             asyncio.create_task,
-            self._update_files_and_clear_timeout()
+            self.update_files_and_clear_timeout()
         )
-        log.debug('New update timeout: %s', self._update_request_buffer)
+        log.debug('New update timeout: %s', self.update_request_buffer)
 
     @method
     @alias('$/progress')
@@ -131,6 +131,8 @@ class Server(Dispatcher):
             self,
             token: Union[int, str],
             value: Union[vscode.WorkDoneProgressBegin, vscode.WorkDoneProgressReport, vscode.WorkDoneProgressEnd]):
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.info('Progress %s received: %s', token, value)
 
     @notification
@@ -159,9 +161,19 @@ class Server(Dispatcher):
         ''' Initializes the serverside.
         This method is called by the client that starts the server.
         The server may only respond to other requests after this method successfully returns.
+
+        Until the server has responded to the initialize request with an InitializeResult,
+        the client must not send any additional requests or notifications to the server.
+        In addition the server is not allowed to send any requests or notifications
+        to the client until it has responded with an InitializeResult,
+        with the exception that during the initialize request the server is allowed to send the notifications window/showMessage,
+        window/logMessage and telemetry/event as well as the window/showMessageRequest request to the client.
+        In case the client sets up a progress token in the initialize params (e.g. property workDoneToken)
+        the server is also allowed to use that token (and only that token)
+        using the $/progress notification sent from the server to the client.
         '''
-        if self._initialized_event.is_set():
-            raise RuntimeError('Server already initialized')
+        if self.state != ServerState.UNINITIALIZED:
+            raise ValueError('Server not uninitialized.')
 
         # Work done progress may only be sent if the capability is set
         self.work_done_progress_capability = WorkDoneProgressCapability(
@@ -170,13 +182,13 @@ class Server(Dispatcher):
                  self.work_done_progress_capability.enabled)
 
         if isinstance(rootUri, vscode.DocumentUri):
-            self._root = Path(urlparse(rootUri).path)
+            self.rootDirectory = Path(urlparse(rootUri).path)
         elif isinstance(rootPath, str):
             # rootPath is deprecated and must only be used if @rootUri is not defined
-            self._root = Path(rootPath)
+            self.rootDirectory = Path(rootPath)
         else:
             raise RuntimeError('No root path in initialize.')
-        log.info('root at: %s', self._root)
+        log.info('root at: %s', self.rootDirectory)
 
         try:
             version = str(pkg_resources.require('stexls')[0].version)
@@ -184,6 +196,7 @@ class Server(Dispatcher):
             version = 'undefined'
         log.info('stexls version: %s', version)
 
+        self.state = ServerState.INITIALIZED
         return {
             'capabilities': {
                 'textDocumentSync': {
@@ -210,13 +223,13 @@ class Server(Dispatcher):
             }
         }
 
-    def _load_trefier_model(self):
+    def load_trefier_model(self):
         " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
             try:
                 from stexls.trefier.models.seq2seq import Seq2SeqModel
-                self._trefier_model: Seq2SeqModel = Seq2SeqModel.load(
+                self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(
                     self.path_to_trefier_model)
             except (ImportError, ModuleNotFoundError):
                 pass
@@ -228,49 +241,53 @@ class Server(Dispatcher):
     @method
     async def initialized(self):
         ' Event called by the client after it finished initialization. '
-        if self._initialized_event.is_set():
-            raise RuntimeError('Server already initialized')
-        outdir = self._root / '.stexls' / 'objects'
-        self._workspace = Workspace(self._root)
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
+        if self.state != ServerState.INITIALIZED:
+            raise ValueError(
+                '`initialized` method can only be called once directly following `initialize`.')
+        outdir = self.rootDirectory / '.stexls' / 'objects'
+        self.workspace = Workspace(self.rootDirectory)
         if self.path_to_trefier_model:
-            self._load_trefier_model()
-        self._linter = Linter(
-            workspace=self._workspace,
+            self.load_trefier_model()
+        self.linter = Linter(
+            workspace=self.workspace,
             outdir=outdir,
             enable_global_validation=self.enable_global_validation,
             num_jobs=self.num_jobs)
-        if self._linter.enable_global_validation:
-            compile_progress_iter = self._linter.compile_workspace()
+        if self.linter.enable_global_validation:
+            compile_progress_iter = self.linter.compile_workspace()
             try:
                 async with ProgressBar(server=self, title='Compiling', cancellable=True, total=len(compile_progress_iter)) as progress:
-                    self._cancellable_work_done_progresses[progress.token] = progress
+                    self.cancellable_work_done_progresses[progress.token] = progress
                     await progress.begin()
                     for i, currently_compiling_file in enumerate(compile_progress_iter):
                         await progress.update(i, message=currently_compiling_file.name, cancellable=True)
-                del self._cancellable_work_done_progresses[progress.token]
+                del self.cancellable_work_done_progresses[progress.token]
             except Exception:
                 log.exception('An error occured while compiling workspace')
-        self._completion_engine = CompletionEngine(None)
+        self.completion_engine = CompletionEngine(None)
         if self.lint_workspace_on_startup:
             log.info('Linting workspace on startup...')
-            files = list(self._linter.workspace.files)
+            files = list(self.linter.workspace.files)
             try:
                 async with ProgressBar(server=self, title='Linting', cancellable=True, total=len(files)) as progress:
-                    self._cancellable_work_done_progresses[progress.token] = progress
+                    self.cancellable_work_done_progresses[progress.token] = progress
                     await progress.begin()
                     for i, file in enumerate(files):
                         await progress.update(i, message=file.name, cancellable=True)
-                        result = self._linter.lint(file)
+                        result = self.linter.lint(file)
                         await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
-                del self._cancellable_work_done_progresses[progress.token]
+                del self.cancellable_work_done_progresses[progress.token]
             except Exception:
                 log.exception("Exception raised while linting workspace")
         log.info('Initialized')
-        self._initialized_event.set()
+        self.state = ServerState.READY
 
     @method
     def shutdown(self):
         log.info('Shutting down server...')
+        # TODO: Do stuff on shutdown?
 
     @method
     def exit(self):
@@ -301,7 +318,7 @@ class Server(Dispatcher):
     @alias('window/workDoneProgress/cancel')
     def window_work_done_progress_cancel(self, token: Union[int, str]):
         log.info('Cancelling work done progress token: %s', token)
-        prog = self._cancellable_work_done_progresses.get(token)
+        prog = self.cancellable_work_done_progresses.get(token)
         if not prog:
             log.error('Unknown progress token: %s', token)
         elif not prog.cancel():
@@ -316,11 +333,12 @@ class Server(Dispatcher):
             workDoneToken: Union[int, str,
                                  vscode.Undefined] = vscode.undefined,
             **params):
-        await self._initialized_event.wait()
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('definitions(%s, %s)', textDocument.path, position.format())
-        if not self._linter:
+        if not self.linter:
             return None
-        definitions = self._linter.definitions(textDocument.path, position)
+        definitions = self.linter.definitions(textDocument.path, position)
         log.debug('Found %i definitions: %s', len(definitions), definitions)
         return definitions
 
@@ -330,15 +348,14 @@ class Server(Dispatcher):
             self,
             textDocument: vscode.TextDocumentIdentifier,
             position: vscode.Position,
-            workDoneToken: Union[int, str,
-                                 vscode.Undefined] = vscode.undefined,
             context: Any = vscode.undefined,
             **params):
-        await self._initialized_event.wait()
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('references(%s, %s)', textDocument.path, position.format())
-        if not self._linter:
+        if not self.linter:
             return None
-        references = self._linter.references(textDocument.path, position)
+        references = self.linter.references(textDocument.path, position)
         log.debug('Found %i references: %s', len(references), references)
         return references
 
@@ -350,8 +367,9 @@ class Server(Dispatcher):
             position: vscode.Position,
             context: Union[vscode.CompletionContext,
                            vscode.Undefined] = vscode.undefined,
-            workDoneToken: Union[int, str, vscode.Undefined] = vscode.undefined):
-        await self._initialized_event.wait()
+            **kwargs):
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('completion(%s, %s, context=%s)',
                   textDocument.path, position.format(), context)
         return []
@@ -364,12 +382,13 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: vscode.TextDocumentItem):
-        await self._initialized_event.wait()
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('didOpen(%s)', textDocument)
-        if not self._workspace:
+        if not self.workspace:
             return
-        if self._workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
-            self._request_update_for_set_of_files({textDocument.path})
+        if self.workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
+            self.request_update_for_set_of_files({textDocument.path})
 
     @method
     @alias('textDocument/didChange')
@@ -378,31 +397,32 @@ class Server(Dispatcher):
             textDocument: vscode.VersionedTextDocumentIdentifier,
             contentChanges: List[vscode.TextDocumentContentChangeEvent]):
         # NOTE: Because there is no handler for the annotation type "List": contentChanges is a list of dictionaries!
-        await self._initialized_event.wait()
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('Buffering file "%s" with version %i',
                   textDocument.path, textDocument.version)
-        if not self._workspace:
+        if not self.workspace:
             return
-        if self._workspace.is_open(textDocument.path):
+        if self.workspace.is_open(textDocument.path):
             for item in contentChanges:
-                status = self._workspace.update_file(
+                status = self.workspace.update_file(
                     # TODO: `item` has to be properly deserialized !
                     # TODO: Implement recursive annotations module
                     textDocument.path, textDocument.version, item['text'])
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
                 else:
-                    if self._linter and self.enable_linting_of_related_files_on_change:
+                    if self.linter and self.enable_linting_of_related_files_on_change:
                         log.debug(
                             'Linter searching for related files of: "%s"', textDocument.path)
-                        requests = self._linter.find_dependent_files_of(
+                        requests = self.linter.find_dependent_files_of(
                             textDocument.path)
                         log.debug('Found %i relations: %s',
                                   len(requests), requests)
                     else:
                         requests = set()
                     requests.add(textDocument.path)
-                    self._request_update_for_set_of_files(requests)
+                    self.request_update_for_set_of_files(requests)
         else:
             log.warning(
                 'didChange event for non-opened document: "%s"', textDocument.path)
@@ -410,11 +430,12 @@ class Server(Dispatcher):
     @method
     @alias('textDocument/didClose')
     async def text_document_did_close(self, textDocument: vscode.TextDocumentIdentifier):
-        await self._initialized_event.wait()
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
         log.debug('Closing document: "%s"', textDocument.path)
-        if not self._workspace:
+        if not self.workspace:
             return
-        status = self._workspace.close_file(textDocument.path)
+        status = self.workspace.close_file(textDocument.path)
         if not status:
             log.warning('Failed to close file: "%s"', textDocument.path)
 
@@ -424,10 +445,11 @@ class Server(Dispatcher):
             self,
             textDocument: vscode.TextDocumentIdentifier,
             text: Union[str, vscode.Undefined] = vscode.undefined):
-        await self._initialized_event.wait()
-        if self._workspace and self._workspace.is_open(textDocument.path):
+        if self.state == ServerState.UNINITIALIZED:
+            raise ServerNotInitializedException()
+        if self.workspace and self.workspace.is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
-            self._request_update_for_set_of_files({textDocument.path})
+            self.request_update_for_set_of_files({textDocument.path})
         else:
             log.debug('Received didSave event for invalid file: %s',
                       textDocument.uri)

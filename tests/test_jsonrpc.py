@@ -16,6 +16,12 @@ class GetSetServer(dispatcher.Dispatcher):
     def set_value(self, key, value):
         setattr(self, key, value)
 
+    @hooks.method
+    def raise_error(self, code: int, message: str, rpcerror: bool):
+        if rpcerror:
+            raise exceptions.JsonRpcException(code, message)
+        raise ValueError(f'{message} ({code})')
+
 
 class GetSetClient(dispatcher.Dispatcher):
     @hooks.request
@@ -29,6 +35,10 @@ class GetSetClient(dispatcher.Dispatcher):
     @hooks.request
     @hooks.alias('get_value')
     def will_call_server_get_value(self, key):
+        pass
+
+    @hooks.request
+    def raise_error(self, code: int, message: str, rpcerror: bool):
         pass
 
 
@@ -73,5 +83,22 @@ class TestJRPC(IsolatedAsyncioTestCase):
         value = await client.get_value(key=expected_key)
         self.assertDictEqual(
             value, {'key': expected_key, 'value': expected_value})
+        server_task.cancel()
+        await client_task
+
+    async def test_raise_errors(self):
+        logging.basicConfig(
+            filename='/tmp/test_raise_errors.log', level=logging.DEBUG)
+        (host, port), server_task = await GetSetServer.start_server()
+        client: GetSetClient
+        client, client_task = await GetSetClient.open_connection(host, port)
+        with self.assertRaises(exceptions.ParseErrorException):
+            await client.raise_error(code=-32700, message='mymessage', rpcerror=True)
+        with self.assertRaises(exceptions.InvalidRequestException):
+            await client.raise_error(code=-32600, message='mymessage', rpcerror=True)
+        with self.assertRaises(exceptions.ServerErrorException):
+            await client.raise_error(code=-32002, message='mymessage', rpcerror=True)
+        with self.assertRaises(exceptions.InternalErrorException):
+            await client.raise_error(code=-32002, message='mymessage', rpcerror=False)
         server_task.cancel()
         await client_task

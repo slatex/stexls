@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import json
 import logging
+from stexls.jsonrpc.exceptions import JsonRpcException
 from typing import Any, Awaitable, Callable, List, Optional, Union, Dict
 
 from .core import (ErrorCodes, ErrorObject, MessageObject, NotificationObject, RequestObject,
@@ -173,7 +174,7 @@ class JsonRpcConnection:
                     result = m(**params)
                 else:
                     raise ValueError(
-                        f'Method params of invalid type: {type(params)}')
+                        f'Expected params of type dict or list, found: {type(params)}')
                 log.debug('Method %s(%s) call successful.', method, params)
                 if asyncio.iscoroutine(result):
                     log.debug(f'Called method "{method}" returned coroutine.')
@@ -183,12 +184,17 @@ class JsonRpcConnection:
                 log.warning(
                     'Method %s(%s) threw possible InvalidParams error.', method, params, exc_info=True)
                 response = ResponseObject(
-                    id, error=ErrorObject(ErrorCodes.InvalidParams, data=str(e)))
+                    id, error=ErrorObject(ErrorCodes.InvalidParams, message=str(e)))
+            except JsonRpcException as e:
+                log.exception(
+                    'Method %s(%s) raised an json rpc specific exception.', method, params)
+                response = ResponseObject(
+                    id, error=ErrorObject(code=int(e), message=str(e), data=e.data))
             except Exception as e:
                 log.exception(
                     'Method %s(%s) raised an unexpected error.', method, params)
                 response = ResponseObject(
-                    id, error=ErrorObject(ErrorCodes.InternalError, data=str(e)))
+                    id, error=ErrorObject(ErrorCodes.InternalError, message=str(e)))
         return response
 
     async def _handle(self, obj: dict):

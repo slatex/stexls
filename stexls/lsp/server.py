@@ -16,9 +16,9 @@ from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
 from .capabilities import WorkDoneProgressCapability
 from .completions import CompletionEngine
-from .workspace_symbols import WorkspaceSymbols
-from .state import ServerState
 from .exceptions import ServerNotInitializedException
+from .state import ServerState
+from .workspace_symbols import WorkspaceSymbols
 
 log = logging.getLogger(__name__)
 

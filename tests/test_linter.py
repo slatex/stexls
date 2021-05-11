@@ -62,3 +62,17 @@ class TestLinter(TestCase, MockGlossary):
         module_lint = self.linter.lint(self.module)
         binding_lint = self.linter.lint(self.binding)
         raise NotImplementedError
+
+    def test_lint_gview(self):
+        file = self.write_text(r'''
+            \begin{gviewnl}[creators=miko,fromrepos=smglom/algebra]{semilattice-algord}{en}
+                {semi-lattice}{meetjoin-semilattice}
+
+                Any \trefi[semi-lattice]{semi-lattice} $\mvstructure{\magmaset,\magmaopOp}$ induces a
+                \trefii[partial-order]{partial}{ordering} $\fundefequiv{x,y}{\pole{x}y}{\eq{x,\magmaop{x}y}}$
+                for which \trefi[supinf?supremum]{suprema} and \trefi[supinf?infimum]{infima} exist.
+            \end{gviewnl}l
+        ''')
+        result = self.linter.lint(file)
+        print(result)
+        raise NotImplementedError

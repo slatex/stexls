@@ -6,7 +6,7 @@ from .server import Server
 
 
 def _get_default_trefier_model_path() -> Path:
-    return Path(__file__).parent / 'seq2seq.model'
+    return Path(__file__).parent.parent / 'seq2seq.model'
 
 
 async def lsp(
@@ -52,6 +52,7 @@ async def lsp(
         'enable_linting_of_related_files_on_change': enable_linting_of_related_files,
     }
     if enable_trefier:
+        assert _get_default_trefier_model_path().is_file()
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
         _server, connection = await Server.open_ipc_connection(**shared_args)

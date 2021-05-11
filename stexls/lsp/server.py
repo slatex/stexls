@@ -190,6 +190,10 @@ class Server(Dispatcher):
             raise RuntimeError('No root path in initialize.')
         log.info('root at: %s', self.rootDirectory)
 
+        if self.path_to_trefier_model:
+            log.info('Loading trefier model: %s', self.path_to_trefier_model)
+            self.trefier_model = Seq2SeqModel.load(self.path_to_trefier_model)
+
         try:
             version = str(pkg_resources.require('stexls')[0].version)
         except Exception:

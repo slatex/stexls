@@ -98,6 +98,9 @@ if __name__ == '__main__':
     if cmd == 'linter':
         asyncio.run(linter(**args))
     elif cmd == 'lsp':
-        asyncio.run(lsp(**args))
+        async def await_lsp():
+            server, task = await lsp(**args)
+            await task
+        asyncio.run(await_lsp())
     else:
         raise ValueError(args)

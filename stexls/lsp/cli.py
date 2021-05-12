@@ -1,6 +1,7 @@
 import logging
+from asyncio import Task
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Dict, Literal, Tuple
 
 from .server import Server
 
@@ -20,7 +21,7 @@ async def lsp(
         host: str = 'localhost',
         port: int = 0,
         loglevel: str = 'error',
-        logfile: Path = Path('stexls.log')):
+        logfile: Path = Path('stexls.log')) -> Tuple[Server, Task]:
     """ Starts the language server in either ipc or tcp mode.
 
     Parameters:
@@ -55,8 +56,8 @@ async def lsp(
         assert _get_default_trefier_model_path().is_file()
         shared_args['path_to_trefier_model'] = _get_default_trefier_model_path()
     if transport_kind == 'ipc':
-        _server, connection = await Server.open_ipc_connection(**shared_args)
-        await connection
+        server, connection = await Server.open_ipc_connection(**shared_args)
     elif transport_kind == 'tcp':
-        _server, connection = await Server.open_connection(host=host, port=port, **shared_args)
-        await connection
+        server, connection = await Server.open_connection(host=host, port=port, **shared_args)
+    assert isinstance(server, Server)
+    return server, connection

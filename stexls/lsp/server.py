@@ -24,9 +24,6 @@ from .workspace_symbols import WorkspaceSymbols
 log = logging.getLogger(__name__)
 
 
-# pattern_for_environments_that_should_never_display_trefier_annotation_hints = (
-#   re.compile('[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?'))
-
 class Server(Dispatcher):
     def __init__(
             self,
@@ -190,10 +187,6 @@ class Server(Dispatcher):
             raise RuntimeError('No root path in initialize.')
         log.info('root at: %s', self.rootDirectory)
 
-        if self.path_to_trefier_model:
-            log.info('Loading trefier model: %s', self.path_to_trefier_model)
-            self.trefier_model = Seq2SeqModel.load(self.path_to_trefier_model)
-
         try:
             version = str(pkg_resources.require('stexls')[0].version)
         except Exception:
@@ -231,12 +224,9 @@ class Server(Dispatcher):
         " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
         log.info('Loading trefier model from: %s', self.path_to_trefier_model)
         try:
-            try:
-                from stexls.trefier.models.seq2seq import Seq2SeqModel
-                self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(
-                    self.path_to_trefier_model)
-            except (ImportError, ModuleNotFoundError):
-                pass
+            from stexls.trefier.models.seq2seq import Seq2SeqModel
+            self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(
+                self.path_to_trefier_model)
         except Exception as err:
             log.exception('Failed to load seq2seq model')
             self.show_message(type=vscode.MessageType.Error,

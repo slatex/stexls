@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from enum import Enum, Flag
 from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 
@@ -412,6 +413,9 @@ class ScopeSymbol(Symbol):
     def __init__(self, location: vscode.Location, name: str = 'UNNAMED_SCOPE'):
         ScopeSymbol.count += 1
         super().__init__(location, f'__{name}#{ScopeSymbol.count}__')
+        self.uuid = uuid.uuid4().hex
+        super().__init__(
+            location, f'__{name}#{ScopeSymbol.count}@{self.uuid}__')
         self.name = name
         self.access_modifier = AccessModifier.PUBLIC
 

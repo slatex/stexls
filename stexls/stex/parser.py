@@ -279,7 +279,7 @@ class ScopeIntermediateParseTree(IntermediateParseTree):
     def from_environment(cls, e: parser.Environment) -> Optional[ScopeIntermediateParseTree]:
         match = ScopeIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
-            return
+            return None
         return ScopeIntermediateParseTree(e.location, TokenWithLocation.from_node(e.name))
 
     def __repr__(self) -> str:

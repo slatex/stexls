@@ -280,6 +280,9 @@ class ScopeIntermediateParseTree(IntermediateParseTree):
         match = ScopeIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
             return None
+        if e.name is None:
+            # Should never be reached, but needed for mypy
+            return None
         return ScopeIntermediateParseTree(e.location, TokenWithLocation.from_node(e.name))
 
     def __repr__(self) -> str:

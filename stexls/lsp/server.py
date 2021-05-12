@@ -59,7 +59,7 @@ class Server(Dispatcher):
         self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
         self.path_to_trefier_model = path_to_trefier_model
         # Path to the root directory
-        self.rootDirectory: Optional[Path] = None
+        self.root_directory: Optional[Path] = None
         # trefier model loaded from path_to_trefier_model
         self.trefier_model: Optional[Seq2SeqModel] = None
         # Workspace instance, used to keep track of file buffers
@@ -179,13 +179,13 @@ class Server(Dispatcher):
                  self.work_done_progress_capability.enabled)
 
         if isinstance(rootUri, vscode.DocumentUri):
-            self.rootDirectory = Path(urlparse(rootUri).path)
+            self.root_directory = Path(urlparse(rootUri).path)
         elif isinstance(rootPath, str):
             # rootPath is deprecated and must only be used if @rootUri is not defined
-            self.rootDirectory = Path(rootPath)
+            self.root_directory = Path(rootPath)
         else:
             raise RuntimeError('No root path in initialize.')
-        log.info('root at: %s', self.rootDirectory)
+        log.info('root at: %s', self.root_directory)
 
         try:
             version = str(pkg_resources.require('stexls')[0].version)
@@ -240,8 +240,8 @@ class Server(Dispatcher):
         if self.state != ServerState.INITIALIZED:
             raise ValueError(
                 '`initialized` method can only be called once directly following `initialize`.')
-        outdir = self.rootDirectory / '.stexls' / 'objects'
-        self.workspace = Workspace(self.rootDirectory)
+        outdir = self.root_directory / '.stexls' / 'objects'
+        self.workspace = Workspace(self.root_directory)
         if self.path_to_trefier_model:
             self.load_trefier_model()
         self.linter = Linter(

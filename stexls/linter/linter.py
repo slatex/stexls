@@ -1,11 +1,13 @@
 import logging
+import re
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 from ..stex.compiler import Compiler, ObjectfileNotFoundError, StexObject
 from ..stex.diagnostics import Diagnostic, DiagnosticSeverity
 from ..stex.linker import Linker
+from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
 from ..vscode import Location, Position
 
@@ -131,7 +133,7 @@ class Linter:
             log.warning('ObjectfileNotFound: "%s"', file)
         return None
 
-    def compile_workspace(self) -> Iterable[Path]:
+    def compile_workspace(self) -> List[Path]:
         ''' Compiles or loads all files in the workspace and bufferes them in ram.
 
         This should be called after creating a linter with the `enable_global_validation` flag on.
@@ -140,31 +142,17 @@ class Linter:
         Every file present in `self.workspace.files` will be iterated over.
 
         Returns:
-            Iterable[Path]: Iterable that yields the path to the file currently being compiled.
+            List[Path]: Paths to files with objects in the workspace.
         '''
-        class CompilationIterator:
-            compiled_object_buffer: Dict[Path, StexObject] = dict()
-            files = list(self.workspace.files)
-            linter = self
-
-            def __len__(self) -> int:
-                return len(self.files)
-
-            def __iter__(self) -> Iterator[Path]:
-                compiled_object_buffer: Dict[Path, StexObject] = dict()
-                if not self.files:
-                    return
-                with Pool(self.linter.num_jobs) as pool:
-                    it: Iterable[Optional[StexObject]] = pool.imap(
-                        self.linter.get_objectfile, self.files)
-                    yield self.files[0]
-                    for i, obj in enumerate(it, 1):
-                        if obj:
-                            compiled_object_buffer[obj.file] = obj
-                        if i < len(self.files):
-                            yield self.files[i]
-                self.linter._object_buffer.update(compiled_object_buffer)
-        return CompilationIterator()
+        files = list(self.workspace.files)
+        with Pool(self.num_jobs) as pool:
+            it: Iterable[Optional[StexObject]] = pool.map(
+                self.get_objectfile, files)
+        paths = []
+        for obj in filter(None, it):
+            paths.append(obj.file)
+            self._object_buffer[obj.file] = obj
+        return paths
 
     def compile_related(self, file: Path) -> Dict[Path, StexObject]:
         ''' Compiles all dependencies of the file, the file itself and updates the buffer.
@@ -195,7 +183,7 @@ class Linter:
                 queue.add(dep.file_hint)
         return visited
 
-    def lint(self, file: Path) -> LintingResult:
+    def lint(self, file: Path, model: Optional[Seq2SeqModel] = None) -> LintingResult:
         ''' Lint a file.
 
         Parameters:
@@ -211,6 +199,18 @@ class Linter:
         else:
             objects: Dict[Path, StexObject] = self.compile_related(file=file)
             ln = self.linker.link(file, objects, self.compiler)
+            if model is not None:
+                log.debug('Adding trefier tags for file: %s', file)
+                tags, = model.predict(file)
+                env_pattern = re.compile(
+                    r'[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?')
+                for tag in tags:
+                    if round(tag.label) and not any(map(env_pattern.fullmatch, tag.token.envs)):
+                        loc = Location(file.as_uri(), tag.token.range)
+                        log.debug('Tagging %s with %s',
+                                  loc.format_link(), tag.label)
+                        ln.diagnostics.trefier_tag(
+                            tag.token.range, tag.token.lexeme, tag.label)
             self._linked_object_buffer[file] = ln
             more_objects = self._object_buffer if self.enable_global_validation else {}
             self.linker.validate_object_references(

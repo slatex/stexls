@@ -250,14 +250,15 @@ class Server(Dispatcher):
             enable_global_validation=self.enable_global_validation,
             num_jobs=self.num_jobs)
         if self.linter.enable_global_validation:
-            compile_progress_iter = self.linter.compile_workspace()
             try:
-                async with ProgressBar(server=self, title='Compiling', cancellable=True, total=len(compile_progress_iter)) as progress:
-                    self.cancellable_work_done_progresses[progress.token] = progress
-                    await progress.begin()
-                    for i, currently_compiling_file in enumerate(compile_progress_iter):
-                        await progress.update(i, message=currently_compiling_file.name, cancellable=True)
-                del self.cancellable_work_done_progresses[progress.token]
+                num_files = len(list(self.linter.workspace.files))
+                async with ProgressBar(
+                        server=self,
+                        title=f'Compiling {num_files} files',
+                        cancellable=False,
+                        enabled=self.work_done_progress_capability.enabled) as progress_bar:
+                    await progress_bar.begin()
+                    self.linter.compile_workspace()
             except Exception:
                 log.exception('An error occured while compiling workspace')
         self.completion_engine = CompletionEngine(None)
@@ -265,14 +266,19 @@ class Server(Dispatcher):
             log.info('Linting workspace on startup...')
             files = list(self.linter.workspace.files)
             try:
-                async with ProgressBar(server=self, title='Linting', cancellable=True, total=len(files)) as progress:
-                    self.cancellable_work_done_progresses[progress.token] = progress
-                    await progress.begin()
+                async with ProgressBar(
+                        server=self,
+                        title='Linting',
+                        cancellable=True,
+                        total=len(files),
+                        enabled=self.work_done_progress_capability.enabled) as progress_bar:
+                    self.cancellable_work_done_progresses[progress_bar.token] = progress_bar
+                    await progress_bar.begin()
                     for i, file in enumerate(files):
-                        await progress.update(i, message=file.name, cancellable=True)
+                        await progress_bar.update(i, message=file.name, cancellable=True)
                         result = self.linter.lint(file)
                         await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
-                del self.cancellable_work_done_progresses[progress.token]
+                del self.cancellable_work_done_progresses[progress_bar.token]
             except Exception:
                 log.exception("Exception raised while linting workspace")
         log.info('Initialized')
@@ -468,7 +474,8 @@ class ProgressBar:
                  cancellable: bool = False,
                  total: int = None,
                  begin_message: str = None,
-                 end_message: str = None) -> None:
+                 end_message: str = None,
+                 enabled: bool = False) -> None:
         """ Initializes a progressbar. It still must be created using the @create() async task.
 
         Parameters:
@@ -486,6 +493,7 @@ class ProgressBar:
         self._total = total
         self._begin_message_sent: bool = False
         self.created: bool = False
+        self.enabled = enabled
         self._on_finished_event: asyncio.Future = asyncio.Future()
 
     async def __aenter__(self):
@@ -519,6 +527,8 @@ class ProgressBar:
 
         If the client raises an error during this call, no further progress information may be sent to the client.
         '''
+        if not self.enabled:
+            return
         created = self._server.window_work_done_progress_create(
             token=self.token)
         try:
@@ -530,6 +540,8 @@ class ProgressBar:
 
     async def begin(self, message: str = None):
         ' Sends a begin message with optional text. '
+        if not self.enabled:
+            return
         if self.created:
             if self._begin_message_sent:
                 raise ValueError('ProgressBar begin() called more than once.')
@@ -549,6 +561,8 @@ class ProgressBar:
         self._begin_message_sent = True
 
     async def update(self, iteration_progress_count: int = None, message: str = None, cancellable: bool = None):
+        if not self.enabled:
+            return
         if not self.created:
             # raise ValueError(f'Progress "{self.token}" not created by client.')
             return  # Return if not created
@@ -569,6 +583,8 @@ class ProgressBar:
         await self._server.send_progress(token=self.token, value=report)
 
     async def end(self, message: str):
+        if not self.enabled:
+            return
         if not self.created:
             # raise ValueError(f'Progress "{self.token}" not created by client.')
             return  # Return if not created

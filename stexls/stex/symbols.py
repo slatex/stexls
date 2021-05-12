@@ -412,12 +412,12 @@ class ScopeSymbol(Symbol):
 
     def __init__(self, location: vscode.Location, name: str = 'UNNAMED_SCOPE'):
         ScopeSymbol.count += 1
-        super().__init__(location, f'__{name}#{ScopeSymbol.count}__')
+        # Add uuid because of duplicate symbols during multiple runs
+        # The odds of matching up count and uuid between restarts
+        # of the program are low.
         self.uuid = uuid.uuid4().hex
         super().__init__(
             location, f'__{name}#{ScopeSymbol.count}@{self.uuid}__')
-        self.name = name
-        self.access_modifier = AccessModifier.PUBLIC
 
     def __repr__(self):
         return f'[{self.access_modifier.name} Scope "{self.name}" at {self.location.range.start.format()}]'

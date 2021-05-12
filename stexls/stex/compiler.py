@@ -332,8 +332,7 @@ class Compiler:
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
             if not isinstance(obj, StexObject):
-                raise ObjectfileIsCorruptedError(
-                    f'Objectfile for "{file}" is corrupted.')
+                raise ObjectfileIsCorruptedError(file)
             return obj
 
     def recompilation_required(self, file: Path, time_modified: float = None):

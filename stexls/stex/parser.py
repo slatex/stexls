@@ -303,7 +303,7 @@ class ModsigIntermediateParseTree(IntermediateParseTree):
     def from_environment(cls, e: parser.Environment) -> Optional[ModsigIntermediateParseTree]:
         match = ModsigIntermediateParseTree.PATTERN.fullmatch(e.env_name)
         if not match:
-            return
+            return None
         if not e.rargs:
             raise exceptions.CompilerError(
                 'Modsig environment missing required argument: {<module name>}')

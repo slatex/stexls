@@ -125,8 +125,8 @@ class Linker:
                 _stack[(dep.file_hint, dep.module_name)] = (obj, dep)
                 if _toplevel_module is None:
                     # TODO: I can't remember why setting toplevel module is required at all times and not conditional.
+                    # Toplevel used for preventing circular imports
                     _toplevel_module = dep.scope.get_current_module_name()
-                    assert _toplevel_module is not None, "Invalid state: If toplevel is not set, then the scope must have a module in scope."
                 try:
                     imported = self.link(
                         objects=objects,

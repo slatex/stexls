@@ -286,7 +286,7 @@ class Environment(Node):
             raises if no token provided.
         """
         if self.name is None:
-            raise RuntimeError(
+            raise ValueError(
                 'Unable to get environment name,'
                 'because no name token was provided.')
         return self.name.text_inside.strip()

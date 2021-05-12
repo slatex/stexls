@@ -331,7 +331,7 @@ class Compiler:
             raise ObjectfileNotFoundError(file)
         with open(objectfile, 'rb') as fd:
             obj = pickle.load(fd)
-            if not isinstance(obj, StexObject):
+            if not isinstance(obj, StexObject) or obj.file != file:
                 raise ObjectfileIsCorruptedError(file)
             return obj
 

@@ -410,8 +410,8 @@ class ScopeSymbol(Symbol):
     count = 0
 
     def __init__(self, location: vscode.Location, name: str = 'UNNAMED_SCOPE'):
-        super().__init__(location, f'__{name}#{ScopeSymbol.count}__')
         ScopeSymbol.count += 1
+        super().__init__(location, f'__{name}#{ScopeSymbol.count}__')
         self.name = name
         self.access_modifier = AccessModifier.PUBLIC
 

@@ -22,7 +22,7 @@ if __name__ == '__main__':
     try:
         version = pkg_resources.require('stexls')[0].version
     except Exception:
-        version = '4.4.2'
+        version = 'undefined'
     parser.add_argument('--version', '-V', action='version', version=version)
     subparsers = parser.add_subparsers(dest='command', required=True)
     linter_cmd = subparsers.add_parser('linter')

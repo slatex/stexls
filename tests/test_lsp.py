@@ -14,14 +14,7 @@ from stexls.lsp.cli import lsp
 class TestLSP(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.port = random.randint(2048, 65000)
-        self.lsp = lsp(
-            port=self.port,
-            transport_kind='tcp',
-            enable_global_validation=True,
-            lint_workspace_on_startup=True,
-            enable_trefier=True,
-            num_jobs=4,
-        )
+        self.lsp = lsp(port=self.port, transport_kind='tcp')
         self.stub = {
             "jsonrpc": "2.0",
             "id": "test message",
@@ -29,6 +22,7 @@ class TestLSP(IsolatedAsyncioTestCase):
             "params": {
                 'capabilities': {},
                 'rootUri': Path('/tmp/stexls-tests-root-dir').as_uri(),
+                'initializationOptions': {},
             },
         }
 
@@ -182,7 +176,7 @@ class TestLSP(IsolatedAsyncioTestCase):
     async def test_initialization(self):
         root_path = Path("/home/re15tygi/source/stexls/downloads")
         work_done_progress_enabled = False
-        initialization_options = {"test_option": "test value"}
+        initialization_options = {"enableTrefier": "disabled", "numJobs": -1}
         client_initialization_message = {
             "jsonrpc": "2.0",
             "id": 0,
@@ -458,7 +452,7 @@ class TestLSP(IsolatedAsyncioTestCase):
             }
         }
 
-        def send_initialize(writer):
+        def send_initialize(writer: StreamWriter):
             content = json.dumps(client_initialization_message).encode()
             writer.write(
                 f'content-length: {len(content)}\r\n\r\n'.encode() + content)
@@ -482,19 +476,15 @@ class TestLSP(IsolatedAsyncioTestCase):
         self.err = None
 
         async def client(reader: StreamReader, writer: StreamWriter):
-            send_initialize(writer)
-            response = await wait_for_response(reader)
-            print(response)
-            send_initialized(writer)
-            response = await wait_for_response(reader)
-            print(response)
             try:
-                for i in range(3000):
-                    response = await wait_for(wait_for_response(reader), timeout=15)
-                    print(i, response)
+                send_initialize(writer)
+                response = await wait_for_response(reader)
+                print(response)
+                send_initialized(writer)
+                response = await wait_for_response(reader)
+                print(response)
             except Exception as err:
                 self.err = err
-                traceback.print_exc()
             finally:
                 writer.close()
         client_connection = await asyncio.start_server(client, host='localhost', port=self.port)

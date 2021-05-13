@@ -1,12 +1,18 @@
 import asyncio
+import datetime
 import logging
 import sys
+import time
 import uuid
+from asyncio.events import TimerHandle
+from asyncio.tasks import create_task
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Union
 from urllib.parse import urlparse
 
 import pkg_resources
+from stexls.util.unwrap import unwrap
 
 from .. import vscode
 from ..jsonrpc.dispatcher import Dispatcher
@@ -15,7 +21,6 @@ from ..jsonrpc.hooks import alias, method, notification, request
 from ..linter.linter import Linter
 from ..trefier.models.seq2seq import Seq2SeqModel
 from ..util.workspace import Workspace
-from .capabilities import WorkDoneProgressCapability
 from .completions import CompletionEngine
 from .exceptions import ServerNotInitializedException
 from .state import ServerState
@@ -24,40 +29,50 @@ from .workspace_symbols import WorkspaceSymbols
 log = logging.getLogger(__name__)
 
 
+class Cancelable(Protocol):
+    def cancel(self) -> bool:
+        ...
+
+
+def _get_default_trefier_model_path() -> Path:
+    return Path(__file__).parent.parent / 'seq2seq.model'
+
+
+@dataclass
+class InitializationOptions:
+    compile_workspace_on_startup_file_limit: int = 0
+    enable_trefier: Literal['disabled', 'enabled', 'full'] = 'disabled'
+    enable_linting_of_related_files: bool = False
+    num_jobs: int = 1
+    delay: float = 1
+
+    @staticmethod
+    def from_json(obj: dict):
+        return InitializationOptions(
+            compile_workspace_on_startup_file_limit=int(
+                obj["compileWorkspaceOnStartupFileLimit"]),
+            enable_trefier=obj["enableTrefier"],
+            enable_linting_of_related_files=bool(
+                obj['enableLintingOfRelatedFiles']),
+            num_jobs=int(obj['numJobs']),
+            delay=float(obj['delay']),
+        )
+
+
 class Server(Dispatcher):
-    def __init__(
-            self,
-            connection,
-            *,
-            num_jobs: int = 1,
-            update_delay_seconds: float = 1.0,
-            enable_global_validation: bool = False,
-            lint_workspace_on_startup: bool = False,
-            enable_linting_of_related_files_on_change: bool = False,
-            path_to_trefier_model: Path = None):
+    def __init__(self, connection):
         """ Creates a server dispatcher.
 
         Parameters:
             connection: Inherited from Dispatcher. This argument is automatically provided by the class' initialization method.
-
-        Keyword Arguments:
-            num_jobs: Number of processes to use for multiprocessing when compiling.
-            update_delay_seconds: Number of seconds the linting of a changed file is delayed after making changes.
-            enable_global_validation: Enables linter global validation.
-            enable_linting_of_related_files_on_change:
-                Enables automatic linting requests for files that reference a file that received a didChange event.
-            lint_workspace_on_startup: Create disagnostics for all files in the workspace after initialization.
-            path_to_trefier_model: Path to a loadable Seq2Seq model used to create trefier tags.
         """
         super().__init__(connection=connection)
+        # Initialization options from `initialize` request
+        self.initialization_options = InitializationOptions()
+        # State the serer is in
         self.state = ServerState.UNINITIALIZED
-        self.num_jobs = num_jobs
-        self.update_delay_seconds = update_delay_seconds
-        self.work_done_progress_capability: WorkDoneProgressCapability = WorkDoneProgressCapability()
-        self.enable_global_validation: bool = enable_global_validation
-        self.lint_workspace_on_startup: bool = lint_workspace_on_startup
-        self.enable_linting_of_related_files_on_change = enable_linting_of_related_files_on_change
-        self.path_to_trefier_model = path_to_trefier_model
+        # If this is false, then the server must not send progress information
+        self.work_done_progress_capability: bool = False
         # Path to the root directory
         self.root_directory: Optional[Path] = None
         # trefier model loaded from path_to_trefier_model
@@ -68,57 +83,12 @@ class Server(Dispatcher):
         self.linter: Optional[Linter] = None
         # Completion engine used to encapsulate the complex process of creating completion suggestions
         self.completion_engine: Optional[CompletionEngine] = None
-        # Buffer used to buffer changed files, so that lint isn't called everytime something is typed, but called
-        # after a certain delay after the user stopped typing
-        self.update_request_buffer: Set[Path] = set()
-        # Timeout instance of current update request. Can be canceled when a new update request is made.
-        self.update_request_timeout: Optional[asyncio.TimerHandle] = None
         # Manager for work done progress bars
-        self.cancellable_work_done_progresses: Dict[object, ProgressBar] = {}
+        self.cancellable_work_done_progresses: Dict[object, Cancelable] = {}
         # Accumulator for symbols in workspace, used for suggestions and fast search of missing modules etc
         self.workspace_symbols = WorkspaceSymbols()
-
-    async def update_files_and_clear_timeout(self):
-        ''' Actually update the files in the buffered file update requests.
-        '''
-        self.update_request_timeout = None
-        update_requests = list(self.update_request_buffer)
-        self.update_request_buffer.clear()
-        log.debug('Linting %i files.', len(update_requests))
-        cancellable = len(update_requests) > 3
-        async with ProgressBar(self, title='Linting', cancellable=cancellable, total=len(update_requests)) as progress:
-            self.cancellable_work_done_progresses[progress.token] = progress
-            await progress.begin()
-            for i, file in enumerate(update_requests):
-                await progress.update(i, message=file.name, cancellable=cancellable)
-                # TODO: Need all the changed unlinked objects to properly add workspace symbols
-                self.workspace_symbols.remove(file)
-                ln = self.linter.lint(file)
-                await self.publish_diagnostics(uri=file.as_uri(), diagnostics=ln.diagnostics)
-                obj = self.linter._object_buffer.get(file)
-                if obj:
-                    self.workspace_symbols.add(obj)
-        del self.cancellable_work_done_progresses[progress.token]
-        log.debug('Finished linting %i files.', len(update_requests))
-
-    def request_update_for_set_of_files(self, files: Set[Path]):
-        ''' Request update for a set of files.
-
-        The update will be executed after a set amount of time
-        and will be delayed again, if @_request_update_for_set_of_files is called again before the timer runs out.
-        '''
-        log.debug('Update request for the files: %s', files)
-        self.update_request_buffer.update(files)
-        if self.update_request_timeout:
-            log.debug('Canceling old update request timeout: %s',
-                      self.update_request_timeout)
-            self.update_request_timeout.cancel()
-        self.update_request_timeout = asyncio.get_running_loop().call_later(
-            self.update_delay_seconds,
-            asyncio.create_task,
-            self.update_files_and_clear_timeout()
-        )
-        log.debug('New update timeout: %s', self.update_request_buffer)
+        # Scheduler for publishing diagnostics
+        self.scheduler: Optional[LintingScheduler] = None
 
     @method
     @alias('$/progress')
@@ -138,7 +108,7 @@ class Server(Dispatcher):
         pass
 
     @method
-    def initialize(
+    async def initialize(
         self,
         capabilities: vscode.ClientCapabilities,
         workspaceFolders: Optional[List[vscode.WorkspaceFolder]] = None,
@@ -147,10 +117,9 @@ class Server(Dispatcher):
         locale: Optional[str] = None,
         rootPath: Optional[str] = None,
         rootUri: Optional[vscode.DocumentUri] = None,
-        initializedOptions: Any = None,
         workDoneProgress: Union[
             int, str, vscode.Undefined] = vscode.undefined,
-        initializationOptions: Any = None,
+        initializationOptions: InitializationOptions = None,
         **kwargs,
     ):
         ''' Initializes the serverside.
@@ -171,17 +140,18 @@ class Server(Dispatcher):
             raise ValueError('Server not uninitialized.')
         if self.state == ServerState.SHUTDOWN:
             raise InvalidRequestException('The server has shut down')
+        self.initialization_options = unwrap(initializationOptions)
 
         # Work done progress may only be sent if the capability is set
-        self.work_done_progress_capability = WorkDoneProgressCapability(
-            capabilities.window.get('workDoneProgress', False))
+        self.work_done_progress_capability = capabilities.window.get(
+            'workDoneProgress', False)
         log.info('Work done progress capability: %s',
-                 self.work_done_progress_capability.enabled)
+                 self.work_done_progress_capability)
 
         if isinstance(rootUri, vscode.DocumentUri):
             self.root_directory = Path(urlparse(rootUri).path)
         elif isinstance(rootPath, str):
-            # rootPath is deprecated and must only be used if @rootUri is not defined
+            # rootPath is deprecated and must only be used if `rootUri` is not defined
             self.root_directory = Path(rootPath)
         else:
             raise RuntimeError('No root path in initialize.')
@@ -192,7 +162,21 @@ class Server(Dispatcher):
         except Exception:
             version = 'undefined'
         log.info('stexls version: %s', version)
-
+        outdir = self.root_directory / '.stexls' / 'objects'
+        self.workspace = Workspace(self.root_directory)
+        if self.initialization_options.enable_trefier in ('enabled', 'full'):
+            self.load_trefier_model()
+        self.linter = Linter(
+            workspace=self.workspace,
+            outdir=outdir)
+        self.completion_engine = CompletionEngine(self.linter.linker)
+        self.scheduler = LintingScheduler(
+            server=self,
+            delay=self.initialization_options.delay,
+            linter=self.linter,
+            workspace=self.workspace,
+            trefier=self.trefier_model,
+            enable_trefier=self.initialization_options.enable_trefier)
         self.state = ServerState.INITIALIZED
         return {
             'capabilities': {
@@ -222,11 +206,13 @@ class Server(Dispatcher):
 
     def load_trefier_model(self):
         " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
-        log.info('Loading trefier model from: %s', self.path_to_trefier_model)
+
+        model_path = _get_default_trefier_model_path()
+        log.info('Loading trefier model from: %s', model_path)
+        assert model_path.is_file()
         try:
             from stexls.trefier.models.seq2seq import Seq2SeqModel
-            self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(
-                self.path_to_trefier_model)
+            self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(model_path)
         except Exception as err:
             log.exception('Failed to load seq2seq model')
             self.show_message(type=vscode.MessageType.Error,
@@ -240,49 +226,35 @@ class Server(Dispatcher):
         if self.state != ServerState.INITIALIZED:
             raise ValueError(
                 '`initialized` method can only be called once directly following `initialize`.')
-        outdir = self.root_directory / '.stexls' / 'objects'
-        self.workspace = Workspace(self.root_directory)
-        if self.path_to_trefier_model:
-            self.load_trefier_model()
-        self.linter = Linter(
-            workspace=self.workspace,
-            outdir=outdir,
-            enable_global_validation=self.enable_global_validation,
-            num_jobs=self.num_jobs)
-        if self.linter.enable_global_validation:
-            try:
-                num_files = len(list(self.linter.workspace.files))
-                async with ProgressBar(
-                        server=self,
-                        title=f'Compiling {num_files} files',
-                        cancellable=False,
-                        enabled=self.work_done_progress_capability.enabled) as progress_bar:
-                    await progress_bar.begin()
-                    self.linter.compile_workspace()
-            except Exception:
-                log.exception('An error occured while compiling workspace')
-        self.completion_engine = CompletionEngine(None)
-        if self.lint_workspace_on_startup:
-            log.info('Linting workspace on startup...')
-            files = list(self.linter.workspace.files)
-            try:
-                async with ProgressBar(
-                        server=self,
-                        title='Linting',
-                        cancellable=True,
-                        total=len(files),
-                        enabled=self.work_done_progress_capability.enabled) as progress_bar:
-                    self.cancellable_work_done_progresses[progress_bar.token] = progress_bar
-                    await progress_bar.begin()
-                    for i, file in enumerate(files):
-                        await progress_bar.update(i, message=file.name, cancellable=True)
-                        result = self.linter.lint(file)
-                        await self.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
-                del self.cancellable_work_done_progresses[progress_bar.token]
-            except Exception:
-                log.exception("Exception raised while linting workspace")
-        log.info('Initialized')
+        try:
+            num_files = len(list(self.linter.workspace.files))
+            log.info(
+                'Compiling workspace with %i files (limit %i) in order to buffer objects for global validation.',
+                num_files, self.initialization_options.compile_workspace_on_startup_file_limit)
+            limit_is = self.initialization_options.compile_workspace_on_startup_file_limit
+            if 0 < limit_is < num_files:
+                await self.show_message(
+                    type=vscode.MessageType.Info,
+                    message=(
+                        f'Your workspace has more .tex files ({num_files}), '
+                        f'than your limit ({limit_is}). You can increase it, '
+                        'or disabled in settings UI under stexls>compileWorkspaceOnStartupFileLimit')
+                )
+            async with ProgressBar(
+                    server=self,
+                    title=f'Compiling {num_files} files',
+                    cancellable=False,
+                    enabled=self.work_done_progress_capability) as progress_bar:
+                await progress_bar.begin()
+                loop = asyncio.get_event_loop()
+                compiled_files = await loop.run_in_executor(
+                    None, self.linter.compile_workspace, limit_is, self.initialization_options.num_jobs)
+            for file in compiled_files:
+                self.scheduler.schedule(file, prio='low')
+        except Exception:
+            log.exception('An error occured while compiling workspace')
         self.state = ServerState.READY
+        log.info('Initialized')
 
     @method
     def shutdown(self):
@@ -318,10 +290,10 @@ class Server(Dispatcher):
     @alias('window/workDoneProgress/cancel')
     def window_work_done_progress_cancel(self, token: Union[int, str]):
         log.info('Cancelling work done progress token: %s', token)
-        prog = self.cancellable_work_done_progresses.get(token)
-        if not prog:
+        cancelable = self.cancellable_work_done_progresses.get(token)
+        if cancelable is None:
             log.error('Unknown progress token: %s', token)
-        elif not prog.cancel():
+        elif not cancelable.cancel():
             log.warning('Token already cancelled: %s', token)
 
     @method
@@ -335,9 +307,8 @@ class Server(Dispatcher):
             **params):
         self.protect_from_uninit_and_shutdown()
         log.debug('definitions(%s, %s)', textDocument.path, position.format())
-        if not self.linter:
-            return None
-        definitions = self.linter.definitions(textDocument.path, position)
+        definitions = unwrap(self.linter).definitions(
+            textDocument.path, position)
         log.debug('Found %i definitions: %s', len(definitions), definitions)
         return definitions
 
@@ -349,14 +320,10 @@ class Server(Dispatcher):
             position: vscode.Position,
             context: Any = vscode.undefined,
             **params):
-        if self.state == ServerState.UNINITIALIZED:
-            raise ServerNotInitializedException()
-        if self.state == ServerState.SHUTDOWN:
-            raise InvalidRequestException('The server has shut down')
+        self.protect_from_uninit_and_shutdown()
         log.debug('references(%s, %s)', textDocument.path, position.format())
-        if not self.linter:
-            return None
-        references = self.linter.references(textDocument.path, position)
+        references = unwrap(self.linter).references(
+            textDocument.path, position)
         log.debug('Found %i references: %s', len(references), references)
         return references
 
@@ -383,11 +350,10 @@ class Server(Dispatcher):
     @alias('textDocument/didOpen')
     async def text_document_did_open(self, textDocument: vscode.TextDocumentItem):
         self.protect_from_uninit_and_shutdown()
-        log.debug('didOpen(%s)', textDocument)
-        if not self.workspace:
-            return
-        if self.workspace.open_file(textDocument.path, textDocument.version, textDocument.text):
-            self.request_update_for_set_of_files({textDocument.path})
+        did_open = unwrap(self.workspace).open_file(
+            textDocument.path, textDocument.version, textDocument.text)
+        log.debug('didOpen(%s) -> %s', textDocument, did_open)
+        unwrap(self.scheduler).schedule(textDocument.path, prio='high')
 
     @method
     @alias('textDocument/didChange')
@@ -407,20 +373,12 @@ class Server(Dispatcher):
                     # TODO: `item` has to be properly deserialized !
                     # TODO: Implement recursive annotations module
                     textDocument.path, textDocument.version, item['text'])
+                unwrap(self.scheduler).schedule(textDocument.path, prio='high')
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
-                else:
-                    if self.linter and self.enable_linting_of_related_files_on_change:
-                        log.debug(
-                            'Linter searching for related files of: "%s"', textDocument.path)
-                        requests = self.linter.find_dependent_files_of(
-                            textDocument.path)
-                        log.debug('Found %i relations: %s',
-                                  len(requests), requests)
-                    else:
-                        requests = set()
-                    requests.add(textDocument.path)
-                    self.request_update_for_set_of_files(requests)
+                if self.initialization_options.enable_linting_of_related_files:
+                    for file in unwrap(self.linter).find_dependent_files_of(textDocument.path):
+                        unwrap(self.scheduler).schedule(file, prio='low')
         else:
             log.warning(
                 'didChange event for non-opened document: "%s"', textDocument.path)
@@ -443,12 +401,12 @@ class Server(Dispatcher):
             textDocument: vscode.TextDocumentIdentifier,
             text: Union[str, vscode.Undefined] = vscode.undefined):
         self.protect_from_uninit_and_shutdown()
-        if self.workspace and self.workspace.is_open(textDocument.path):
+        if unwrap(self.workspace).is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
-            self.request_update_for_set_of_files({textDocument.path})
+            unwrap(self.scheduler).schedule(textDocument.path, prio='high')
         else:
-            log.debug('Received didSave event for invalid file: %s',
-                      textDocument.uri)
+            log.warning('didSave event for untracked file: %s',
+                        textDocument.uri)
 
     def protect_from_uninit_and_shutdown(self):
         """ Raises appropriate exceptions depending on server state.
@@ -490,7 +448,7 @@ class ProgressBar:
         self._end_message = end_message
         self.token = str(uuid.uuid4())
         self._cancellable = cancellable
-        self._total = total
+        self.total = total
         self._begin_message_sent: bool = False
         self.created: bool = False
         self.enabled = enabled
@@ -551,7 +509,7 @@ class ProgressBar:
             args: Dict[str, Any] = {}
             if self._title is not None:
                 args['title'] = self._title
-            if self._total is not None:
+            if self.total is not None:
                 args['percentage'] = 0
             if message is not None:
                 args['message'] = message
@@ -573,8 +531,8 @@ class ProgressBar:
             # Raise if canceled
             await self._on_finished_event
         args: Dict[str, Any] = {}
-        if self._total is not None and iteration_progress_count is not None:
-            args['percentage'] = int(100*iteration_progress_count/self._total)
+        if self.total is not None and iteration_progress_count is not None:
+            args['percentage'] = int(100*iteration_progress_count/self.total)
         if message is not None:
             args['message'] = message
         if cancellable is not None:
@@ -593,3 +551,209 @@ class ProgressBar:
         if not self._on_finished_event.done():
             # Only set event if not canceled or already returned
             self._on_finished_event.set_result(True)
+
+
+class LintingScheduler:
+    def __init__(
+        self,
+        server: Server,
+        delay: float,
+        linter: Linter,
+        workspace: Workspace,
+        trefier: Optional[Seq2SeqModel],
+        enable_trefier: Literal['disabled', 'enabled', 'full'],
+    ) -> None:
+        self.delay = delay
+        self.server = server
+        self.linter = linter
+        self.workspace = workspace
+        self.trefier = trefier
+        self.enable_trefier = enable_trefier
+        self.lint_queue_high: List[Path] = []
+        self.lint_queue_low: List[Path] = []
+        self.task: Optional[Cancelable] = None
+        self.timeout: Optional[TimerHandle] = None
+        self.never_linted_files: Set[Path] = set()
+
+    async def _handle_high_priority(self) -> bool:
+        """ Lint a file from the high priority queue.
+
+        Applies the trefier to high priority requests.
+
+        Returns:
+            bool: True if a high priority file was linted.
+        """
+        if not self.lint_queue_high:
+            return False
+        file = self.lint_queue_high.pop()
+        log.debug('Linting high prio: %s', file)
+        await self.lint(file, trefier=self.trefier)
+        return True
+
+    async def _handle_low_priority(self) -> bool:
+        """ Lint a file from the low priority queue.
+
+        Low priority files do not use the trefier by default.
+
+        Returns:
+            bool: True if a low priority file was linted.
+        """
+        if not self.lint_queue_low:
+            return False
+        file = self.lint_queue_low.pop()
+        log.debug('Linting low prio: %s', file)
+        trefier = None
+        if self.enable_trefier == 'full':
+            # Enable trefier, if "full" mode
+            trefier = self.trefier
+        await self.lint(file, trefier=trefier)
+        return True
+
+    async def _handle_unbuffered(self, files: List[Path]) -> bool:
+        """ Search for a file that is not buffered by the linter and buffer it.
+
+        Args:
+            files (List[Path]): Files to consider.
+
+        Returns:
+            bool: True if a file was buffered. False otherwise.
+        """
+        unbuffered_files = filter(
+            lambda file: file not in self.linter.unlinked_object_buffer,
+            files)
+        unbuffered_file = next(unbuffered_files, None)
+        if not unbuffered_file:
+            return False
+        # If there is a file that is not buffered,
+        # Compile it and buffer the result.
+        log.debug('Lint unbuffered object: %s', unbuffered_file)
+        await self.lint(unbuffered_file, None)
+        return True
+
+    async def loop(self):
+        """ The main loop of the scheduler.
+
+        The loop is automatically started and postponed until started
+        by the `schedule` method.
+        The same loop runs until all files have been linted.
+
+        After all files have been linted the loop stops, but is restarted
+        after a short delay after a new scheduling requests comes in.
+
+        The loop will not start as long as new scheduling requests come in
+        in order to prevent useless linting while the user is still editing a file.
+        """
+        log.info('Scheduler loop started.')
+        try:
+            begin = time.time()
+            loop_time = time.time()
+            estimated_loop_time = 1
+            alpha = 0.05
+            loop_count = 0
+            update_freq_sec = 5
+            last_update_time = time.time()
+            async with ProgressBar(self.server, 'Linting', enabled=self.server.work_done_progress_capability) as pbar:
+                await pbar.begin(message=f'{len(self.lint_queue_high) + len(self.lint_queue_low)} files')
+
+                while True:
+                    loop_count += 1
+                    items_left = len(self.lint_queue_high) + \
+                        len(self.lint_queue_low)
+                    tend = time.time()
+                    time_elapsed = tend - begin
+                    loop_time_elapsed = tend - loop_time
+                    estimated_loop_time = loop_time_elapsed * \
+                        alpha + estimated_loop_time*(1-alpha)
+                    eta = datetime.timedelta(seconds=round(
+                        items_left * estimated_loop_time))
+                    loop_time = time.time()
+                    if time.time() - last_update_time > update_freq_sec:
+                        await pbar.update(message=f'{items_left if items_left else "?"} files (eta {str(eta)})')
+                        last_update_time = time.time()
+                    log.debug('Scheduler loop time: %s (%s), eta %s',
+                              loop_time_elapsed, time_elapsed, str(eta))
+                    loop_time = time.time()
+                    if await self._handle_high_priority():
+                        # Continue the loop else the priorities would not have any effect
+                        continue
+                    elif await self._handle_low_priority():
+                        # Continue, so that high priority is first again
+                        continue
+                    elif await self._handle_unbuffered(
+                            list(sorted(self.workspace.files, key=self.workspace.get_time_modified))):
+                        # Continue, so that high prio is first again
+                        continue
+                    # Reaching here means, that no file was in either queue,
+                    # all files are buffered and no file need recompilation.
+                    # We can exit the loop and clean up the task.
+                    # (Cleanup is handled by the schedule timeout callback)
+                    break
+        except Exception:
+            log.exception('Exception raised during scheduler loop.')
+            raise
+        finally:
+            log.debug('Scheduler loop exited after %s', time.time() - begin)
+
+    async def lint(self, file: Path, trefier: Optional[Seq2SeqModel]):
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, self.linter.lint, file, trefier)
+        self.server.workspace_symbols.remove(file)
+        self.server.workspace_symbols.add(result.object)
+        await self.server.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
+
+    def schedule(self, file: Path, prio: Literal['high', 'low']):
+        """ Schedule a file for linting.j
+
+        Args:
+            file (Path): File to lint.
+            prio (Literal['high', 'low']): Priority. The priority of a file can be increased,
+                but multiple scheduling of low priorty files will be ignored.
+        """
+        if prio == 'high':
+            # Add to high priorty
+            # promote if in any other queue already.
+            if file in self.lint_queue_low:
+                self.lint_queue_low.remove(file)
+            if file in self.lint_queue_high:
+                self.lint_queue_high.remove(file)
+            self.lint_queue_high.append(file)
+            log.info('Scheduled with high priority: %s', file)
+        elif file not in (self.lint_queue_low + self.lint_queue_high):
+            # add to low priority, if in no other queue already
+            # insert at front for breadth first style linting
+            self.lint_queue_low.insert(0, file)
+            log.debug('Scheduled with low priority: %s', file)
+        else:
+            # Task was not suited to be added to any queue
+            # because it already has a priority: skip it.
+            log.debug('File already scheduled: %s', file)
+            return
+        # Task was not skipped, and will be handled some time later
+        # Check if there is a task that handles the queued items.
+        # If not, we must start one.
+        if self.task is None:
+            if self.timeout is not None:
+                # Cancel a planned task loop, because
+                # files have been changed while still waiting
+                # for another loop to start
+                self.timeout.cancel()
+            loop = asyncio.get_running_loop()
+
+            def run_schedule_loop():
+                " This function handles creation and cleanup of the timeout/task members. "
+                # This function will only ever by called via the timeout
+                # This means that the timeout ran out and can be removed
+                self.timeout = None
+                # Start a new loop and remember that it started by writing to self.task
+                self.task = create_task(self.loop())
+
+                def done_callback(*args, **kwargs):
+                    ' After the task finished, we clean it up by unsetting the `self.task` member. '
+                    self.task = None
+                self.task.add_done_callback(done_callback)
+            # Start a timeout. The loop starting routine will be called
+            # if no other files change during the delay period.
+            # After that it will run until all files have been handled.
+            # After all files have been handled, it will clean itself up
+            # and stop. Then a new loop can be started as soon as a user input is made again.
+            self.timeout = loop.call_later(self.delay, run_schedule_loop)

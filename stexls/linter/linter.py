@@ -4,7 +4,7 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set
 
-from ..stex.compiler import Compiler, ObjectfileNotFoundError, StexObject
+from ..stex.compiler import Compiler, StexObject
 from ..stex.diagnostics import Diagnostic, DiagnosticSeverity
 from ..stex.linker import Linker
 from ..trefier.models.seq2seq import Seq2SeqModel
@@ -74,28 +74,21 @@ class LintingResult:
 class Linter:
     def __init__(self,
                  workspace: Workspace,
-                 outdir: Path = None,
-                 enable_global_validation: bool = False,
-                 num_jobs: int = 1):
+                 outdir: Path = None):
         """ Initializes a linter object.
 
         Parameters:
             workspace: Workspace this linter works on.
             outdir: Output directory to where the compiler will store it's output at.
-            enable_global_validation: If enabled, will look at every cached compiled file in order to create better
-                diagnostics related to references and other things. To prefetch all objects use @Linter.compile_workspace().
-            num_jobs: Number of processes to use for compilation.
         """
         self.workspace = workspace
         self.outdir = outdir or (Path.cwd() / 'objects')
-        self.enable_global_validation = enable_global_validation
-        self.num_jobs = num_jobs
         self.compiler = Compiler(self.workspace.root, self.outdir)
         self.linker = Linker(self.outdir)
         # The objectbuffer stores all compiled objects
-        self._object_buffer: Dict[Path, StexObject] = dict()
+        self.unlinked_object_buffer: Dict[Path, StexObject] = dict()
         # THe linked object buffer bufferes all linked objects
-        self._linked_object_buffer: Dict[Path, StexObject] = dict()
+        self.linked_object_buffer: Dict[Path, StexObject] = dict()
 
     def get_files_that_require_recompilation(self) -> Dict[Path, Optional[str]]:
         ' Filters out the files that need recompilation and returns them together with their buffered content. '
@@ -105,53 +98,55 @@ class Linter:
                 files[file] = self.workspace.read_buffer(file)
         return files
 
-    def compile_file_with_respect_to_workspace(self, file: Path) -> Optional[StexObject]:
-        ' Compiles the file with the buffered content stored in workspace. '
-        try:
-            return self.compiler.compile(file, content=self.workspace.read_buffer(file))
-        except FileNotFoundError:
-            log.warning('Failed to compile file "%s": FileNotFound', file)
-        return None
-
     def get_objectfile(self, file: Path) -> Optional[StexObject]:
         """ Retrieves the object of `file`.
 
         If the file already has been compiled and not changed, a
         buffered StexObject will be returned.
 
+        This is a shortcut for `Compiler.compile_or_load_file`
+        that automatically reads buffered content and time buffer
+        time modified.
+
         Returns:
-            Optional[StexObject]: Object compiled from `file`. None if `file` does not contain an object.
+            Optional[StexObject]: The objectfile for `file`. None if an error occured.
         """
-        try:
-            if self.compiler.recompilation_required(file, self.workspace.get_time_buffer_modified(file)):
-                return self.compile_file_with_respect_to_workspace(file)
-        except Exception:
-            log.exception('Failed to compile file %s', file)
-        try:
-            return self.compiler.load_from_objectfile(file)
-        except ObjectfileNotFoundError:
-            log.warning('ObjectfileNotFound: "%s"', file)
-        return None
+        return self.compiler.compile_or_load_from_file(
+            file,
+            content=self.workspace.read_buffer(file),
+            time_modified=self.workspace.get_time_buffer_modified(file)
+        )
 
-    def compile_workspace(self) -> List[Path]:
-        ''' Compiles or loads all files in the workspace and bufferes them in ram.
+    def compile_workspace(self, limit: int = 10000, num_jobs: int = 1) -> List[Path]:
+        ''' Compiles or loads all files in the workspace.
 
-        This should be called after creating a linter with the `enable_global_validation` flag on.
-        Doings so will enable the linter to take every single file in the workspace and create better diagnostics.
+        The objects will be buffered and will be later used to
+        create diagnostics that otherwise can not be created
+        because some files have not been compield and buffered yet.
 
-        Every file present in `self.workspace.files` will be iterated over.
+        Args:
+            limit (int, optional): Maximum number of files that are compiled.
+                If set to 0, then no files are compiled, while -1 removes the limit.
+                Defaults to 10000.
+            num_jobs (int, optional): Number of processes to use for multiprocessing. Defaults to 1.
 
         Returns:
             List[Path]: Paths to files with objects in the workspace.
         '''
         files = list(self.workspace.files)
-        with Pool(self.num_jobs) as pool:
-            it: Iterable[Optional[StexObject]] = pool.map(
-                self.get_objectfile, files)
+        if limit >= 0:
+            files = files[:limit]
+        content = list(map(self.workspace.read_buffer, files))
+        time_modified = list(
+            map(self.workspace.get_time_buffer_modified, files))
+        args = zip(files, content, time_modified)
+        with Pool(num_jobs) as pool:
+            it: Iterable[Optional[StexObject]] = pool.starmap(
+                self.compiler.compile_or_load_from_file, args)
         paths = []
         for obj in filter(None, it):
             paths.append(obj.file)
-            self._object_buffer[obj.file] = obj
+            self.unlinked_object_buffer[obj.file] = obj
         return paths
 
     def compile_related(self, file: Path) -> Dict[Path, StexObject]:
@@ -176,7 +171,7 @@ class Linter:
             if obj is None:
                 continue
             visited[file] = obj
-            self._object_buffer[file] = obj
+            self.unlinked_object_buffer[file] = obj
             for dep in obj.dependencies:
                 if dep.file_hint in visited or dep.file_hint in queue:
                     continue
@@ -192,10 +187,10 @@ class Linter:
         Returns:
             LintingResult: The result of the linting process.
         '''
-        if (file in self._linked_object_buffer
-            and not self._linked_object_buffer[file]
+        if (file in self.linked_object_buffer
+            and not self.linked_object_buffer[file]
                 .check_if_any_related_file_is_newer_than_this_object(self.workspace)):
-            ln = self._linked_object_buffer[file]
+            ln = self.linked_object_buffer[file]
         else:
             objects: Dict[Path, StexObject] = self.compile_related(file=file)
             ln = self.linker.link(file, objects, self.compiler)
@@ -211,10 +206,9 @@ class Linter:
                                   loc.format_link(), tag.label)
                         ln.diagnostics.trefier_tag(
                             tag.token.range, tag.token.lexeme, tag.label)
-            self._linked_object_buffer[file] = ln
-            more_objects = self._object_buffer if self.enable_global_validation else {}
+            self.linked_object_buffer[file] = ln
             self.linker.validate_object_references(
-                ln, more_objects=more_objects)
+                ln, more_objects=self.unlinked_object_buffer)
         return LintingResult(ln)
 
     def find_dependent_files_of(self, file: Path, *, _already_added_set: Set[Path] = None) -> Set[Path]:
@@ -228,7 +222,7 @@ class Linter:
             Set[Path]: A set of paths that contain objects that reference `file`.
         """
         dependent_files_set = _already_added_set or set()
-        for obj in self._object_buffer.values():
+        for obj in self.unlinked_object_buffer.values():
             if file in obj.related_files:
                 if file not in dependent_files_set:
                     dependent_files_set.add(obj.file)
@@ -248,21 +242,30 @@ class Linter:
         Returns:
             List[Location]: List of locations to where any symbols under the cursor are defined at.
         """
-        obj = self._linked_object_buffer.get(file)
+        obj = self.linked_object_buffer.get(file)
         if not obj:
             return []
         return [symbol.location for symbol in obj.get_definitions_at(position)]
 
     def references(self, file: Path, position: Position) -> List[Location]:
-        ' Finds references to the symbol under @position in @file. '
-        obj = self._linked_object_buffer.get(file)
+        """ Finds references to the symbol under `position` in `file`.
+
+        Args:
+            file (Path): File.
+            position (Position): Position of the cursor.
+
+        Returns:
+            List[Location]: List of locations where references to the
+                symbol under the cursor are located.
+        """
+        obj = self.linked_object_buffer.get(file)
         if not obj:
             return []
         definition_locations = set(
             definition.location for definition in obj.get_definitions_at(position))
 
         references: List[Location] = []
-        for obj in self._linked_object_buffer.values():
+        for obj in self.linked_object_buffer.values():
             for ref in obj.references:
                 for refsymb in ref.resolved_symbols:
                     if refsymb.location in definition_locations:

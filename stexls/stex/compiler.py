@@ -21,10 +21,9 @@ import functools
 import logging
 import pickle
 from hashlib import sha1
-from os import PathLike
 from pathlib import Path
 from time import time
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from .. import vscode
 from ..util.workspace import Workspace
@@ -355,7 +354,11 @@ class Compiler:
             return True
         return False
 
-    def compile(self, file: PathLike, content: str = None, dryrun: bool = False) -> StexObject:
+    def compile(
+            self,
+            file: Union[str, Path],
+            content: str = None,
+            dryrun: bool = False) -> StexObject:
         """ Compiles a single stex latex file into a objectfile.
 
         The compiled stex object will be stored into the provided outdir.
@@ -398,8 +401,48 @@ class Compiler:
             # ignore errors if objectfile can't be written to disk
             # and continue as usual
             log.exception(
-                'Failed to write object in "%s" to "%s".', file, objectfile)
+                'Failed to write object "%s" to "%s".', file, objectfile)
         return object
+
+    def compile_or_load_from_file(
+        self,
+        file: Path,
+        content: Optional[str],
+        time_modified: Optional[float],
+    ) -> Optional[StexObject]:
+        """ Combines compiling or loading from file if no compilation
+        required.
+
+        If the objectfile exists on disk and the target file
+        is not newer than it, we load the objectfile.
+        Else the `content` is used to compile the file.
+        If `content` is None the file contents will be loaded
+        from disk.
+
+        Args:
+            file (Union[str, Path]): Target file to compile.
+            content (Optional[str]): Content from editor window if open.
+            time_modified (Optional[float]): Time that overwrites the actual
+                time modified lstat would return. Used to track the
+                time modified of buffered file contents.
+
+        Returns:
+            Optional[StexObject]: Compiled object. If an error occured
+                it is ignored and None is returned.
+        """
+        try:
+            if self.recompilation_required(file, time_modified):
+                return self.compile(file, content)
+        except FileNotFoundError:
+            log.exception('Failed to compile file %s', file)
+            # Return None because load_from_objectfile will
+            # fail with ObjectfileNotFound
+            return None
+        try:
+            return self.load_from_objectfile(file)
+        except (FileNotFoundError, ObjectfileIsCorruptedError):
+            log.exception('Failed to load object from disk: %s', file)
+        return None
 
     def _compile_modsig(self, obj: StexObject, context: symbols.Symbol, modsig: parser.ModsigIntermediateParseTree):
         if not isinstance(context, symbols.RootSymbol):

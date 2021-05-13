@@ -66,25 +66,6 @@ if __name__ == '__main__':
 
     lsp_cmd = subparsers.add_parser('lsp')
     lsp_cmd.add_argument(
-        '--num-jobs', '-j', type=int, default=1,
-        help="Number of processes used for multiprocessing.")
-    lsp_cmd.add_argument(
-        '--update-delay-seconds', '--update-delay', '--delay', type=float, help='Delay of the linter in seconds after a change is made.')
-    lsp_cmd.add_argument(
-        '--enable-global-validation', '-g', action='store_true',
-        help=(
-            "This will make the server compile every file in the workspace on startup,"
-            " enabling global validation and diagnostics."
-        ))
-    lsp_cmd.add_argument(
-        '--lint-workspace-on-startup', action='store_true',
-        help="Create diagnostics for every file in the workspace on startup.")
-    lsp_cmd.add_argument(
-        '--enable-trefier', action='store_true', help="Enables machine learning trefier tagging.")
-    lsp_cmd.add_argument(
-        '--enable-linting-of-related-files', action='store_true',
-        help="The server will lint every file that reference a changed file, directly or transitively.")
-    lsp_cmd.add_argument(
         '--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.')
     lsp_cmd.add_argument('--host', '-H', help='Hostname to bind server to.')
     lsp_cmd.add_argument('--port', '-p', help='Port number to bind server to.')

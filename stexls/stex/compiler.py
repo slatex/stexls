@@ -185,7 +185,6 @@ class StexObject:
     @property
     def related_files(self) -> Iterable[Path]:
         ' Iterable of all files that are somehow referenced inside this object. '
-#         yield self.file
         for dep in self.dependencies:
             yield dep.file_hint
         for symbol in self.symbol_table.flat():

@@ -1,0 +1,6 @@
+antlr4-python3-runtime>=4.8
+tqdm
+numpy==1.19.5
+scikit-learn
+nltk
+tensorflow

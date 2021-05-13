@@ -18,9 +18,7 @@ async def linter(
         diagnosticlevel: DiagnosticSeverity,
         include: List[Pattern],
         ignore: List[Pattern],
-        enable_trefier: bool,
         show_progress: bool,
-        num_jobs: int,
         format: str,
         tagfile: Optional[str],
         loglevel: str,
@@ -36,10 +34,8 @@ async def linter(
         diagnosticlevel: Only diagnostics for the specified level and above are printed. (Error: 1, Warning: 2, Info: 3, Hint: 4)
         include: List of regex patterns. Only files that match ANY of these patterns will be included.
         ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
-        enable_trefier: Enables machine learning trefier tagging.
         show_progress: Enables a progress bar being printed to stderr.
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
-        num_jobs: Number of processes to use for compilation.
         format: Format string of the diagnostics. Variables are file, relative_file, line, column, severity, message and code.
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
@@ -84,23 +80,7 @@ async def linter(
 
     linter = Linter(
         workspace=workspace,
-        outdir=outdir,
-        enable_global_validation=False,
-        num_jobs=num_jobs)
-
-    trefier_model: Optional[Seq2SeqModel] = None
-    try:
-        if enable_trefier:
-            trefier_model_path = _get_default_trefier_model_path()
-            log.debug('Loading trefier from "%s"', trefier_model_path)
-            from stexls.trefier.models.seq2seq import Seq2SeqModel
-
-            # TODO: Use the trefier model
-            trefier_model = Seq2SeqModel.load(trefier_model_path)
-            print(trefier_model)
-            del trefier_model
-    except Exception:
-        log.exception('Failed to load trefier model')
+        outdir=outdir)
 
     if tagfile:
         log.debug('Creating tagfile at "%s"', root / tagfile)

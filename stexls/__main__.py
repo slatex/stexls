@@ -42,14 +42,8 @@ if __name__ == '__main__':
         '--ignore', '-i', nargs='+', type=lambda x: re.compile(x),
         help='List of regex pattern. All files that match ANY of these patterns will be excluded.')
     linter_cmd.add_argument(
-        '--enable-trefier', action='store_true',
-        help="Enables machine learning trefier tagging.")
-    linter_cmd.add_argument(
         '--show-progress', '-p', action='store_true',
         help='Enables printing of a progress bar to stderr during update.')
-    linter_cmd.add_argument(
-        '--num-jobs', '-j', type=int, default=1,
-        help='Specifies the number of processes to use for compiling.')
     linter_cmd.add_argument(
         '--format', '-F', help='Formatter for the diagnostics.',
         default='{relative_file}:{line}:{column} {severity} - {message} ({code})')

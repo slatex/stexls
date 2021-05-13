@@ -4,8 +4,6 @@ import logging
 import sys
 import time
 import uuid
-from asyncio.events import TimerHandle
-from asyncio.tasks import create_task
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Union
@@ -141,6 +139,8 @@ class Server(Dispatcher):
         if self.state == ServerState.SHUTDOWN:
             raise InvalidRequestException('The server has shut down')
         self.initialization_options = unwrap(initializationOptions)
+        log.info('Initialization options: %s',
+                 str(self.initialization_options))
 
         # Work done progress may only be sent if the capability is set
         self.work_done_progress_capability = capabilities.window.get(
@@ -246,11 +246,10 @@ class Server(Dispatcher):
                     cancellable=False,
                     enabled=self.work_done_progress_capability) as progress_bar:
                 await progress_bar.begin()
-                loop = asyncio.get_event_loop()
-                compiled_files = await loop.run_in_executor(
-                    None, self.linter.compile_workspace, limit_is, self.initialization_options.num_jobs)
-            for file in compiled_files:
-                self.scheduler.schedule(file, prio='low')
+                compiled_files = self.linter.compile_workspace(
+                    limit_is, self.initialization_options.num_jobs)
+            for i, file in enumerate(compiled_files):
+                self.scheduler.schedule(file, prio='low', starts_loop=i == 0)
         except Exception:
             log.exception('An error occured while compiling workspace')
         self.state = ServerState.READY
@@ -373,12 +372,8 @@ class Server(Dispatcher):
                     # TODO: `item` has to be properly deserialized !
                     # TODO: Implement recursive annotations module
                     textDocument.path, textDocument.version, item['text'])
-                unwrap(self.scheduler).schedule(textDocument.path, prio='high')
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
-                if self.initialization_options.enable_linting_of_related_files:
-                    for file in unwrap(self.linter).find_dependent_files_of(textDocument.path):
-                        unwrap(self.scheduler).schedule(file, prio='low')
         else:
             log.warning(
                 'didChange event for non-opened document: "%s"', textDocument.path)
@@ -403,7 +398,12 @@ class Server(Dispatcher):
         self.protect_from_uninit_and_shutdown()
         if unwrap(self.workspace).is_open(textDocument.path):
             log.info('didSave: %s', textDocument.uri)
-            unwrap(self.scheduler).schedule(textDocument.path, prio='high')
+            if not unwrap(self.scheduler).schedule(textDocument.path, prio='high'):
+                return
+            if self.initialization_options.enable_linting_of_related_files:
+                for user in unwrap(self.linter).find_users_of_file(textDocument.path):
+                    unwrap(self.scheduler).schedule(
+                        user, prio='low', starts_loop=False)
         else:
             log.warning('didSave event for untracked file: %s',
                         textDocument.uri)
@@ -572,7 +572,7 @@ class LintingScheduler:
         self.lint_queue_high: List[Path] = []
         self.lint_queue_low: List[Path] = []
         self.task: Optional[Cancelable] = None
-        self.timeout: Optional[TimerHandle] = None
+        self.timeout: Optional[asyncio.TimerHandle] = None
         self.never_linted_files: Set[Path] = set()
 
     async def _handle_high_priority(self) -> bool:
@@ -585,9 +585,10 @@ class LintingScheduler:
         """
         if not self.lint_queue_high:
             return False
-        file = self.lint_queue_high.pop()
+        file = self.lint_queue_high[-1]
         log.debug('Linting high prio: %s', file)
         await self.lint(file, trefier=self.trefier)
+        self.lint_queue_high.remove(file)
         return True
 
     async def _handle_low_priority(self) -> bool:
@@ -600,13 +601,14 @@ class LintingScheduler:
         """
         if not self.lint_queue_low:
             return False
-        file = self.lint_queue_low.pop()
+        file = self.lint_queue_low[-1]
         log.debug('Linting low prio: %s', file)
         trefier = None
         if self.enable_trefier == 'full':
             # Enable trefier, if "full" mode
             trefier = self.trefier
         await self.lint(file, trefier=trefier)
+        self.lint_queue_low.remove(file)
         return True
 
     async def _handle_unbuffered(self, files: List[Path]) -> bool:
@@ -647,8 +649,7 @@ class LintingScheduler:
         try:
             begin = time.time()
             loop_time = time.time()
-            estimated_loop_time = 1
-            alpha = 0.05
+            averate_loop_time = 1
             loop_count = 0
             update_freq_sec = 5
             last_update_time = time.time()
@@ -662,10 +663,9 @@ class LintingScheduler:
                     tend = time.time()
                     time_elapsed = tend - begin
                     loop_time_elapsed = tend - loop_time
-                    estimated_loop_time = loop_time_elapsed * \
-                        alpha + estimated_loop_time*(1-alpha)
+                    averate_loop_time = time_elapsed / loop_count
                     eta = datetime.timedelta(seconds=round(
-                        items_left * estimated_loop_time))
+                        items_left * averate_loop_time))
                     loop_time = time.time()
                     if time.time() - last_update_time > update_freq_sec:
                         await pbar.update(message=f'{items_left if items_left else "?"} files (eta {str(eta)})')
@@ -680,7 +680,11 @@ class LintingScheduler:
                         # Continue, so that high priority is first again
                         continue
                     elif await self._handle_unbuffered(
-                            list(sorted(self.workspace.files, key=self.workspace.get_time_modified))):
+                            list(sorted(
+                                # Sort the workspace files, so that the most recently changed file is first to be linted.
+                                self.workspace.files,
+                                key=self.workspace.get_time_modified,
+                                reverse=True))):
                         # Continue, so that high prio is first again
                         continue
                     # Reaching here means, that no file was in either queue,
@@ -695,65 +699,97 @@ class LintingScheduler:
             log.debug('Scheduler loop exited after %s', time.time() - begin)
 
     async def lint(self, file: Path, trefier: Optional[Seq2SeqModel]):
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, self.linter.lint, file, trefier)
         self.server.workspace_symbols.remove(file)
         self.server.workspace_symbols.add(result.object)
         await self.server.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
 
-    def schedule(self, file: Path, prio: Literal['high', 'low']):
-        """ Schedule a file for linting.j
+    def schedule(
+        self,
+        file: Path,
+        prio: Literal['high', 'low'],
+        delay: Optional[float] = None,
+        starts_loop: bool = True
+    ) -> bool:
+        """ Schedule a file for linting.
 
         Args:
             file (Path): File to lint.
             prio (Literal['high', 'low']): Priority. The priority of a file can be increased,
                 but multiple scheduling of low priorty files will be ignored.
+            delay (Optional[float], optional): Override member delay. If None, then member value will be used. Defaults to None.
+
+        Returns:
+            bool: True if the file was successfully scheduled.
         """
+        success = False
         if prio == 'high':
             # Add to high priorty
             # promote if in any other queue already.
             if file in self.lint_queue_low:
                 self.lint_queue_low.remove(file)
-            if file in self.lint_queue_high:
+            elif file in self.lint_queue_high:
                 self.lint_queue_high.remove(file)
-            self.lint_queue_high.append(file)
+            else:
+                success = True
+            self.lint_queue_high.insert(0, file)
             log.info('Scheduled with high priority: %s', file)
-        elif file not in (self.lint_queue_low + self.lint_queue_high):
+        elif file not in self.lint_queue_low and file not in self.lint_queue_high:
             # add to low priority, if in no other queue already
             # insert at front for breadth first style linting
+            success = True
             self.lint_queue_low.insert(0, file)
             log.debug('Scheduled with low priority: %s', file)
         else:
             # Task was not suited to be added to any queue
             # because it already has a priority: skip it.
             log.debug('File already scheduled: %s', file)
-            return
-        # Task was not skipped, and will be handled some time later
         # Check if there is a task that handles the queued items.
         # If not, we must start one.
-        if self.task is None:
+        if success and starts_loop and self.task is None:
+            log.debug('No scheduler loop running: Prepare timeout %s',
+                      self.delay if delay is None else delay)
             if self.timeout is not None:
                 # Cancel a planned task loop, because
                 # files have been changed while still waiting
                 # for another loop to start
+                log.debug('Cancel current scheduler loop timeout.')
                 self.timeout.cancel()
-            loop = asyncio.get_running_loop()
 
-            def run_schedule_loop():
+            def create_schedule_loop_task():
                 " This function handles creation and cleanup of the timeout/task members. "
+                log.debug('Create schedule loop task after timeout.')
                 # This function will only ever by called via the timeout
                 # This means that the timeout ran out and can be removed
                 self.timeout = None
-                # Start a new loop and remember that it started by writing to self.task
-                self.task = create_task(self.loop())
 
-                def done_callback(*args, **kwargs):
-                    ' After the task finished, we clean it up by unsetting the `self.task` member. '
-                    self.task = None
-                self.task.add_done_callback(done_callback)
+                async def task_fn():
+                    # Wrapper function that clears `self.task` member after the loop exits.
+                    try:
+                        log.debug('Loop wrapper starting loop: %s', self.task)
+                        await self.loop()
+                    except Exception:
+                        log.exception('Exception in scheduler loop')
+                        raise
+                    finally:
+                        log.debug(
+                            'Loop wrapper finally: Clearing `self.task`: %s', self.task)
+                        self.task = None
+                        assert len(self.lint_queue_high) == 0
+                        assert len(self.lint_queue_low) == 0
+                # Start a new loop and remember that it started by writing to self.task
+                self.task = asyncio.create_task(task_fn())
             # Start a timeout. The loop starting routine will be called
             # if no other files change during the delay period.
             # After that it will run until all files have been handled.
             # After all files have been handled, it will clean itself up
             # and stop. Then a new loop can be started as soon as a user input is made again.
-            self.timeout = loop.call_later(self.delay, run_schedule_loop)
+            log.debug('Scheduling scheduler to run in %s',
+                      self.delay if delay is None else delay)
+            loop = asyncio.get_running_loop()
+            self.timeout = loop.call_later(
+                self.delay if delay is None else delay, create_schedule_loop_task)
+        else:
+            log.debug('Scheduler loop already running: No loop as to be created.')
+        return success

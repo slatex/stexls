@@ -211,25 +211,27 @@ class Linter:
                 ln, more_objects=self.unlinked_object_buffer)
         return LintingResult(ln)
 
-    def find_dependent_files_of(self, file: Path, *, _already_added_set: Set[Path] = None) -> Set[Path]:
-        """ Find all files that depend on `file`.
+    def find_users_of_file(self, file: Path) -> Set[Path]:
+        """ Find all files that use symbols in from `file`.
 
         Args:
             file (Path): Path to file.
-            _already_added_set (Set[Path], optional): Accumulator for the result. Defaults to None.
 
         Returns:
             Set[Path]: A set of paths that contain objects that reference `file`.
         """
-        dependent_files_set = _already_added_set or set()
+        dependent_files_set = set()
         for obj in self.unlinked_object_buffer.values():
             if file in obj.related_files:
-                if file not in dependent_files_set:
-                    dependent_files_set.add(obj.file)
-                    self.find_dependent_files_of(
-                        obj.file, _already_added_set=dependent_files_set)
-                else:
-                    dependent_files_set.add(obj.file)
+                dependent_files_set.add(obj.file)
+            elif obj.file in self.linked_object_buffer:
+                obj = self.linked_object_buffer[obj.file]
+                for ref in obj.references:
+                    if any(resolved.location.path == file for resolved in ref.resolved_symbols):
+                        dependent_files_set.add(obj.file)
+                        break
+        if file in dependent_files_set:
+            dependent_files_set.remove(file)
         return dependent_files_set
 
     def definitions(self, file: Path, position: Position) -> List[Location]:

@@ -57,7 +57,7 @@ class TestLinter(TestCase, MockGlossary):
             \drefii{drefi}{fails}
         ''')
         objects = list(self.linter.compile_workspace())
-        dependencies = self.linter.find_dependent_files_of(self.module)
+        dependencies = self.linter.find_users_of_file(self.module)
         self.assertSetEqual({self.binding, self.module}, dependencies)
         module_lint = self.linter.lint(self.module)
         binding_lint = self.linter.lint(self.binding)

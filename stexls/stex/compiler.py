@@ -433,14 +433,14 @@ class Compiler:
             if self.recompilation_required(file, time_modified):
                 return self.compile(file, content)
         except FileNotFoundError:
-            log.exception('Failed to compile file %s', file)
             # Return None because load_from_objectfile will
             # fail with ObjectfileNotFound
             return None
         try:
             return self.load_from_objectfile(file)
         except (FileNotFoundError, ObjectfileIsCorruptedError):
-            log.exception('Failed to load object from disk: %s', file)
+            # Ignore file not foud and corrupt error.
+            pass
         return None
 
     def _compile_modsig(self, obj: StexObject, context: symbols.Symbol, modsig: parser.ModsigIntermediateParseTree):

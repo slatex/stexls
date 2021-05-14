@@ -503,6 +503,8 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
         self.id = id
 
     def find_parent_module_name(self):
+        if self.id is None:
+            return None
         return self.id.text
 
     def find_parent_module_parse_tree(self):

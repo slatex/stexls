@@ -262,8 +262,9 @@ class Server(Dispatcher):
                 await progress_bar.begin()
                 compiled_files = self.linter.compile_workspace(
                     limit_is, self.initialization_options.num_jobs)
-            for i, file in enumerate(compiled_files):
-                self.scheduler.schedule(file, prio='low', starts_loop=i == 0)
+                for i, file in enumerate(compiled_files):
+                    unwrap(self.scheduler).schedule(
+                        file, prio='low', starts_loop=(i == 0))
         except Exception:
             log.exception('An error occured while compiling workspace')
         self.state = ServerState.READY

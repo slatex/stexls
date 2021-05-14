@@ -72,7 +72,6 @@ class Dispatcher:
         log.debug('Dispatching notification %s(%s).', method, params)
         message = NotificationObject(method, params)
         self.connection.send_notification(message)
-        return asyncio.sleep(0)
 
     @classmethod
     async def start_server(

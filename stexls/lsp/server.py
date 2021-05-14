@@ -4,6 +4,7 @@ import logging
 import sys
 import time
 import uuid
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Protocol, Set, Union
@@ -210,14 +211,26 @@ class Server(Dispatcher):
 
         model_path = _get_default_trefier_model_path()
         log.info('Loading trefier model from: %s', model_path)
-        assert model_path.is_file()
+        if not model_path.is_file():
+            self.show_message(
+                type=vscode.MessageType.Warning,
+                message='Trefier model is missing: Trefier was disabled.'
+            )
+            return
         try:
             from stexls.trefier.models.seq2seq import Seq2SeqModel
             self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(model_path)
+        except zipfile.BadZipFile:
+            log.exception(
+                'Bad Zip file error: Probably because "git lfs" is not installed.')
+            self.show_message(
+                type=vscode.MessageType.Warning, message=(
+                    'Trefier disabled: Make sure you have git lfs installed.'
+                    ' Then UNINSTALL and INSTALL stexls again.'))
         except Exception as err:
             log.exception('Failed to load seq2seq model')
-            self.show_message(type=vscode.MessageType.Error,
-                              message=f'{type(err).__name__}: {err}')
+            self.show_message(
+                type=vscode.MessageType.Error, message=f'{type(err).__name__}: {err}')
 
     @method
     async def initialized(self):
@@ -234,7 +247,7 @@ class Server(Dispatcher):
                 num_files, self.initialization_options.compile_workspace_on_startup_file_limit)
             limit_is = self.initialization_options.compile_workspace_on_startup_file_limit
             if 0 < limit_is < num_files:
-                await self.show_message(
+                self.show_message(
                     type=vscode.MessageType.Info,
                     message=(
                         f'Your workspace has more .tex files ({num_files}), '
@@ -516,7 +529,7 @@ class ProgressBar:
                 args['message'] = message
             begin = vscode.WorkDoneProgressBegin(
                 cancellable=self._cancellable, **args)
-            await self._server.send_progress(token=self.token, value=begin)
+            self._server.send_progress(token=self.token, value=begin)
         self._begin_message_sent = True
 
     async def update(self, iteration_progress_count: int = None, message: str = None, cancellable: bool = None):
@@ -539,7 +552,7 @@ class ProgressBar:
         if cancellable is not None:
             args['cancellable'] = cancellable
         report = vscode.WorkDoneProgressReport(**args)
-        await self._server.send_progress(token=self.token, value=report)
+        self._server.send_progress(token=self.token, value=report)
 
     async def end(self, message: str):
         if not self.enabled:
@@ -548,7 +561,7 @@ class ProgressBar:
             # raise ValueError(f'Progress "{self.token}" not created by client.')
             return  # Return if not created
         end = vscode.WorkDoneProgressEnd(message=message)
-        await self._server.send_progress(token=self.token, value=end)
+        self._server.send_progress(token=self.token, value=end)
         if not self._on_finished_event.done():
             # Only set event if not canceled or already returned
             self._on_finished_event.set_result(True)
@@ -707,7 +720,8 @@ class LintingScheduler:
         result = await loop.run_in_executor(None, self.linter.lint, file, trefier)
         self.server.workspace_symbols.remove(file)
         self.server.workspace_symbols.add(result.object)
-        await self.server.publish_diagnostics(uri=file.as_uri(), diagnostics=result.diagnostics)
+        self.server.publish_diagnostics(
+            uri=file.as_uri(), diagnostics=result.diagnostics)
 
     def schedule(
         self,

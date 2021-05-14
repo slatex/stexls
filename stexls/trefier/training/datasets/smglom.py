@@ -11,8 +11,8 @@ from typing import Callable, Iterable, List, Sequence, Tuple, Union
 from stexls.latex import tokenizer
 from stexls.util import download
 
-_TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?')
-_DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')
+_TREFI_PATTERN = re.compile(r'[ma]*[tT]ref[ivx]+s?')
+_DEFI_PATTERN = re.compile(r'[ma]*[dD]r?ef[ivx]+s?')
 
 
 class Label(IntEnum):

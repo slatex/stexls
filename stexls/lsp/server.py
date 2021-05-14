@@ -252,7 +252,7 @@ class Server(Dispatcher):
                     message=(
                         f'Your workspace has more .tex files ({num_files}), '
                         f'than your limit ({limit_is}). You can increase it, '
-                        'or disabled in settings UI under stexls>compileWorkspaceOnStartupFileLimit')
+                        'or disabled in settings UI under "stexls: Compile Workspace On Startup File Limit"')
                 )
             async with ProgressBar(
                     server=self,

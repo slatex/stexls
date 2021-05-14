@@ -6,10 +6,10 @@ import sys
 from enum import IntEnum
 from glob import glob
 from pathlib import Path
-from typing import Callable, List, Sequence, Tuple
+from typing import Callable, Iterable, List, Sequence, Tuple, Union
 
-from stexls.util import download
 from stexls.latex import tokenizer
+from stexls.util import download
 
 _TREFI_PATTERN = re.compile(r'[ma]*tref[ivx]+s?')
 _DEFI_PATTERN = re.compile(r'[ma]*def[ivx]+s?')
@@ -101,15 +101,18 @@ def load(
     return x, y
 
 
-def maybe_download(download_dir: Path) -> List[str]:
+def maybe_download(download_dir: Union[str, Path], root_url: str = 'https://gl.mathhub.info/smglom', repositories: Iterable[str] = None) -> List[str]:
     ''' Downloads smglom git repositories and returns the paths to them.
     Parameters:
-        download_dir: Root directory to where the repositories should be cloned to.
-            Appends 'smglom' automatically if not already at the end of the path.
+        download_dir: (str | Path): Root directory to where the repositories should be cloned to.
+        root_url (str, optional): Url to which the repositories are appended to and downloaded.
+        repositories (Iterable[str], optional): List of repositories that need to be downloaded from `root_url`.
+            If None, then a list of default repositories will be used.
     Returns:
-        List of the paths of the downloaded repositories.
+        List[str]: List of the paths of the downloaded repositories.
     '''
-    repositories = [
+    download_dir = Path(download_dir)
+    repositories = repositories or [
         "physics",
         "cs",
         # "lmfdb",
@@ -148,7 +151,7 @@ def maybe_download(download_dir: Path) -> List[str]:
     for repo in repositories:
         try:
             paths.append(download.maybe_download_git(
-                repo_url=os.path.join('https://gl.mathhub.info/smglom', repo),
+                repo_url=os.path.join(root_url, repo),
                 save_dir=download_dir))
         except Exception as e:
             print(f'Download of {repo} failed with:', e, file=sys.stderr)

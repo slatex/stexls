@@ -1,7 +1,6 @@
 import asyncio
-import traceback
-from asyncio.tasks import wait_for
 import json
+import logging
 import random
 from asyncio.streams import StreamReader, StreamWriter
 from pathlib import Path
@@ -22,11 +21,20 @@ class TestLSP(IsolatedAsyncioTestCase):
             "params": {
                 'capabilities': {},
                 'rootUri': Path('/tmp/stexls-tests-root-dir').as_uri(),
-                'initializationOptions': {},
+                'initializationOptions': {
+                    'compileWorkspaceOnStartupFileLimit': 10,
+                    'enableTrefier': 'enabled',
+                    'numJobs': 1,
+                    'delay': 1,
+                    'enableLintingOfRelatedFiles': False
+                },
             },
         }
 
     async def test_initialize(self):
+        import sys
+        logging.basicConfig(handlers=[logging.StreamHandler(sys.stdout)])
+
         async def callback(reader: StreamReader, writer: StreamWriter):
             self.stub['id'] = 'initialize'
             self.stub['method'] = 'initialize'

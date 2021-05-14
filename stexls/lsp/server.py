@@ -84,6 +84,7 @@ class Server(Dispatcher):
         # Manager for work done progress bars
         self.cancellable_work_done_progresses: Dict[object, Cancelable] = {}
         # Accumulator for symbols in workspace, used for suggestions and fast search of missing modules etc
+        # TODO: Currently still unused.
         self.workspace_symbols = WorkspaceSymbols()
         # Scheduler for publishing diagnostics
         self.scheduler: Optional[LintingScheduler] = None
@@ -700,6 +701,9 @@ class LintingScheduler:
 
     async def lint(self, file: Path, trefier: Optional[Seq2SeqModel]):
         loop = asyncio.get_event_loop()
+        # Running the linting in a thread makes everything take a bit longer than
+        # running it directly, but without it, we would be unable to handle other requests
+        # during linting.
         result = await loop.run_in_executor(None, self.linter.lint, file, trefier)
         self.server.workspace_symbols.remove(file)
         self.server.workspace_symbols.add(result.object)
@@ -764,22 +768,31 @@ class LintingScheduler:
                 # This means that the timeout ran out and can be removed
                 self.timeout = None
 
-                async def task_fn():
+                async def task_cleanup_wrapper():
                     # Wrapper function that clears `self.task` member after the loop exits.
                     try:
                         log.debug('Loop wrapper starting loop: %s', self.task)
                         await self.loop()
+                        # At the end this should be empty,
+                        # but during shutdown this might raise
+                        assert len(
+                            self.lint_queue_high) == 0, "Queue not empty: Did you shut down?"
+                        assert len(
+                            self.lint_queue_low) == 0, "Queue not empty: Did you shut down?"
                     except Exception:
+                        # Becase this function is wrapped inside a task, that is
+                        # never awaited, we would lose all exception information!
+                        # Capture it here, and ignore it.
+                        # Raising it again does not make a difference.
                         log.exception('Exception in scheduler loop')
-                        raise
                     finally:
                         log.debug(
                             'Loop wrapper finally: Clearing `self.task`: %s', self.task)
+                        # Guarantee that the scheduler doesnt get stuck
+                        # because the task failed to clean up
                         self.task = None
-                        assert len(self.lint_queue_high) == 0
-                        assert len(self.lint_queue_low) == 0
                 # Start a new loop and remember that it started by writing to self.task
-                self.task = asyncio.create_task(task_fn())
+                self.task = asyncio.create_task(task_cleanup_wrapper())
             # Start a timeout. The loop starting routine will be called
             # if no other files change during the delay period.
             # After that it will run until all files have been handled.

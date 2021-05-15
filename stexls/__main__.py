@@ -68,6 +68,8 @@ if __name__ == '__main__':
     lsp_cmd.add_argument(
         '--logfile', '-L',  type=Path, help='Logfile name.', default=Path('stexls.log')),
 
+    test_model = subparsers.add_parser('test-model')
+
     args = vars(parser.parse_args())
     cmd = args.pop('command')
     if cmd == 'linter':
@@ -77,5 +79,11 @@ if __name__ == '__main__':
             server, task = await lsp(**args)
             await task
         asyncio.run(await_lsp())
+    elif cmd == 'test-model':
+        from stexls.lsp.server import _get_default_trefier_model_path
+        model_path = _get_default_trefier_model_path()
+        from stexls.trefier.models.seq2seq import Seq2SeqModel
+        model = Seq2SeqModel.load(model_path)
+        model.model.summary()
     else:
         raise ValueError(args)

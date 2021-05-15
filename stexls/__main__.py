@@ -25,7 +25,8 @@ if __name__ == '__main__':
         version = 'undefined'
     parser.add_argument('--version', '-V', action='version', version=version)
     subparsers = parser.add_subparsers(dest='command', required=True)
-    linter_cmd = subparsers.add_parser('linter')
+    linter_cmd = subparsers.add_parser(
+        'linter', help='This command starts the linter and prints linting results to stdout in a easy to parse format.')
     linter_cmd.add_argument(
         'files', type=Path, nargs=REMAINDER, help='List of files for which to generate diagnostics.')
     linter_cmd.add_argument(
@@ -58,7 +59,8 @@ if __name__ == '__main__':
         '--verbose', '-v', action='store_true',
         help='If enabled, instead of only printing errors, this will print all infos about each input file.')
 
-    lsp_cmd = subparsers.add_parser('lsp')
+    lsp_cmd = subparsers.add_parser(
+        'lsp', help='Start the language server protocol.')
     lsp_cmd.add_argument(
         '--transport-kind', '-t', choices=['ipc', 'tcp'], help='Which transport protocol to use.')
     lsp_cmd.add_argument('--host', '-H', help='Hostname to bind server to.')
@@ -68,7 +70,8 @@ if __name__ == '__main__':
     lsp_cmd.add_argument(
         '--logfile', '-L',  type=Path, help='Logfile name.', default=Path('stexls.log')),
 
-    test_model = subparsers.add_parser('test-model')
+    test_model = subparsers.add_parser(
+        'verify-model', help='Verifies that the trefier model is available. Should print a summary if OK.')
 
     args = vars(parser.parse_args())
     cmd = args.pop('command')
@@ -79,7 +82,7 @@ if __name__ == '__main__':
             server, task = await lsp(**args)
             await task
         asyncio.run(await_lsp())
-    elif cmd == 'test-model':
+    elif cmd == 'verify-model':
         from stexls.lsp.server import _get_default_trefier_model_path
         model_path = _get_default_trefier_model_path()
         from stexls.trefier.models.seq2seq import Seq2SeqModel

@@ -5,6 +5,7 @@ import gzip
 import os
 import shutil
 import tarfile
+from typing import List, Optional, Union
 import urllib.request
 import zipfile
 from glob import glob
@@ -99,12 +100,12 @@ def maybe_download_git(repo_url: str, save_dir: Path):
 
 
 def maybe_download_and_extract(
-        url,
+        url: str,
         save_dir: str,
-        extract_dir: str = None,
-        silent=False,
-        return_name_of_single_file=True,
-        return_all_extracted_file_names=True):
+        extract_dir: Optional[str] = None,
+        silent: bool = False,
+        return_name_of_single_file: bool = True,
+        return_all_extracted_file_names: bool = True) -> Union[Path, List[Path]]:
     ''' Downloads any file and extracts it if it is a .zip, .tar.gz or .gz file.
     Parameters:
         url: Resource to download.
@@ -205,17 +206,17 @@ def maybe_download_and_extract(
             # return all files inside the extraction directory target
             extracted_file_names = glob(join(path_to_extract_location, '*'))
             # at least one has to be there
-            return extracted_file_names
+            return list(map(Path, extracted_file_names))
 
         if return_name_of_single_file:
             # find extracted files inside the extraction target
             extracted_file_names = glob(join(path_to_extract_location, '*'))
             # return single file
             if len(extracted_file_names) == 1:
-                return extracted_file_names[0]
+                return Path(extracted_file_names[0])
             else:
                 raise Exception(
                     f"Expected a single file, but trying to return {len(extracted_file_names)} files")
 
     # if content of file is unknown, just return the directory
-    return path_to_extract_location
+    return Path(path_to_extract_location)

@@ -87,8 +87,12 @@ class Linter:
         self.linker = Linker(self.outdir)
         # The objectbuffer stores all compiled objects
         self.unlinked_object_buffer: Dict[Path, StexObject] = dict()
-        # THe linked object buffer bufferes all linked objects
+        # The linked object buffer bufferes all linked objects
         self.linked_object_buffer: Dict[Path, StexObject] = dict()
+        # Maximum file size that the trefier is applied to
+        self.max_trefier_file_size_kb = 50  # 50KB
+        # Maximum file size the linter is allowed to lint
+        self.max_lint_file_size_kb = 100  # 100KB
 
     def get_files_that_require_recompilation(self) -> Dict[Path, Optional[str]]:
         ' Filters out the files that need recompilation and returns them together with their buffered content. '
@@ -191,10 +195,22 @@ class Linter:
             and not self.linked_object_buffer[file]
                 .check_if_any_related_file_is_newer_than_this_object(self.workspace)):
             ln = self.linked_object_buffer[file]
-        else:
+        elif file.is_file():
+            size = file.stat().st_size // 1024
+            if self.max_lint_file_size_kb > 0 and self.max_lint_file_size_kb < size:
+                # Guard linting too large files
+                log.warning(
+                    'Skipping linting of large file of size %iKB: %s', size, str(file))
+                return LintingResult(self.unlinked_object_buffer.get(file) or StexObject(file))
             objects: Dict[Path, StexObject] = self.compile_related(file=file)
             ln = self.linker.link(file, objects, self.compiler)
-            if model is not None:
+            if model is None:
+                pass
+            elif self.max_trefier_file_size_kb > 0 and self.max_trefier_file_size_kb < size:
+                # Guard trefying too large files
+                log.warning(
+                    'Rejecting to use trefier on large file of size %iKB: "%s"', size, str(file))
+            else:
                 log.debug('Adding trefier tags for file: %s', file)
                 tags, = model.predict(file)
                 env_pattern = re.compile(

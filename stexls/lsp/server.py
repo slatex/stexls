@@ -724,7 +724,8 @@ class LintingScheduler:
             log.exception('Exception raised during scheduler loop.')
             raise
         finally:
-            log.debug('Scheduler loop exited after %s', time.time() - begin)
+            log.debug('Scheduler loop exited in %s seconds',
+                      round(time.time() - begin))
 
     async def lint(self, file: Path, trefier: Optional[Seq2SeqModel]):
         # Running the linting in a thread makes everything take a bit longer than

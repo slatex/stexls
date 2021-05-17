@@ -222,7 +222,7 @@ class Server(Dispatcher):
                      model_url, str(model_path.parent))
             download_path = await loop.run_in_executor(
                 None, lambda: maybe_download_and_extract(model_url, model_path.parent.as_posix(), silent=True))
-            assert isinstance(download_path)
+            assert isinstance(download_path, Path)
             log.info('Finished downloading trefier model... %s',
                      download_path.is_file())
             model_path = download_path.rename(

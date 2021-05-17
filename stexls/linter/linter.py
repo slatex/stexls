@@ -201,7 +201,7 @@ class Linter:
                 # Guard linting too large files
                 log.warning(
                     'Skipping linting of large file of size %iKB: %s', size, str(file))
-                return LintingResult(self.unlinked_object_buffer.get(file) or StexObject(file))
+                return LintingResult(self.unlinked_object_buffer.get(file, StexObject(file)))
             objects: Dict[Path, StexObject] = self.compile_related(file=file)
             ln = self.linker.link(file, objects, self.compiler)
             if model is None:

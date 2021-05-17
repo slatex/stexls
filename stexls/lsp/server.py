@@ -212,23 +212,22 @@ class Server(Dispatcher):
 
         model_path = _get_default_trefier_model_path()
         log.info('Loading trefier model from: %s', model_path)
-        if not model_path.is_file():
-            model_url = 'https://nc.kwarc.info/s/2CFLwK3sNBfd6WW/download'
-            from ..util.download import maybe_download_and_extract
-            self.show_message(type=vscode.MessageType.Info,
-                              message=f'Downloading trefier model to {str(model_path)!r}.')
-            loop = asyncio.get_running_loop()
-            log.info('Downloading trefier model from "%s" to "%s"',
-                     model_url, str(model_path.parent))
-            download_path = await loop.run_in_executor(
-                None, lambda: maybe_download_and_extract(model_url, model_path.parent.as_posix(), silent=True))
-            assert isinstance(download_path, Path)
-            log.info('Finished downloading trefier model... %s',
-                     download_path.is_file())
-            model_path = download_path.rename(
-                _get_default_trefier_model_path())
-            assert model_path.is_file()
         try:
+            if not model_path.is_file():
+                model_url = 'https://nc.kwarc.info/s/2CFLwK3sNBfd6WW/download'
+                from ..util.download import maybe_download_and_extract
+                self.show_message(type=vscode.MessageType.Info,
+                                  message=f'Downloading trefier model to {str(model_path)!r}.')
+                loop = asyncio.get_running_loop()
+                log.info('Downloading trefier model from "%s" to "%s"',
+                         model_url, str(model_path.parent))
+                download_path = await loop.run_in_executor(
+                    None, lambda: maybe_download_and_extract(model_url, model_path.parent.as_posix(), silent=True))
+                assert isinstance(download_path, Path)
+                log.info('Finished downloading trefier model... %s',
+                         download_path.is_file())
+                model_path = download_path.rename(
+                    _get_default_trefier_model_path())
             from stexls.trefier.models.seq2seq import Seq2SeqModel
             self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(model_path)
         except zipfile.BadZipFile:

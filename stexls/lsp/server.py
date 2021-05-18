@@ -213,6 +213,7 @@ class Server(Dispatcher):
         model_path = _get_default_trefier_model_path()
         log.info('Loading trefier model from: %s', model_path)
         try:
+            from stexls.trefier.models.seq2seq import Seq2SeqModel
             if not model_path.is_file():
                 model_url = 'https://nc.kwarc.info/s/2CFLwK3sNBfd6WW/download'
                 from ..util.download import maybe_download_and_extract
@@ -228,8 +229,12 @@ class Server(Dispatcher):
                          download_path.is_file())
                 model_path = download_path.rename(
                     _get_default_trefier_model_path())
-            from stexls.trefier.models.seq2seq import Seq2SeqModel
             self.trefier_model: Seq2SeqModel = Seq2SeqModel.load(model_path)
+        except ImportError:
+            log.exception('Failed to import seq2seq model dependencies.')
+            self.show_message(
+                type=vscode.MessageType.Warning, message=(
+                    'Trefier disabled: PIP dependencies required by the trefier were not met. Information has been written to the logfile.'))
         except zipfile.BadZipFile:
             log.exception(
                 'Bad Zip file error: Probably because "git lfs" is not installed.')

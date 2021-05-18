@@ -277,7 +277,8 @@ class Server(Dispatcher):
                 await progress_bar.begin()
                 compiled_files = self.linter.compile_workspace(
                     limit_is, self.initialization_options.num_jobs)
-                for i, file in enumerate(compiled_files):
+                # Sort the file in ascending order -> Add the newest file list -> Will be the file first linted.
+                for i, file in enumerate(sorted(compiled_files, key=self.workspace.get_time_modified)):
                     unwrap(self.scheduler).schedule(
                         file, prio='low', starts_loop=(i == 0))
         except Exception:

@@ -82,6 +82,11 @@ class Linter:
         Parameters:
             workspace: Workspace this linter works on.
             outdir: Output directory to where the compiler will store it's output at.
+            max_trefier_file_size_kb: The maximum file size (Kilo Byte) the trefier will accept as input.
+                If the file is larger, then no tags will be made.
+            max_lint_file_size_kb: The maximum file size (Kilo Byte) the linter will accept as input.
+                If the file is larger, then only the diagnostics that can be made using
+                only that file alone are published.
         """
         self.workspace = workspace
         self.outdir = outdir or (Path.cwd() / 'objects')

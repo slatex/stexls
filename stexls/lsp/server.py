@@ -233,13 +233,13 @@ class Server(Dispatcher):
         except ImportError:
             log.exception('Failed to import seq2seq model dependencies.')
             self.show_message(
-                type=vscode.MessageType.Warning, message=(
+                type=vscode.MessageType.Error, message=(
                     'Trefier disabled: PIP dependencies required by the trefier were not met. Information has been written to the logfile.'))
         except zipfile.BadZipFile:
             log.exception(
                 'Bad Zip file error: Probably because "git lfs" is not installed.')
             self.show_message(
-                type=vscode.MessageType.Warning, message=(
+                type=vscode.MessageType.Error, message=(
                     'Trefier disabled: Make sure you have git lfs installed.'
                     ' Then UNINSTALL and INSTALL stexls again.'))
         except Exception as err:

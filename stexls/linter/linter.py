@@ -74,7 +74,9 @@ class LintingResult:
 class Linter:
     def __init__(self,
                  workspace: Workspace,
-                 outdir: Path = None):
+                 outdir: Path = None,
+                 max_trefier_file_size_kb: int = 50,
+                 max_lint_file_size_kb: int = 100):
         """ Initializes a linter object.
 
         Parameters:
@@ -90,9 +92,9 @@ class Linter:
         # The linked object buffer bufferes all linked objects
         self.linked_object_buffer: Dict[Path, StexObject] = dict()
         # Maximum file size that the trefier is applied to
-        self.max_trefier_file_size_kb = 50  # 50KB
+        self.max_trefier_file_size_kb = max_trefier_file_size_kb
         # Maximum file size the linter is allowed to lint
-        self.max_lint_file_size_kb = 100  # 100KB
+        self.max_lint_file_size_kb = max_lint_file_size_kb
 
     def get_files_that_require_recompilation(self) -> Dict[Path, Optional[str]]:
         ' Filters out the files that need recompilation and returns them together with their buffered content. '

@@ -65,6 +65,27 @@ class Symbol:
         self.location = location
         self.access_modifier: AccessModifier = AccessModifier.PUBLIC
 
+    def get_symbols_for_lookup(self) -> Dict[str, Tuple[Symbol, ...]]:
+        """ Returns a dictionary of symbol name to tuple of all symbols with that name.
+        The returned symbols are all symbols that are available with a lookup operation on
+        `self`.
+
+        Returns:
+            Dict[str, Tuple[Symbol, ...]]: Dictionary of symbol name to immuatable tuple of all the symbols with that name,
+            contained in `self` as a child or as child in any ancestor of `self`.
+        """
+        values = {
+            name: tuple(value)
+            for name, value
+            in self.children.items()
+        }
+        if self.parent:
+            pname = self.parent.name
+            values[pname] = (self.parent, *values.get(pname, ()))
+            for new_name, new_values in self.parent.get_symbols_for_lookup().items():
+                values[new_name] = values.get(new_name, ()) + new_values
+        return values
+
     def copy(self, parent: Symbol) -> Symbol:
         ' Creates a full copy of this symbol. Including private and not-exported symbols. '
         cpy = self.shallow_copy()

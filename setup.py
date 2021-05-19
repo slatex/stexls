@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="stexls",
-    version="4.5.0",
+    version="4.5.1",
     author="Marian Plivelic",
     author_email="MarianPlivelic@gmail.com",
     description="Language server and other utilities for STex.",
@@ -23,7 +23,7 @@ setuptools.setup(
         'antlr4-python3-runtime>=4.8',
         'tqdm',
         # TODO: Separate for non-ml users
-        'numpy==1.19.5',
+        'numpy<=1.19.5',
         'scikit-learn',
         'nltk',
         'tensorflow'

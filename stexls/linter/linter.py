@@ -223,6 +223,11 @@ class Linter:
                 env_pattern = re.compile(
                     r'[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|symdef\*?|sym[ivx]+\*?')
                 for tag in tags:
+                    if not isinstance(tag.label, float) or not 0 <= tag.label <= 1:
+                        loc = Location(file.as_uri(), tag.token.range)
+                        log.warning('Encountered invalid tag value "%s" at %s:%s',
+                                    tag.label, file.as_uri(), tag.token.range)
+                        continue
                     if round(tag.label) and not any(map(env_pattern.fullmatch, tag.token.envs)):
                         loc = Location(file.as_uri(), tag.token.range)
                         log.debug('Tagging %s with %s',

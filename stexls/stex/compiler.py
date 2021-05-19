@@ -122,6 +122,31 @@ class StexObject:
         # Stores creation time
         self.creation_time = time()
 
+    def get_namespace_at(self, position: vscode.Position) -> List[symbols.Symbol]:
+        """ Returns the breadcrumbs list that contains the namespaces the position is located at.
+
+        Args:
+            position (vscode.Position): Position of the cursor.
+
+        Returns:
+            List[symbols.Symbol]: Breadcrumbs list of increasingly smaller namespaces that the input `position` is located inside of.
+        """
+        uri = self.file.as_uri()
+        breadcrumbs: List[symbols.Symbol] = []
+        for symbol in self.symbol_table.flat():
+            if symbol.location.uri != uri:
+                continue
+            if symbol.location.range.contains(position):
+                breadcrumbs.append(symbol)
+            elif breadcrumbs:
+                # Because the flat symbols are continuous in space, we know
+                # that if we were able to add a symbol prevously in the condition above,
+                # then the breadcrumbs list is not empty.
+                # It follows that now, because we were not able to add this symbol,
+                # we will never find a symbol again that can be added to the list.
+                break
+        return breadcrumbs
+
     def get_definitions_at(self, position: vscode.Position) -> List[symbols.Symbol]:
         ' Queries symbol definitions at the given @position. '
         definitions: List[symbols.Symbol] = []

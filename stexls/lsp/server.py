@@ -67,6 +67,12 @@ class Server(Dispatcher):
             connection: Inherited from Dispatcher. This argument is automatically provided by the class' initialization method.
         """
         super().__init__(connection=connection)
+        # Version
+        try:
+            self.version: Optional[str] = str(
+                pkg_resources.require('stexls')[0].version)
+        except Exception:
+            self.version = None
         # Initialization options from `initialize` request
         self.initialization_options = InitializationOptions()
         # State the serer is in
@@ -141,6 +147,7 @@ class Server(Dispatcher):
             raise ValueError('Server not uninitialized.')
         if self.state == ServerState.SHUTDOWN:
             raise InvalidRequestException('The server has shut down')
+        log.info('stexls version: %s', self.version)
         self.initialization_options = unwrap(initializationOptions)
         log.info('Initialization options: %s',
                  str(self.initialization_options))
@@ -159,12 +166,6 @@ class Server(Dispatcher):
         else:
             raise RuntimeError('No root path in initialize.')
         log.info('root at: %s', self.root_directory)
-
-        try:
-            version = str(pkg_resources.require('stexls')[0].version)
-        except Exception:
-            version = 'undefined'
-        log.info('stexls version: %s', version)
         outdir = self.root_directory / '.stexls' / 'objects'
         self.workspace = Workspace(self.root_directory)
         if self.initialization_options.enable_trefier in ('enabled', 'full'):
@@ -172,6 +173,8 @@ class Server(Dispatcher):
         self.linter = Linter(
             workspace=self.workspace,
             outdir=outdir)
+        if self.version is not None:
+            self.linter.compiler.check_version(self.version)
         self.completion_engine = CompletionEngine(self.linter.linker)
         self.scheduler = LintingScheduler(
             server=self,
@@ -203,7 +206,7 @@ class Server(Dispatcher):
             },
             'serverInfo': {
                 'name': 'stexls',
-                'version': version
+                'version': self.version
             }
         }
 

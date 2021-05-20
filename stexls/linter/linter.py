@@ -198,11 +198,7 @@ class Linter:
         Returns:
             LintingResult: The result of the linting process.
         '''
-        if (file in self.linked_object_buffer
-            and not self.linked_object_buffer[file]
-                .check_if_any_related_file_is_newer_than_this_object(self.workspace)):
-            ln = self.linked_object_buffer[file]
-        elif file.is_file():
+        if file.is_file():
             size = file.stat().st_size // 1024
             if self.max_lint_file_size_kb > 0 and self.max_lint_file_size_kb < size:
                 # Guard linting too large files

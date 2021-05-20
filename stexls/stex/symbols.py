@@ -273,6 +273,7 @@ class Symbol:
                     raise InvalidSymbolRedifinitionException(
                         child.name, prev_child.location, f'Symbol type mismatch: {type(child)} vs. {type(prev_child)}')
                 if isinstance(child, DefSymbol):
+                    assert isinstance(prev_child, DefSymbol)
                     if child.def_type != prev_child.def_type:
                         raise InvalidSymbolRedifinitionException(
                             child.name, prev_child.location, f'Definition types do not match: {child.def_type} vs. {prev_child.def_type}')

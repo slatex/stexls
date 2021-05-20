@@ -9,7 +9,7 @@ from stexls.stex.exceptions import (DuplicateSymbolDefinedError,
                                     InvalidSymbolRedifinitionException)
 from stexls.util.format import format_enumeration
 
-from .references import ReferenceType
+from .reference_type import ReferenceType
 
 __all__ = [
     'AccessModifier',

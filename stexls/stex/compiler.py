@@ -299,13 +299,17 @@ class StexObject:
                 return
         self.dependencies.append(dep)
 
-    def add_reference(self, reference: references.Reference):
+    def add_reference(self, reference: references.Reference) -> references.Reference:
         """ Registers a reference.
 
         Parameters:
-            reference: Information about the reference.
+            reference (references.Reference): Information about the reference.
+
+        Returns:
+            references.Reference: The input reference for chaining.
         """
         self.references.append(reference)
+        return reference
 
 
 class Compiler:

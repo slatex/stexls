@@ -648,10 +648,12 @@ class Compiler:
                         trefi.location.range, err.other_location, err.info)
         if trefi.module:
             # TODO: Semantic location check when module info is there
-            obj.add_reference(references.Reference(trefi.module.range, context, [
-                              trefi.module.text], ReferenceType.MODSIG | references.ReferenceType.MODULE))
-            obj.add_reference(references.Reference(trefi.location.range, context, [
-                              trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
+            parent = obj.add_reference(
+                references.Reference(
+                    trefi.module.range, context, [trefi.module.text], ReferenceType.MODSIG | references.ReferenceType.MODULE))
+            obj.add_reference(
+                references.Reference(
+                    trefi.location.range, context, [trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION, parent=parent))
         else:
             module_name: Optional[str] = trefi.find_parent_module_name()
             if not module_name:
@@ -791,7 +793,7 @@ class Compiler:
             export=True)
         obj.add_dependency(dep)
         ref = references.Reference(dep.range, context, [
-            dep.module_name], ReferenceType.MODSIG)
+            dep.module_name], ReferenceType.MODSIG, parent=dep)
         obj.add_reference(ref)
         if gimport.repository and gimport.repository.text == util.get_repository_name(self.root_dir, gimport.location.path):
             obj.diagnostics.is_current_dir_check(
@@ -867,7 +869,7 @@ class Compiler:
             export=True)
         obj.add_dependency(source_dep)
         ref = references.Reference(source_dep.range, context, [
-            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE, parent=source_dep)
         obj.add_reference(ref)
 
         target_dep = Dependency(
@@ -880,7 +882,7 @@ class Compiler:
             export=True)
         obj.add_dependency(target_dep)
         ref = references.Reference(target_dep.range, context, [
-            target_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            target_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE, parent=target_dep)
         obj.add_reference(ref)
 
         return None
@@ -905,8 +907,8 @@ class Compiler:
                 self.root_dir, viewsig.location.path, viewsig.fromrepos.text if viewsig.fromrepos else None, viewsig.source_module.text),
             export=True)
         obj.add_dependency(source_dep)
-        ref = references.Reference(source_dep.range, context, [
-            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
+        ref = references.Reference(
+            source_dep.range, context, [source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE, parent=source_dep)
         obj.add_reference(ref)
 
         target_dep = Dependency(
@@ -922,7 +924,8 @@ class Compiler:
             range=target_dep.range,
             scope=context,
             name=(target_dep.module_name,),
-            reference_type=ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            reference_type=ReferenceType.MODSIG | references.ReferenceType.MODULE,
+            parent=target_dep)
         obj.add_reference(ref)
 
         return None

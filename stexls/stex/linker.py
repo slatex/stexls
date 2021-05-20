@@ -197,7 +197,6 @@ class Linker:
         Parameters:
             linked: The object that needs validation
             more_objects: Additional information about objects in the workspace.
-                TODO: Use this to create missing import and resolvable missing symbol diagnostics
         '''
         # TODO: Use more_objects to create global reference suggestions and missing module imports
         # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches

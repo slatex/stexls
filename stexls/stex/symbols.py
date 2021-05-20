@@ -24,6 +24,55 @@ __all__ = [
 ]
 
 
+class LookupResult:
+    def __init__(self, identifier: Tuple[str, ...], resolution_depth: int = 0) -> None:
+        """ A lookup result keeps track of how deep a lookup operation was able to resolve the identifier.
+
+        Args:
+            identifier (Tuple[str, ...]): The target identifier to resolve.
+            resolution_depth (int, optional): Depth of the resolution. The index of the last successfully resolved identifier. Defaults to 0.
+        """
+        self.identifier = identifier
+        self.resolution_depth: int = resolution_depth
+        assert self.resolution_depth < len(
+            self.identifier), "Resolving more than there is is not possible."
+
+    def resolve(self):
+        " Increases the resolution depth. Marking one additional identifier as resolved. "
+        self.resolution_depth += 1
+
+    def clone(self):
+        " Returns a clone of this `LookupResult`. "
+        return LookupResult(self.identifier, self.resolution_depth)
+
+    def union(self, other: LookupResult):
+        """ Unifies the `other` `LookupResult` with this one by maximizing the resolution depth between the two.
+
+        The union is used to remember up until which identifier during a lookup process
+        it was possible to resolve.
+
+        If there is a single branch that resolves all identifiers,
+        then the union of all the `LookupResult`s will return a
+        `LookupResult` where the length of the input identifier
+        is equal to the `resolution_depth`.
+
+        Args:
+            other (LookupResult): Other lookup result object.
+        """
+        self.resolution_depth = max(
+            self.resolution_depth, other.resolution_depth)
+
+    @property
+    def is_resolved(self):
+        " The lookup was successfully resolved if the `LookupResult` has the same depth as the length of the identifier. "
+        return len(self.identifier) == self.resolution_depth
+
+    @property
+    def should_raise(self):
+        " In some cases we should only raise if the resolution was not successful, but only if it was resolved until the final identifier. "
+        return len(self.identifier) - 1 == self.resolution_depth
+
+
 class AccessModifier(Flag):
     PUBLIC = 0
     PROTECTED = 1
@@ -243,44 +292,46 @@ class Symbol:
     def lookup(
             self,
             identifier: Union[str, List[str], Tuple[str, ...]],
-            accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
+            accepted_ref_type: Optional[ReferenceType] = None,
+            lookup_result: Optional[LookupResult] = None) -> List[Symbol]:
         """ Symbol lookup searches for symbols with a given identifier in this symbol's children and all ancestor's children.
         A "lookup" is search operation that can change the root to a parent.
 
         Parameters:
             identifier (Union[str, List[str], Tuple[str, ...]]): Symbol identifier.
             accepted_ref_type (ReferenceType, optional): Optional reference type. Others will be filtered out.
+            lookup_result (LookupResult, optional): Stores lookup maximum resolved depth.
+                Used to raise or suppress errors based on how much was resolved.
 
         Returns:
             All symbols with the specified id.
         """
-        # Force id to be a list
+        # Force id to be a tuple
         if isinstance(identifier, str):
-            identifier = [identifier]
-        # Find the other identifiers in the subbranches of the children
-        resolved_symbols = [
-            symbol
-            # Lookup the root identifier
-            for resolved_root in self.children.get(identifier[0], [])
-            # Resolve the rest of the identifier
-            for symbol in resolved_root.find(identifier[1:])
-            if not accepted_ref_type or symbol.reference_type in accepted_ref_type
-        ]
-        # If nothing was resolved yet, try to search for the first symbol inside the parents
-        if not resolved_symbols:
-            # Lookup the identifier in parent tree
-            if self.parent and not isinstance(self, (ModuleSymbol, BindingSymbol)):
-                # TODO: Is preventing lookup through modules enough? Or is there a more generic way to describe this lookup behaviour?
-                return self.parent.lookup(identifier, accepted_ref_type)
-            # This is a failsafe in case the current module is referenced inside itself
-            # This is needed because else referencing another module inside the same file might be possible
-            # depending on the order of declaration, but not allowed!
-            # This also must be the last check else referencing nested symbols with the same name is impossible
-            if self.name == identifier[0]:
-                return self.find(identifier[1:])
-        return resolved_symbols
+            identifier = (identifier,)
+        identifier = tuple(identifier)
+        # Accumulate bounds of the lookup
+        # These are the symbols that will allow forward finding
+        bounds: List[Symbol] = [self]
+        while bounds[-1].parent:
+            bounds.append(bounds[-1].parent)
+        # Find the identifier inside the bounds
+        resolved: List[Symbol] = []
+        for bound in bounds:
+            result_of_bound = None
+            if lookup_result:
+                result_of_bound = lookup_result.clone()
+            resolved.extend(
+                symbol
+                for symbol in bound.find(identifier, lookup_result=result_of_bound)
+                if not accepted_ref_type or symbol.reference_type in accepted_ref_type
+            )
+            if lookup_result is not None:
+                assert result_of_bound is not None
+                lookup_result.union(result_of_bound)
+        return resolved
 
-    def find(self, identifier: Union[str, List[str], Tuple[str, ...]]) -> List[Symbol]:
+    def find(self, identifier: Union[str, List[str], Tuple[str, ...]], lookup_result: Optional[LookupResult] = None) -> List[Symbol]:
         """ Searches the identified symbol in sub-trees of this symbols' children.
 
         Parameters:
@@ -293,14 +344,30 @@ class Symbol:
             return [self]
         if isinstance(identifier, str):
             identifier = [identifier]
-        children = self.children.get(identifier[0], [])
+        resolved_children = self.children.get(identifier[0], [])
+        # Mark the next identifier as resolved
+        if resolved_children and lookup_result:
+            lookup_result.resolve()
+        # If not fully resolved, resolve inside the child symbols
         if len(identifier) > 1:
-            return [
-                resolved
-                for child in children
-                for resolved in child.find(identifier[1:])
-            ]
-        return children
+            resolved_symbols: List[Symbol] = []
+            for child in resolved_children:
+                # Create sub result if `lookup_result` is provided.
+                sub_result: Optional[LookupResult] = None
+                if lookup_result is not None:
+                    sub_result = lookup_result.clone()
+                # Resolve symbols recursively
+                recursive_resolved = child.find(
+                    identifier[1:], lookup_result=sub_result)
+                resolved_symbols.extend(recursive_resolved)
+                # Keep track of maximum resolution depth
+                if lookup_result is not None:
+                    assert sub_result is not None
+                    lookup_result.union(sub_result)
+            # Return the recursively resolved symbols
+            return resolved_symbols
+        # Return the resolved children if fully resolved
+        return resolved_children
 
     def __repr__(self):
         return f'[{self.access_modifier.name} Symbol {self.name}]'

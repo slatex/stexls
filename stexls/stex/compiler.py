@@ -399,7 +399,7 @@ class Compiler:
             Path to the objectfile.
         '''
         sha = sha1(file.parent.as_posix().encode()).hexdigest()
-        return self.outdir / sha / (file.name + '.stexobj')
+        return self.outdir / sha / (file.name + self.objectfile_extension)
 
     def load_from_objectfile(self, file: Path) -> StexObject:
         ''' Loads the cached objectfile for <file> if it exists.

@@ -25,8 +25,9 @@ from pathlib import Path
 from time import time
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
+from packaging.version import parse as parse_version
+
 from .. import vscode
-from ..util.workspace import Workspace
 from . import exceptions, parser, references, symbols, util
 from .diagnostics import Diagnostics
 from .reference_type import ReferenceType

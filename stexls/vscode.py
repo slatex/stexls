@@ -4,7 +4,7 @@ from __future__ import annotations
 import urllib.parse
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 
 class SerializableEnum(Enum):

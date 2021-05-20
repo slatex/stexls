@@ -114,7 +114,7 @@ class Server(Dispatcher):
         capabilities: vscode.ClientCapabilities,
         workspaceFolders: Optional[List[vscode.WorkspaceFolder]] = None,
         processId: Optional[int] = None,
-        clientInfo: Optional[Dict[Literal['name', 'version'], str]] = None,
+        clientInfo: Optional[dict] = None,
         locale: Optional[str] = None,
         rootPath: Optional[str] = None,
         rootUri: Optional[vscode.DocumentUri] = None,

@@ -587,6 +587,9 @@ class Diagnostic:
                 info.to_json() for info in self.relatedInformation]
         return json
 
+    def __repr__(self):
+        return str(self.to_json())
+
 
 class MessageType(SerializableEnum):
     Error: int = 1

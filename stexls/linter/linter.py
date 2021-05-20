@@ -231,8 +231,7 @@ class Linter:
                         ln.diagnostics.trefier_tag(
                             tag.token.range, tag.token.lexeme, tag.label)
             self.linked_object_buffer[file] = ln
-            self.linker.validate_object_references(
-                ln, more_objects=self.unlinked_object_buffer)
+            self.linker.validate_object_references(ln)
         return LintingResult(ln)
 
     def find_users_of_file(self, file: Path) -> Set[Path]:

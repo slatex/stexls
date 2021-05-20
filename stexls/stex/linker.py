@@ -189,17 +189,14 @@ class Linker:
         self.cache[usemodule_on_stack].setdefault(
             file, {})[module] = (time(), obj)
 
-    def validate_object_references(self, linked: StexObject, more_objects: Dict[Path, StexObject] = None):
+    def validate_object_references(self, linked: StexObject):
         ''' Validate the references inside an object.
 
         This step should be called a single time after an object was linked.
 
         Parameters:
             linked: The object that needs validation
-            more_objects: Additional information about objects in the workspace.
         '''
-        # TODO: Use more_objects to create global reference suggestions and missing module imports
-        # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches
         for ref in linked.references:
             # Check if parent constraint is met
             if isinstance(ref.parent, Dependency):

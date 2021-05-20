@@ -193,22 +193,6 @@ class StexObject:
             return True
         return not self.file.is_file() or self.file.lstat().st_mtime > self.creation_time
 
-    def check_if_any_related_file_is_newer_than_this_object(self, workspace: Workspace = None) -> bool:
-        ''' Checks if any file given by self.related_files has a newer modified time than this object\'s creation time.
-
-        Parameters:
-            workspace: Workspace which is used to inspect time modified of a buffered file.
-
-        Returns:
-            True if the file is younger than the creation time.
-        '''
-        for file in set(self.related_files):
-            if workspace and workspace.get_time_buffer_modified(file) > self.creation_time:
-                return True
-            elif file.is_file() and file.lstat().st_mtime > self.creation_time:
-                return True
-        return False
-
     @property
     def related_files(self) -> Iterable[Path]:
         ' Iterable of all files that are somehow referenced inside this object. '

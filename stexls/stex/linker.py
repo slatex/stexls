@@ -7,6 +7,8 @@ from pathlib import Path
 from time import time
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
+from stexls.stex.references import Reference
+
 from .. import vscode
 from . import exceptions, symbols
 from .compiler import (Compiler, Dependency, ObjectfileIsCorruptedError,
@@ -194,11 +196,24 @@ class Linker:
 
         Parameters:
             linked: The object that needs validation
-            more_objects: Additional information about objects in the workspace
+            more_objects: Additional information about objects in the workspace.
+                TODO: Use this to create missing import and resolvable missing symbol diagnostics
         '''
         # TODO: Use more_objects to create global reference suggestions and missing module imports
         # TODO: Problem: Need to be able to quickly find modules and symbol names and a faster method for searching than difflib.get_close_matches
         for ref in linked.references:
+            # Check if parent constraint is met
+            if isinstance(ref.parent, Dependency):
+                if not ref.parent.scope.find(ref.parent.module_name):
+                    # The parent dependency constraint's target module cannot be resolved.
+                    # That means, that it probably failed to be imported, skip it.
+                    continue
+            elif isinstance(ref.parent, Reference):
+                if not ref.parent.resolved_symbols:
+                    # The parent reference already failed to resolve
+                    # skip this reference
+                    continue
+
             refname = "?".join(ref.name)
             # TODO: Does using ref.reference_type to specify the expected type restrict too much?
             resolved: Iterable[symbols.Symbol] = ref.scope.lookup(

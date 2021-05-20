@@ -328,6 +328,66 @@ class Compiler:
         """
         self.root_dir = root.expanduser().resolve().absolute()
         self.outdir = outdir.expanduser().resolve().absolute()
+        self.objectfile_extension = '.stexobj'
+
+    def check_version(self, version: str):
+        """ Checks expected vs actual version in the objectfile cache.
+        If satisfying versions can not be found every object is deleted.
+
+        A new version file with the version given in the argument `version` will
+        be saved in the outdir.
+
+        Args:
+            version (str): Expected version.
+
+        Returns:
+            bool: True if cache was purged, False otherwise.
+        """
+        versionfile = self.outdir / 'version'
+        delete_all = False
+        if not versionfile.is_file():
+            delete_all = True
+        else:
+            try:
+                file_version = parse_version(versionfile.read_text())
+                reference_version = parse_version(version)
+                log.info('Compare object versions: %s (current) vs %s (expected)',
+                         file_version, reference_version)
+                delete_all = file_version < reference_version
+            except Exception:
+                delete_all = True
+        if delete_all:
+            log.info(
+                'Deleting compiled object cache because of version check: %s', self.outdir)
+            try:
+                files = set(
+                    objectfile
+                    for objectfile
+                    in self.outdir.glob('*/*' + self.objectfile_extension)
+                    if objectfile.is_file()
+                )
+                for objectfile in files:
+                    log.debug('UNLINK "%s"', str(objectfile))
+                    objectfile.unlink()
+                directories = set(
+                    objectfile.parent
+                    for objectfile in files
+                )
+                for directory in directories:
+                    if directory.is_dir() and next(directory.iterdir(), None) is None:
+                        log.debug('RMDIR "%s"', str(directory))
+                        try:
+                            directory.rmdir()
+                        except OSError:
+                            log.exception(
+                                'Failed to remove supposedly empty objectfile cache directory: %s', str(directory))
+                if not versionfile.parent.is_dir():
+                    versionfile.parent.mkdir(parents=True)
+                versionfile.write_text(version)
+            except OSError:
+                log.exception(
+                    'An unexpected OSError was raised while handling files. This can be ignored.')
+        return delete_all
 
     def get_objectfile_path(self, file: Path) -> Path:
         ''' Gets the correct path the objectfile for the input file should be stored at.

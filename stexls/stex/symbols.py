@@ -240,7 +240,10 @@ class Symbol:
         child.parent = self
         self.children.setdefault(child.name, []).append(child)
 
-    def lookup(self, identifier: Union[str, List[str], Tuple[str, ...]], accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
+    def lookup(
+            self,
+            identifier: Union[str, List[str], Tuple[str, ...]],
+            accepted_ref_type: Optional[ReferenceType] = None) -> List[Symbol]:
         """ Symbol lookup searches for symbols with a given identifier in this symbol's children and all ancestor's children.
         A "lookup" is search operation that can change the root to a parent.
 

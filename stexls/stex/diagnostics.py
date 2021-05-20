@@ -9,7 +9,7 @@ from .. import vscode
 from ..util.format import format_enumeration
 from ..vscode import (Diagnostic, DiagnosticRelatedInformation,
                       DiagnosticSeverity, DiagnosticTag)
-from .references import ReferenceType
+from .reference_type import ReferenceType
 
 __all__ = ['Diagnostics']
 

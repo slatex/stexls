@@ -29,6 +29,7 @@ from .. import vscode
 from ..util.workspace import Workspace
 from . import exceptions, parser, references, symbols, util
 from .diagnostics import Diagnostics
+from .reference_type import ReferenceType
 
 log = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ class StexObject:
             self,
             scope: symbols.Symbol,
             qualified: Iterable[str],
-            ref_type: references.ReferenceType) -> Dict[str, Set[vscode.Location]]:
+            ref_type: ReferenceType) -> Dict[str, Set[vscode.Location]]:
         ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
 
         Parameters:
@@ -520,7 +521,7 @@ class Compiler:
         obj.add_dependency(dep)
         # Add the reference from the module name to the parent module
         ref = references.Reference(modnl.name.range, context, [
-            modnl.name.text], references.ReferenceType.MODSIG)
+            modnl.name.text], ReferenceType.MODSIG)
         obj.add_reference(ref)
         return binding
 
@@ -553,10 +554,10 @@ class Compiler:
         if isinstance(tassign.parent, parser.ViewSigIntermediateParseTree):
             view: parser.ViewSigIntermediateParseTree = tassign.parent
             obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
-                              view.source_module.text, tassign.source_symbol.text], references.ReferenceType.DEF))
+                              view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
             if tassign.torv == 'v':
                 obj.add_reference(references.Reference(tassign.target_term.range, context, [
-                                  view.target_module.text, tassign.target_term.text], references.ReferenceType.DEF))
+                                  view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
         else:
             # TODO: Also compile when inside view environments
             obj.diagnostics.exception(context.location.range, NotImplementedError(
@@ -584,9 +585,9 @@ class Compiler:
         if trefi.module:
             # TODO: Semantic location check when module info is there
             obj.add_reference(references.Reference(trefi.module.range, context, [
-                              trefi.module.text], references.ReferenceType.MODSIG | references.ReferenceType.MODULE))
+                              trefi.module.text], ReferenceType.MODSIG | references.ReferenceType.MODULE))
             obj.add_reference(references.Reference(trefi.location.range, context, [
-                              trefi.module.text, trefi.name], references.ReferenceType.ANY_DEFINITION))
+                              trefi.module.text, trefi.name], ReferenceType.ANY_DEFINITION))
         else:
             module_name: Optional[str] = trefi.find_parent_module_name()
             if not module_name:
@@ -599,7 +600,7 @@ class Compiler:
                     trefi.location.range,
                     context,
                     (module_name, trefi.name),
-                    references.ReferenceType.ANY_DEFINITION
+                    ReferenceType.ANY_DEFINITION
                 )
                 obj.add_reference(reference)
         if trefi.m:
@@ -642,7 +643,7 @@ class Compiler:
                     range=defi.location.range,
                     scope=context,
                     name=[parent_module_name, defi.name],
-                    reference_type=references.ReferenceType.ANY_DEFINITION))
+                    reference_type=ReferenceType.ANY_DEFINITION))
 
     def _compile_sym(self, obj: StexObject, context: symbols.Symbol, sym: parser.SymIntermediateParserTree):
         current_module = context.get_current_module()
@@ -695,7 +696,7 @@ class Compiler:
             export=importmodule.export)  # TODO: Is usemodule exportet?
         obj.add_dependency(dep)
         ref = references.Reference(importmodule.location.range, context, [
-            importmodule.module.text], references.ReferenceType.MODULE)
+            importmodule.module.text], ReferenceType.MODULE)
         obj.add_reference(ref)
         if importmodule.repos:
             obj.diagnostics.replace_repos_with_mhrepos(
@@ -726,7 +727,7 @@ class Compiler:
             export=True)
         obj.add_dependency(dep)
         ref = references.Reference(dep.range, context, [
-            dep.module_name], references.ReferenceType.MODSIG)
+            dep.module_name], ReferenceType.MODSIG)
         obj.add_reference(ref)
         if gimport.repository and gimport.repository.text == util.get_repository_name(self.root_dir, gimport.location.path):
             obj.diagnostics.is_current_dir_check(
@@ -802,7 +803,7 @@ class Compiler:
             export=True)
         obj.add_dependency(source_dep)
         ref = references.Reference(source_dep.range, context, [
-            source_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         target_dep = Dependency(
@@ -815,7 +816,7 @@ class Compiler:
             export=True)
         obj.add_dependency(target_dep)
         ref = references.Reference(target_dep.range, context, [
-            target_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            target_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         return None
@@ -841,7 +842,7 @@ class Compiler:
             export=True)
         obj.add_dependency(source_dep)
         ref = references.Reference(source_dep.range, context, [
-            source_dep.module_name], references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         target_dep = Dependency(
@@ -857,7 +858,7 @@ class Compiler:
             range=target_dep.range,
             scope=context,
             name=(target_dep.module_name,),
-            reference_type=references.ReferenceType.MODSIG | references.ReferenceType.MODULE)
+            reference_type=ReferenceType.MODSIG | references.ReferenceType.MODULE)
         obj.add_reference(ref)
 
         return None

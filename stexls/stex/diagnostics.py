@@ -1,14 +1,14 @@
 """ This module provides an uniform way to create and accumulate diagnostics. """
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterator, List, Set
+from typing import Dict, Iterable, Iterator, List, Set
 
 import numpy as np
 
 from .. import vscode
 from ..util.format import format_enumeration
 from ..vscode import (Diagnostic, DiagnosticRelatedInformation,
-                      DiagnosticSeverity, DiagnosticTag)
+                      DiagnosticSeverity, DiagnosticTag, Location)
 from .reference_type import ReferenceType
 
 __all__ = ['Diagnostics']
@@ -60,6 +60,8 @@ class DiagnosticCodeName(Enum):
     REFERENCE_TO_NOVERB_CHECK = 'referenced-noverb-symbol'
     ' Used when something when access modifier prevents access '
     SYMBOL_ACCESS_MODIFIER_CHECK = 'access-modifier-check'
+    ' Used if an unresolved reference could be resolved by importing another file. '
+    MISSING_IMPORT_HINT = 'missing-import-hint'
 
 
 class Diagnostics:
@@ -75,6 +77,33 @@ class Diagnostics:
     def __iter__(self) -> Iterator[Diagnostic]:
         ' Iterates through added diagnostics. '
         yield from self.diagnostics
+
+    def missing_import(
+            self,
+            range: vscode.Range,
+            symbol_name: str,
+            reference_type: ReferenceType,
+            targets: Iterable[Location]):
+        """ Create diagnostic for missing import that could be resolved by importing target location.
+
+        Args:
+            range (vscode.Range): Location that created the diagnostic.
+            symbol_name (str): Name of the symbol that failed to resolve.
+            reference_type (ReferenceType): Type of the symbol.
+            targets (Iterable[Location]): Related locations of symbols that if imported
+                would solve this diagnostic.
+        """
+        message = f'Unresolved symbol {symbol_name!r} of type {reference_type.format_enum()} could be resolved by importing these targets. '
+        severity = DiagnosticSeverity.Information
+        code = DiagnosticCodeName.MISSING_IMPORT_HINT.name
+        related = [
+            DiagnosticRelatedInformation(
+                loc, f'A symbol {symbol_name} is defined at {loc.format_link()}.')
+            for loc in targets
+        ]
+        diagnostic = Diagnostic(range, message, severity,
+                                code, relatedInformation=related)
+        self.diagnostics.append(diagnostic)
 
     def trefier_tag(self, range: vscode.Range, text: str, label: np.ndarray):
         ' Create a simple diagnostic for a trefier tag. '

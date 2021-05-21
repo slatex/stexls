@@ -22,6 +22,7 @@ setuptools.setup(
     install_requires=[
         'antlr4-python3-runtime>=4.8',
         'tqdm',
+        'packaging',
         # TODO: Separate for non-ml users
         'numpy<=1.19.5',
         'scikit-learn',

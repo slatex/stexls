@@ -167,7 +167,8 @@ class Server(Dispatcher):
             raise RuntimeError('No root path in initialize.')
         log.info('root at: %s', self.root_directory)
         outdir = self.root_directory / '.stexls' / 'objects'
-        self.workspace = Workspace(self.root_directory)
+        self.workspace = Workspace(
+            self.root_directory, ignorefile=Path('.stexlsignore'))
         if self.initialization_options.enable_trefier != 'disabled':
             await self.load_trefier_model()
         self.linter = Linter(

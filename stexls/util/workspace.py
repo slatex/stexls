@@ -1,12 +1,11 @@
-import glob
-import itertools
 import logging
-import re
+import itertools
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Pattern, Set, Union
+from typing import Dict, Optional, Set, Union
 
 from .. import vscode
+from .ignorefile import IgnoreFile
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ __all__ = ['Workspace']
 
 
 class TextDocument:
-    def __init__(self, path: Path, version: int, text: str) -> None:
+    def __init__(self, path: Union[str, Path], version: int, text: str) -> None:
         """ Versioned text document being tracked because it's in the workspace.
 
         Args:
@@ -22,7 +21,7 @@ class TextDocument:
             version (int): Version number.
             text (str): Buffered contents of the file.
         """
-        self.path: Path = path
+        self.path: Path = Path(path)
         self.version: int = version
         self.text: str = text
         self.time_modified: float = time.time()
@@ -35,7 +34,7 @@ class TextDocument:
 
 
 class Workspace:
-    def __init__(self, root: Path):
+    def __init__(self, root: Union[str, Path], ignorefile: Optional[Union[str, Path]] = None):
         """ Opens a workspace folder `root`.
 
         The workspace allows to query and filter the files in the workspace
@@ -47,8 +46,10 @@ class Workspace:
         self.root = Path(root).expanduser().resolve().absolute()
         # Map of files to a tuple of file time modified and content
         self._open_files: Dict[Path, TextDocument] = {}
-        self._ignore: Optional[List[Pattern]] = None
-        self._include: Optional[List[Pattern]] = None
+        # Ignorefile
+        self.ignorefile: Optional[IgnoreFile] = None
+        if ignorefile:
+            self.ignorefile = IgnoreFile(ignorefile, root=self.root)
 
     def is_open(self, file: Path) -> bool:
         ' Returns true if a modified version of this file that can be queried with read_file() is in memory. '
@@ -189,65 +190,15 @@ class Workspace:
         return location.read(content.split('\n'))
 
     @property
-    def include(self) -> Union[Pattern, List[Pattern], None]:
-        ' Optional include pattern or list of include patterns used to filter the output of Workspace.files. '
-        return self._include
-
-    @include.setter
-    def include(self, value: Union[Pattern, str, Iterable[Union[Pattern, str]], None]):
-        if value is None:
-            self._include = None
-            return
-        if isinstance(value, (str, Pattern)):
-            value = [value]
-        self._include = [
-            pattern if isinstance(pattern, Pattern) else re.compile(pattern)
-            for pattern in value
-            if pattern
-        ]
-
-    @property
-    def ignore(self) -> Union[Pattern, List[Pattern], None]:
-        ' Optional ignore pattern or list of include patterns used to filter the output of Workspace.files. '
-        return self._ignore
-
-    @ignore.setter
-    def ignore(self, value: Union[Pattern, str, Iterable[Union[Pattern, str]], None]):
-        if value is None:
-            self._ignore = None
-            return
-        if isinstance(value, (str, Pattern)):
-            value = [value]
-        self._ignore = [
-            pattern if isinstance(pattern, Pattern) else re.compile(pattern)
-            for pattern in value
-            if pattern
-        ]
-
-    @property
     def files(self) -> Set[Path]:
         ' Returns the set of .tex files in this workspace after they are filtered using ignore and include patterns. '
         # get all files from the workspace root
-        glob_pattern = self.root / '**' / 'source' / '**' / '*.tex'
-        tex_file_paths = list(
-            glob.glob(glob_pattern.as_posix(), recursive=True))
-        # filter out non-included files
-        if isinstance(self._include, Iterable):
-            # list of includes is ORed together
-            tex_file_paths = list(
-                file
-                for pattern in self._include
-                for file in filter(pattern.match, tex_file_paths)
-            )
-        # filter out ignored files
-        if isinstance(self._ignore, Iterable):
-            # list of ignores is ANDed together
-            for pattern in self._ignore:
-                tex_file_paths = list(itertools.filterfalse(
-                    pattern.match, tex_file_paths))
-        # map to paths
-        paths = map(Path, tex_file_paths)
+        paths = list(
+            self.root.rglob('**/source/**/*.tex'))
         # filter out non-files
         files = filter(lambda p: p.is_file(), paths)
+        # filter out ignored files
+        if self.ignorefile is not None:
+            files = itertools.filterfalse(self.ignorefile.match, files)
         # remove duplicates
         return set(files)

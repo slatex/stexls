@@ -54,6 +54,14 @@ class IgnoreFile:
         }
 
     def match(self, path: Path) -> bool:
+        """ Matches a path with the ignore patterns and returns wether the path is ignored or not.
+
+        Args:
+            path (Path): Path to test.
+
+        Returns:
+            bool: True if the `path` is ignored, False otherwise.
+        """
         try:
             path = Path(path).absolute().relative_to(self.root)
         except ValueError:

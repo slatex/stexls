@@ -25,6 +25,8 @@ class IgnoreFile:
             pass
 
     def load(self):
+        """ Parses the ignore file according to the current directory structure of the `root` directory.
+        """
         content = self.ignorefile.read_text()
         lines: List[str] = content.split('\n')
         include_globs = {

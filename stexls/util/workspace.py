@@ -216,7 +216,7 @@ class Workspace:
         if value is None:
             self._ignore = None
             return
-        if isinstance(value, str) or not isinstance(value, Iterable):
+        if isinstance(value, (str, Pattern)):
             value = [value]
         self._ignore = [
             pattern if isinstance(pattern, Pattern) else re.compile(pattern)

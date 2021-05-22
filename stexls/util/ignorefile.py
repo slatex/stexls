@@ -19,13 +19,13 @@ class IgnoreFile:
         self.ignorefile = Path(ignorefile)
         self.root = Path(root) if root else self.ignorefile.parent
         self.ignored_paths: Set[Path] = set()
-        self.load()
+        try:
+            self.load()
+        except Exception:
+            pass
 
     def load(self):
-        try:
-            content = self.ignorefile.read_text()
-        except Exception:
-            return
+        content = self.ignorefile.read_text()
         lines: List[str] = content.split('\n')
         include_globs = {
             line.strip()[1:].strip()

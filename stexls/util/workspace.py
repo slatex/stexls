@@ -198,7 +198,7 @@ class Workspace:
         if value is None:
             self._include = None
             return
-        if isinstance(value, str) or not isinstance(value, Iterable):
+        if isinstance(value, (str, Pattern)):
             value = [value]
         self._include = [
             pattern if isinstance(pattern, Pattern) else re.compile(pattern)

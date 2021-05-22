@@ -168,7 +168,7 @@ class Server(Dispatcher):
         log.info('root at: %s', self.root_directory)
         outdir = self.root_directory / '.stexls' / 'objects'
         self.workspace = Workspace(self.root_directory)
-        if self.initialization_options.enable_trefier in ('enabled', 'full'):
+        if self.initialization_options.enable_trefier != 'disabled':
             await self.load_trefier_model()
         self.linter = Linter(
             workspace=self.workspace,

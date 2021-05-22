@@ -282,9 +282,11 @@ class Server(Dispatcher):
                 compiled_files = self.linter.compile_workspace(
                     limit_is, self.initialization_options.num_jobs)
                 # Sort the file in ascending order -> Add the newest file list -> Will be the file first linted.
-                for i, file in enumerate(sorted(compiled_files, key=self.workspace.get_time_modified)):
-                    unwrap(self.scheduler).schedule(
-                        file, prio='low', starts_loop=(i == 0))
+                sorted_compiled_files = sorted(
+                    compiled_files, key=self.workspace.get_time_modified)
+                # Schedule all compiled files for linting
+                unwrap(self.scheduler).schedule(
+                    *sorted_compiled_files, prio='low')
         except Exception:
             log.exception('An error occured while compiling workspace')
         self.state = ServerState.READY
@@ -752,7 +754,7 @@ class LintingScheduler:
 
     def schedule(
         self,
-        file: Path,
+        *files: Path,
         prio: Literal['high', 'low'],
         delay: Optional[float] = None,
         starts_loop: bool = True
@@ -760,37 +762,50 @@ class LintingScheduler:
         """ Schedule a file for linting.
 
         Args:
-            file (Path): File to lint.
+            files (Path): Files that should be added to the schedule.
             prio (Literal['high', 'low']): Priority. The priority of a file can be increased,
                 but multiple scheduling of low priorty files will be ignored.
             delay (Optional[float], optional): Override member delay. If None, then member value will be used. Defaults to None.
 
         Returns:
-            bool: True if the file was added to a queue. False otherwise.
+            bool: True if any file was added to a queue. False otherwise.
         """
         success = False
+        # Filter out files that are ignored
+        if self.workspace.ignorefile is not None:
+            # Reload ignorefile
+            try:
+                self.workspace.ignorefile.load()
+                log.debug('Reloaded ignorefile with content')
+                log.debug(self.workspace.ignorefile.ignored_paths)
+            except Exception:
+                log.exception('Failed to parse ignorefile.')
+            files = tuple(
+                file for file in files if not self.workspace.ignorefile.match(file))
         if prio == 'high':
-            # Add to high priorty
-            # promote if in any other queue already.
-            if file in self.lint_queue_low:
-                self.lint_queue_low.remove(file)
-            elif file in self.lint_queue_high:
-                # Promote to front of high queue if already queued
-                self.lint_queue_high.remove(file)
-            else:
-                success = True
-            self.lint_queue_high.append(file)
-            log.info('Scheduled with high priority: %s', file)
+            for file in files:
+                # Add to high priorty
+                # promote if in any other queue already.
+                if file in self.lint_queue_low:
+                    self.lint_queue_low.remove(file)
+                elif file in self.lint_queue_high:
+                    # Promote to front of high queue if already queued
+                    self.lint_queue_high.remove(file)
+                else:
+                    success = True
+            self.lint_queue_high.extend(files)
         else:
-            # Add to low priority.
-            # Promote to front of queue by removing it first if it already
-            # was added to this queue
-            if file in self.lint_queue_low:
-                self.lint_queue_low.remove(file)
-            else:
-                success = True
-            self.lint_queue_low.append(file)
-            log.debug('Scheduled with low priority: %s', file)
+            for file in files:
+                # Add to low priority.
+                # Promote to front of queue by removing it first if it already
+                # was added to this queue
+                if file in self.lint_queue_low:
+                    self.lint_queue_low.remove(file)
+                else:
+                    success = True
+            self.lint_queue_low.extend(files)
+        log.debug('Scheduled %i files with %s priority: %s',
+                  len(files), prio, files)
         # Check if there is a task that handles the queued items.
         # If not, we must start one.
         if success and starts_loop and self.task is None:

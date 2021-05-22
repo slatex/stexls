@@ -53,7 +53,7 @@ class TestJRPC(IsolatedAsyncioTestCase):
         with self.assertRaises(exceptions.InternalErrorException):
             await client.get_value(expected_key)
         expected_value = 'some expected value'
-        await client.set_value(key=expected_key, value=expected_value)
+        client.set_value(key=expected_key, value=expected_value)
         self.assertDictEqual(
             await client.get_value(expected_key),
             {'key': expected_key, 'value': expected_value}
@@ -79,7 +79,7 @@ class TestJRPC(IsolatedAsyncioTestCase):
         expected_value = 10
         with self.assertRaises(exceptions.InternalErrorException):
             await client.get_value(key=expected_key)
-        await client.set_value(key=expected_key, value=expected_value)
+        client.set_value(key=expected_key, value=expected_value)
         value = await client.get_value(key=expected_key)
         self.assertDictEqual(
             value, {'key': expected_key, 'value': expected_value})

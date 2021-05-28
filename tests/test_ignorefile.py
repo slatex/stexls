@@ -29,7 +29,7 @@ class TestIgnoreFile(TestCase):
             b/bb
         ''')
         igf = IgnoreFile(self.ignorefile)
-        self.assertSetEqual(igf.ignored_paths, {
+        self.assertSetEqual(igf.ignore_globs, {
             (igf.root / 'a/bb/dir').as_posix(),
             (igf.root / 'b/bb').as_posix(),
             (igf.root / 'a/bb/dir/file1.txt').as_posix(),
@@ -44,10 +44,12 @@ class TestIgnoreFile(TestCase):
         self.assertFalse(igf.match(igf.root / 'a/aa/file0.txt'))
         self.assertFalse(igf.match(igf.root / 'a/aa/dir'))
         self.assertFalse(igf.match(igf.root / 'a/aa/dir/file1.txt'))
+        self.assertFalse(igf.match('a/aa/dir/file1.txt'))
         self.assertFalse(igf.match(igf.root / 'a/aa/dir/file2.txt'))
         self.assertFalse(igf.match(igf.root / 'a/bb'))
         self.assertFalse(igf.match(igf.root / 'a/bb/file0.txt'))
         self.assertTrue(igf.match(igf.root / 'a/bb/dir'))
+        self.assertTrue(igf.match('a/bb/dir'))
         self.assertTrue(igf.match(igf.root / 'a/bb/dir/file1.txt'))
         self.assertTrue(igf.match(igf.root / 'a/bb/dir/file2.txt'))
         self.assertFalse(igf.match(igf.root / 'b'))
@@ -60,6 +62,7 @@ class TestIgnoreFile(TestCase):
         self.assertTrue(igf.match(igf.root / 'b/bb/file0.txt'))
         self.assertTrue(igf.match(igf.root / 'b/bb/dir'))
         self.assertTrue(igf.match(igf.root / 'b/bb/dir/file1.txt'))
+        self.assertTrue(igf.match('b/bb/dir/file1.txt'))
         self.assertTrue(igf.match(igf.root / 'b/bb/dir/file2.txt'))
         self.assertFalse(igf.match(igf.root / 'c/cc'))
         self.assertFalse(igf.match(igf.root / 'c/cc/file0.txt'))

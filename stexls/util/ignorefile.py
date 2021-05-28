@@ -10,15 +10,15 @@ class IgnoreFile:
         Each pattern will be resolved into all possible files it matches
         on initialization or by using `load` to reload the patterns.
 
-
-
         Args:
             ignorefile (str | Path): Path to the file with ignore and include glob patterns.
             root (str | Path, optional): Path to the root the patterns start matching from.
         """
-        self.ignorefile = Path(ignorefile)
-        self.root = Path(root) if root else self.ignorefile.parent
-        self.ignored_paths: Set[Path] = set()
+        self.ignorefile = Path(ignorefile).expanduser().resolve().absolute()
+        self.root = Path(root).expanduser().resolve().absolute(
+        ) if root else self.ignorefile.parent.absolute()
+        self.ignore_globs: Set[str] = set()
+        self.include_globs: Set[str] = set()
         try:
             self.load()
         except Exception:
@@ -29,28 +29,20 @@ class IgnoreFile:
         """
         content = self.ignorefile.read_text()
         lines: List[str] = content.split('\n')
-        include_globs = {
-            line.strip()[1:].strip()
+        self.include_globs = {
+            path.expanduser().resolve().as_posix()
             for line in lines
             if line.strip().startswith('!')
+            if line.strip()[1:].strip()
+            for path in self.root.rglob(line.strip()[1:].strip())
         }
-        ignore_globs = {
-            line.strip()
+        self.ignore_globs = {
+            path.expanduser().resolve().as_posix()
             for line in lines
             if not line.strip().startswith('!')
-        }
-        include_files = {
-            path
-            for glob in include_globs
-            if glob
-            for path in self.root.rglob(glob)
-        }
-        self.ignored_paths: Set[str] = {
-            str(path)
-            for glob in ignore_globs
-            if glob
-            for path in self.root.rglob(glob)
-            if not any(str(path).startswith(str(included)) for included in include_files)
+            if line.strip()
+            for path in self.root.rglob(line.strip())
+            if not any(map(lambda ancestor: ancestor.as_posix() in self.include_globs, path.parents))
         }
 
     def match(self, path: Path) -> bool:
@@ -63,12 +55,15 @@ class IgnoreFile:
             bool: True if the `path` is ignored, False otherwise.
         """
         try:
-            path = Path(path).absolute().relative_to(self.root)
+            path = (self.root/path).expanduser().resolve(
+            ).absolute().relative_to(self.root)
         except ValueError:
             return False
-        cond = Path('.')
-        while path != cond:
-            if str(self.root / path) in self.ignored_paths:
+
+        for ancestor in (path, *path.parents):
+            if (self.root/ancestor).as_posix() in self.ignore_globs:
+                for ancestor in (path, *path.parents):
+                    if (self.root/ancestor).as_posix() in self.include_globs:
+                        return False
                 return True
-            path = path.parent
         return False

@@ -563,12 +563,26 @@ class Compiler:
                 tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
             return
 
+        # Default use source module of the parent `View` symbol
+        source_module = tassign.parent.source_module
+
+        # But if tassign specifies a custom source module use it instead
+        # record its reference, and register the reference `source_module_reference` with the reference made
+        # by the target symbol
+        source_module_reference: Optional[references.Reference] = None
+        if tassign.source_module:
+            source_module = tassign.source_module
+            source_module_reference = obj.add_reference(
+                references.Reference(
+                    source_module.range, context, [source_module.text],
+                    ReferenceType.MODSIG | ReferenceType.MODULE))
+
         # TODO: This was restricted to only `ViewSig`, I enabled it for `View`, and it seems to be working.
         obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
-            tassign.parent.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
+            source_module.text, tassign.source_symbol.text], ReferenceType.ANY_DEFINITION, parent=source_module_reference))
         if tassign.torv == 'v':
             obj.add_reference(references.Reference(tassign.target_term.range, context, [
-                tassign.parent.target_module.text, tassign.target_term.text], ReferenceType.DEF))
+                tassign.parent.target_module.text, tassign.target_term.text], ReferenceType.ANY_DEFINITION))
 
     def _compile_trefi(self, obj: StexObject, context: symbols.Symbol, trefi: parser.TrefiIntermediateParseTree):
         if trefi.drefi:

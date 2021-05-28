@@ -1,7 +1,7 @@
 """ This module provides an uniform way to create and accumulate diagnostics. """
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Set
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -264,7 +264,7 @@ class Diagnostics:
             range: vscode.Range,
             symbol_name: str,
             reference_type: ReferenceType = None,
-            similar_symbols: Dict[str, Set[vscode.Location]] = None):
+            similar_symbols: Dict[str, Set[Tuple[Optional[ReferenceType], vscode.Location]]] = None):
         ' Generic undefined symbol encountered error. '
         if reference_type:
             message = f'Undefined symbol "{symbol_name}" of type {reference_type.format_enum()}'
@@ -276,9 +276,14 @@ class Diagnostics:
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNDEFINED_SYMBOL.value
         related_information = [
-            DiagnosticRelatedInformation(location, f'Related symbol: {name}')
+            DiagnosticRelatedInformation(
+                location,
+                (f'Related symbol: {name}'
+                 if reftype is None
+                 else f'Related symbol: {name} ({(reftype.name or str(reftype)).lower()})')
+            )
             for name, locations in (similar_symbols or {}).items()
-            for location in locations
+            for reftype, location in locations
         ]
         diagnostic = Diagnostic(range, message, severity,
                                 code, relatedInformation=related_information)

@@ -161,7 +161,7 @@ class StexObject:
             self,
             scope: symbols.Symbol,
             qualified: Iterable[str],
-            ref_type: ReferenceType) -> Dict[str, Set[vscode.Location]]:
+            ref_type: ReferenceType) -> Dict[str, Set[Tuple[Optional[ReferenceType], vscode.Location]]]:
         ''' Find simlar symbols with reference to a qualified name and an expected symbol type.
 
         Parameters:
@@ -169,14 +169,17 @@ class StexObject:
             ref_type: Expected type of symbol the id should resolve into
 
         Returns:
-            Dictionary map of symbol names as strings and the set of locations the symbol names are located at
+            Dict[str, Set[symbols.Symbol]]: Dictionary of similar names and the symbols with that name.
         '''
-        names: Dict[str, Set[vscode.Location]] = {}
+        names: Dict[str, Set[Tuple[Optional[ReferenceType], vscode.Location]]] = {}
 
         def f(symbol: symbols.Symbol):
-            if ref_type.contains_any_of(symbol.reference_type):
+            # Match similar symbol if reference type is the same
+            # But also if the name is an exact match.
+            if (ref_type.contains_any_of(symbol.reference_type)
+                    or symbol.name == tuple(qualified)[-1]):
                 names.setdefault('?'.join(symbol.qualified),
-                                 set()).add(symbol.location)
+                                 set()).add((symbol.reference_type, symbol.location))
         self.symbol_table.traverse(lambda s: f(s))
         close_matches = difflib.get_close_matches('?'.join(qualified), names)
         return {match: names.get(match, set()) for match in close_matches}

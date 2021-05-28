@@ -219,26 +219,33 @@ class StexObject:
         f += '\n' + '\n'.join(list_of_formatted_strings)
         return f
 
-    def add_dependency(self, dep: Dependency):
+    def add_dependency(self, dep: Dependency, disable_diagnostic: bool = False):
         """ Registers a dependency that the owner file has to the in the dependency written file and module.
 
-        Multiple dependencies from the same scope to the same module in the same file will be prevented from adding
-        and import warnings will be generated.
+        If the dependency is already added, a warning for redundand imports is generated instead.
+        If `disable_diagnostic` is set, it is still checked if the dependency already exist,
+        but the diagnostic for that case is not added.
 
         Parameters:
-            dep: Information about the dependency.
+            dep (Dependency): Information about the dependency.
+            disable_diagnostic (bool, optional): Disable `redundant_import_check` diagnostic generation.
+
+        Returns:
+            Dependency: The input argument for chaining. If the dependency was rejected
+            because it already is imported, then the previous dependency instead is returned instead.
         """
         for dep0 in self.dependencies:
-            # TODO: this check probably means, that something was indirectly imported and can be ignored
-            # TODO: this same error occurs in Symbol.import_from(): Fix both
             if dep0.check_if_same_module_imported(dep):
+                if disable_diagnostic:
+                    return dep0
                 # Skip adding this dependency
                 previously_imported_at = vscode.Location(
                     self.file.as_uri(), dep0.range)
                 self.diagnostics.redundant_import_check(
                     dep.range, dep.module_name, previously_imported_at)
-                return
+                return dep0
         self.dependencies.append(dep)
+        return dep
 
     def add_reference(self, reference: references.Reference) -> references.Reference:
         """ Registers a reference.

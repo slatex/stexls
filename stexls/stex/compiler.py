@@ -939,34 +939,39 @@ class Compiler:
         """
         _, current_context = context[-1]
         next_context = None
-        if isinstance(tree, parser.ScopeIntermediateParseTree):
-            next_context = self._compile_scope(obj, current_context, tree)
-        elif isinstance(tree, parser.ModsigIntermediateParseTree):
-            next_context = self._compile_modsig(obj, current_context, tree)
-        elif isinstance(tree, parser.ModnlIntermediateParseTree):
-            next_context = self._compile_modnl(obj, current_context, tree)
-        elif isinstance(tree, parser.ModuleIntermediateParseTree):
-            next_context = self._compile_module(obj, current_context, tree)
-        elif isinstance(tree, parser.TassignIntermediateParseTree):
-            self._compile_tassign(obj, current_context, tree)
-        elif isinstance(tree, parser.TrefiIntermediateParseTree):
-            self._compile_trefi(obj, current_context, tree)
-        elif isinstance(tree, parser.DefiIntermediateParseTree):
-            self._compile_defi(obj, current_context, tree)
-        elif isinstance(tree, parser.SymIntermediateParserTree):
-            self._compile_sym(obj, current_context, tree)
-        elif isinstance(tree, parser.SymdefIntermediateParseTree):
-            self._compile_symdef(obj, current_context, tree)
-        elif isinstance(tree, parser.ImportModuleIntermediateParseTree):
-            self._compile_importmodule(obj, current_context, tree)
-        elif isinstance(tree, parser.GImportIntermediateParseTree):
-            self._compile_gimport(obj, current_context, tree)
-        elif isinstance(tree, parser.GStructureIntermediateParseTree):
-            self._compile_gstructure(obj, current_context, tree)
-        elif isinstance(tree, parser.ViewIntermediateParseTree):
-            self._compile_view(obj, current_context, tree)
-        elif isinstance(tree, parser.ViewSigIntermediateParseTree):
-            self._compile_viewsig(obj, current_context, tree)
+        try:
+            if isinstance(tree, parser.ScopeIntermediateParseTree):
+                next_context = self._compile_scope(obj, current_context, tree)
+            elif isinstance(tree, parser.ModsigIntermediateParseTree):
+                next_context = self._compile_modsig(obj, current_context, tree)
+            elif isinstance(tree, parser.ModnlIntermediateParseTree):
+                next_context = self._compile_modnl(obj, current_context, tree)
+            elif isinstance(tree, parser.ModuleIntermediateParseTree):
+                next_context = self._compile_module(obj, current_context, tree)
+            elif isinstance(tree, parser.TassignIntermediateParseTree):
+                self._compile_tassign(obj, current_context, tree)
+            elif isinstance(tree, parser.TrefiIntermediateParseTree):
+                self._compile_trefi(obj, current_context, tree)
+            elif isinstance(tree, parser.DefiIntermediateParseTree):
+                self._compile_defi(obj, current_context, tree)
+            elif isinstance(tree, parser.SymIntermediateParserTree):
+                self._compile_sym(obj, current_context, tree)
+            elif isinstance(tree, parser.SymdefIntermediateParseTree):
+                self._compile_symdef(obj, current_context, tree)
+            elif isinstance(tree, parser.ImportModuleIntermediateParseTree):
+                self._compile_importmodule(obj, current_context, tree)
+            elif isinstance(tree, parser.GImportIntermediateParseTree):
+                self._compile_gimport(obj, current_context, tree)
+            elif isinstance(tree, parser.GStructureIntermediateParseTree):
+                self._compile_gstructure(obj, current_context, tree)
+            elif isinstance(tree, parser.ViewIntermediateParseTree):
+                self._compile_view(obj, current_context, tree)
+            elif isinstance(tree, parser.ViewSigIntermediateParseTree):
+                self._compile_viewsig(obj, current_context, tree)
+        except Exception as err:
+            log.critical('An unexpected error happned during compilation.')
+            obj.diagnostics.exception(
+                tree.location.range, err, vscode.DiagnosticSeverity.Error)
         if next_context:
             context.append((tree, next_context))
 

@@ -408,7 +408,7 @@ class Server(Dispatcher):
                 status = self.workspace.update_file(
                     # TODO: `item` has to be properly deserialized !
                     # TODO: Implement recursive annotations module
-                    textDocument.path, textDocument.version, item['text'])
+                    textDocument.path, textDocument.version, item['text'])  # type: ignore
                 if not status:
                     log.warning('Failed to patch file with: %s', item)
         else:

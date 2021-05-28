@@ -137,7 +137,7 @@ class Seq2SeqModel(base.Model):
             l2: float = 0.01,
             progress: Optional[Callable] = None):
 
-        self.settings['seq2seq'] = {
+        self.settings['seq2seq'] = {  # type: ignore
             'epochs': epochs,
             'optimizer': optimizer,
             'n_components': glove_n_components,

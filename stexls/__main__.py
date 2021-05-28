@@ -4,7 +4,6 @@ it can simply communicate with another process using
 stdin and stdout. After the starver has started,  '''
 import asyncio
 import logging
-import re
 from argparse import REMAINDER, ArgumentParser
 from pathlib import Path
 

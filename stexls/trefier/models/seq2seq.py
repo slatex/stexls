@@ -307,9 +307,6 @@ class Seq2SeqModel(base.Model):
             if self.settings['__class__'] != Seq2SeqModel.__name__:
                 raise ValueError(f'Expected {Seq2SeqModel.__name__}, '
                                  f'but found {self.settings["__class__"]}')
-            if int(self.settings['version'].split('.')[0]) != _VERSION_MAJOR:
-                raise ValueError('Major version mismatch: '
-                                 f'{self.settings["version"]} vs. {_VERSION_MAJOR}.{_VERSION_MINOR}')
             self.glove = pickle.loads(package.read('glove.bin'))
             self.tfidf_model = pickle.loads(package.read('tfidf_model.bin'))
             self.keyphraseness_model = pickle.loads(
@@ -325,18 +322,19 @@ class Seq2SeqModel(base.Model):
 
 
 if __name__ == '__main__':
-    from stexls.util.cli import Arg, Cli, command
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+    parser.add_argument('--epochs', '-e', default=1, type=int,
+                        help='Number of epochs to train for.')
+    parser.add_argument('--save_dir', '-s', default='/tmp/seq2seq/models',
+                        help='Directory where the finished model is saved to.')
+    parser.add_argument('--download_dir', '-d', default='/tmp/seq2seq/downloads',
+                        help='Directory where downloads are saved to.')
+    parser.add_argument('--log_dir', '-l', default='/tmp/seq2seq/logs',
+                        help='Directory for tensorboard logs.')
+    parser.add_argument('--cache_dir', '-c', default='/tmp/seq2seq/cache/',
+                        help='Path to directory for cache files.')
 
-    @command(
-        epochs=Arg('--epochs', '-e', default=1, type=int,
-                   help='Number of epochs to train for.'),
-        save_dir=Arg('--save_dir', '-s', default='/tmp/seq2seq/models',
-                     help='Directory where the finished model is saved to.'),
-        download_dir=Arg('--download_dir', '-d', default='/tmp/seq2seq/downloads',
-                         help='Directory where downloads are saved to.'),
-        log_dir=Arg('--log_dir', '-l', default='/tmp/seq2seq/logs',
-                    help='Directory for tensorboard logs.'),
-        cache_dir=Arg('--cache_dir', '-c', default='/tmp/seq2seq/cache/', help='Path to directory for cache files.'))
     def train(epochs: int, save_dir: str, download_dir: str, log_dir: str, cache_dir: str):
         self = Seq2SeqModel()
         self.train(
@@ -347,14 +345,6 @@ if __name__ == '__main__':
             cache_dir=cache_dir,
         )
 
-    @command(
-        model=Arg('--model', '-m', required=True,
-                  help='Path to model to load.'),
-        files=Arg(nargs='*', help='List of files to create predictions for.'))
-    def predict(model: str, *files: str):
-        self = Seq2SeqModel.load(model)
-        print(self.predict(*files))
+    args = vars(parser.parse_args())
 
-    cli = Cli([train, predict],
-              'Trains a seq2seq model or creates tags for a file.')
-    cli.dispatch()
+    train(**args)

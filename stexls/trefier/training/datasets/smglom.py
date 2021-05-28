@@ -58,7 +58,7 @@ def load(
         lang: str = 'en',
         binary: bool = True,
         progress: Callable = None,
-        limit: int = None) -> Tuple[List[List[str]], List[List[int]]]:
+        limit: int = None) -> Tuple[List[List[str]], List[List[Label]]]:
     ''' Loads smglom repositories as dataset. Files that fail to parse
         or parse with no tokens are ignored.
     Parameters:

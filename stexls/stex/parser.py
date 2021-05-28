@@ -910,7 +910,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
         if mhrepo:
             source: Path = root / mhrepo / 'source'
         else:
-            source: Path = util.find_source_dir(root, current_file)
+            source = util.find_source_dir(root, current_file)
         if dir:
             result = source / dir / (module + '.tex')
         elif path:

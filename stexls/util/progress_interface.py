@@ -48,7 +48,8 @@ class ProgressInterface:
     @classmethod
     def from_iter(cls, it, title: Optional[str] = None, *args, **kwargs):
         if hasattr(it, "__len__"):
-            prog = cls(*args, length=len(it), title=title, **kwargs)
+            prog = cls(*args, length=len(it), title=title,
+                       **kwargs)  # type: ignore
         else:
             prog = cls(title=title, **kwargs)
         prog.publish()

@@ -776,8 +776,6 @@ class LintingScheduler:
             # Reload ignorefile
             try:
                 self.workspace.ignorefile.load()
-                log.debug('Reloaded ignorefile with content')
-                log.debug(self.workspace.ignorefile.ignored_paths)
             except Exception:
                 log.exception('Failed to parse ignorefile.')
             files = tuple(

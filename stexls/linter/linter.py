@@ -217,7 +217,7 @@ class Linter:
                 log.debug('Adding trefier tags for file: %s', file)
                 tags, = model.predict(file)
                 env_pattern = re.compile(
-                    r'[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|import(mh)?module\*?|(sym|var)def\*?|sym[ivx]+\*?|[tv]assign|libinput|\$')
+                    r'[ma]*(Tr|tr|D|d|Dr|dr)ef[ivx]+s?\*?|gimport\*?|(import|use)(mh)?module\*?|(sym|var)def\*?|sym[ivx]+\*?|[tv]assign|libinput|\$')
                 for tag in tags:
                     if not isinstance(tag.label, float) or not 0 <= tag.label <= 1:
                         loc = Location(file.as_uri(), tag.token.range)

@@ -556,17 +556,12 @@ class Compiler:
                 tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
             return
 
-        if isinstance(tassign.parent, parser.ViewSigIntermediateParseTree):
-            view: parser.ViewSigIntermediateParseTree = tassign.parent
-            obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
-                              view.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
-            if tassign.torv == 'v':
-                obj.add_reference(references.Reference(tassign.target_term.range, context, [
-                                  view.target_module.text, tassign.target_term.text], ReferenceType.DEF))
-        else:
-            # TODO: Also compile when inside view environments
-            obj.diagnostics.exception(context.location.range, NotImplementedError(
-                '"assign" inside "view" not implemented yet.'))
+        # TODO: This was restricted to only `ViewSig`, I enabled it for `View`, and it seems to be working.
+        obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
+            tassign.parent.source_module.text, tassign.source_symbol.text], ReferenceType.DEF))
+        if tassign.torv == 'v':
+            obj.add_reference(references.Reference(tassign.target_term.range, context, [
+                tassign.parent.target_module.text, tassign.target_term.text], ReferenceType.DEF))
 
     def _compile_trefi(self, obj: StexObject, context: symbols.Symbol, trefi: parser.TrefiIntermediateParseTree):
         if trefi.drefi:

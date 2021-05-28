@@ -733,7 +733,7 @@ class _NoverbHandler:
 
     @property
     def langs(self) -> Set[str]:
-        noverb: TokenWithLocation = self.named.get('noverb')
+        noverb: Optional[TokenWithLocation] = self.named.get('noverb')
         if noverb is None:
             return set()
         if (noverb.text[0], noverb.text[-1]) == ('{', '}'):

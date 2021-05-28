@@ -501,14 +501,23 @@ class RootSymbol(Symbol):
 class ScopeSymbol(Symbol):
     count = 0
 
-    def __init__(self, location: vscode.Location, name: Optional[str] = None):
+    def __init__(self, location: vscode.Location, name: str = 'anonymous', named: bool = False):
+        """ Generates a symbol that can be used as a scope and does not have any other settings.
+
+        Args:
+            location (vscode.Location): Location where the scope is defined.
+            name (str, optional):
+                Name of the scope. If `named` is False, then this will be part of the randomly generated anonymous name. Defaults to 'anonymous'.
+            named (bool, optional): If True, then `name` will be used as is as the symbol name.
+                If false, a random name will be generated using `name` as a soft identifier of sorts. Defaults to False.
+        """
         # Add uuid because of duplicate symbols during multiple runs
         # The odds of matching up count and uuid between restarts
         # of the program are low.
         self.uuid = uuid.uuid4().hex
-        if not name:
+        if not named:
             ScopeSymbol.count += 1
-            name = f'__{self.uuid}#{ScopeSymbol.count}__'
+            name = f'__{name}#{ScopeSymbol.count}@{self.uuid}__'
         super().__init__(location, name)
 
     def __repr__(self):

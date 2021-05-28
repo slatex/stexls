@@ -1050,11 +1050,13 @@ class TassignIntermediateParseTree(IntermediateParseTree):
             self,
             location: vscode.Location,
             torv: str,
+            source_module: Optional[TokenWithLocation],
             source_symbol: TokenWithLocation,
             target_term: TokenWithLocation,
             asterisk: bool):
         super().__init__(location)
         self.torv = torv
+        self.source_module = source_module
         self.source_symbol = source_symbol
         self.target_term = target_term
         self.asterisk = asterisk
@@ -1067,13 +1069,30 @@ class TassignIntermediateParseTree(IntermediateParseTree):
         if len(e.rargs) != 2:
             raise exceptions.CompilerError(
                 f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
+        source_module = None
         source_symbol = TokenWithLocation.from_node(e.rargs[0])
         target_term = TokenWithLocation.from_node(e.rargs[1])
-        if len(e.oargs) > 0:
-            raise exceptions.CompilerError('Unexpected optional arguments.')
+        if '?' in source_symbol.text:
+            if len(e.oargs) > 0:
+                raise exceptions.CompilerError(
+                    'Unexpected optional argument expected.')
+            try:
+                source_module, source_symbol = source_symbol.split(
+                    source_symbol.text.index('?'), 1)
+            except Exception:
+                raise exceptions.CompilerError(
+                    'Unexpected source symbol format.')
+        elif len(e.oargs) > 1:
+            raise exceptions.CompilerError(
+                'At most 1 optional argument expected.')
+        else:
+            unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
+            if len(unnamed) > 0:
+                source_module = unnamed[0]
         return TassignIntermediateParseTree(
             location=e.location,
             torv=match.group('at'),
+            source_module=source_module,
             source_symbol=source_symbol,
             target_term=target_term,
             asterisk=match.group('asterisk') is not None,

@@ -151,9 +151,13 @@ class Linter:
         time_modified = list(
             map(self.workspace.get_time_buffer_modified, files))
         args = zip(files, content, time_modified)
-        with Pool(num_jobs) as pool:
-            it: Iterable[Optional[StexObject]] = pool.starmap(
-                self.compiler.compile_or_load_from_file, args)
+        if num_jobs > 1:
+            with Pool(num_jobs) as pool:
+                it: Iterable[Optional[StexObject]] = pool.starmap(
+                    self.compiler.compile_or_load_from_file, args)
+        else:
+            it = map(
+                lambda x: self.compiler.compile_or_load_from_file(*x), args)
         paths = []
         for obj in filter(None, it):
             paths.append(obj.file)

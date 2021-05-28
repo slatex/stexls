@@ -421,7 +421,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         module = None
         lang = None
         if e.env_name == 'gviewnl':
-            if len(e.rargs) < 4:
+            if len(e.rargs) != 4:
                 raise exceptions.CompilerError(
                     f'Argument count mismatch: gviewnl requires 4 arguments, found {len(e.rargs)}.')
             for illegal_arg in ['frompath', 'topath']:
@@ -431,7 +431,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
             module = TokenWithLocation.from_node(e.rargs[0])
             lang = TokenWithLocation.from_node(e.rargs[1])
         elif e.env_name == 'mhview':
-            if len(e.rargs) < 2:
+            if len(e.rargs) != 2:
                 raise exceptions.CompilerError(
                     f'Argument count mismatch: mhview requires 2 arguments, found {len(e.rargs)}.')
         else:

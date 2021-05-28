@@ -84,6 +84,7 @@ class Evaluation:
         self.history_series = history_series
         if history is not None:
             for metric in history_series:
+                assert self.history is not None
                 assert metric in self.history, "Specified series is not actually in the history"
 
     def evaluate(self, y_true, y_pred, classes, average=None, sample_weights=None, ignore_binary_average=True):

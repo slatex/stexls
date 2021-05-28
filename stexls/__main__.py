@@ -36,12 +36,8 @@ if __name__ == '__main__':
         help='Only diagnostics for the specified level and above are printed.',
         default=DiagnosticSeverity.Hint)
     linter_cmd.add_argument(
-        '--include', '-I', nargs='+', type=lambda x: re.compile(x),
-        help='List of regex patterns. Only files that match ANY of these patterns will be included.',
-        default=[re.compile(r'.*\.tex')])
-    linter_cmd.add_argument(
-        '--ignore', '-i', nargs='+', type=lambda x: re.compile(x),
-        help='List of regex pattern. All files that match ANY of these patterns will be excluded.')
+        '--ignorefile', type=Path,
+        help='Path to the ignorefile. If not set, then ".stexlsignore" will be used.')
     linter_cmd.add_argument(
         '--show-progress', '-p', action='store_true',
         help='Enables printing of a progress bar to stderr during update.')

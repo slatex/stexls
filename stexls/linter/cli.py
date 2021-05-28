@@ -1,13 +1,13 @@
 import logging
+from os import PathLike
 from pathlib import Path
-from typing import List, Optional, Pattern
+from typing import List, Optional, Union
 
 from tqdm import tqdm
 
-from .linter import Linter
 from ..util.workspace import Workspace
 from ..vscode import DiagnosticSeverity
-
+from .linter import Linter
 
 log = logging.getLogger(__name__)
 
@@ -16,14 +16,13 @@ async def linter(
         files: List[Path],
         root: Optional[Path],
         diagnosticlevel: DiagnosticSeverity,
-        include: List[Pattern],
-        ignore: List[Pattern],
         show_progress: bool,
         format: str,
         tagfile: Optional[str],
         loglevel: str,
         logfile: Path,
-        verbose: bool):
+        verbose: bool,
+        ignorefile: Optional[Union[str, Path, PathLike]] = None):
     """ Run the language server in linter mode.
 
         In this mode only diagnostics and progress are printed to stdout.
@@ -32,14 +31,14 @@ async def linter(
         root: Root of stex imports.
         files: List of input files. While dependencies are compiled, only these specified files will generate diagnostics.
         diagnosticlevel: Only diagnostics for the specified level and above are printed. (Error: 1, Warning: 2, Info: 3, Hint: 4)
-        include: List of regex patterns. Only files that match ANY of these patterns will be included.
-        ignore: List of regex pattern. All files that match ANY of these patterns will be excluded.
         show_progress: Enables a progress bar being printed to stderr.
         verbose: If enabled, instead of only printing errors, all infos about each input file will be printed.
         format: Format string of the diagnostics. Variables are file, relative_file, line, column, severity, message and code.
         tagfile: Optional name of the generated tagfile. If None, no tagfile will be generated.
         loglevel: Server loglevel. Choices are critical, error, warning, info and debug.
         logfile: File to which logs will be logged.
+        ignorefile (str | Path, optional): Path to the ignorefile.
+            If None, `root/.stexlsignore` will be used.
 
     Returns:
         Awaitable task.
@@ -70,9 +69,13 @@ async def linter(
             it.set_description(title)
         return it
 
-    workspace = Workspace(root)
-    workspace.ignore = ignore
-    workspace.include = include
+    workspace = Workspace(
+        root,
+        ignorefile=(
+            Path(ignorefile)
+            if ignorefile and Path(ignorefile).is_file()
+            else Path(root) / '.stexlsignore'
+        ))
 
     if not files:
         files = list(workspace.files)

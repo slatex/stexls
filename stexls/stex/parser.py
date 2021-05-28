@@ -934,7 +934,7 @@ class ImportModuleIntermediateParseTree(IntermediateParseTree):
     def __repr__(self):
         try:
             from_ = f' from "{self.path_to_imported_file(Path.cwd())}"'
-        except:
+        except Exception:
             from_ = ''
         access = symbols.AccessModifier.PUBLIC if self.export else symbols.AccessModifier.PRIVATE
         return f'[{access.value} ImportModule "{self.module.text}"{from_}]'

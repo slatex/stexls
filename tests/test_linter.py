@@ -12,8 +12,7 @@ class TestLinter(TestCase, MockGlossary):
         self.workspace = Workspace(self.root)
         self.linter = Linter(
             self.workspace,
-            outdir=self.root,
-            enable_global_validation=True)
+            outdir=self.root)
 
     def tearDown(self) -> None:
         self.cleanup()

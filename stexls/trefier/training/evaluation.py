@@ -25,7 +25,9 @@ def plot_confusion_matrix(
     it can be given precomputed as the cm argument.
     y_true and y_pred will be ignored if the cm argument is not None.
 
-    Modified from http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
+    Modified from
+
+    http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
 
     Keyword Arguments:
         y_true {list} -- Ground true (default: {None})
@@ -93,12 +95,16 @@ class Evaluation:
         Arguments:
             y_true {list} -- list of true labels
             y_pred {list} -- list of predicted labels
-            classes {list} -- Dictionary of {class label:class names} or if a list of class names is provided, then the names will be assigned their index in the array as the label.
+            classes {list} -- Dictionary of {class label:class names} or if a list of class names is provided,
+                then the names will be assigned their index in the array as the label.
 
         Keyword Arguments:
-            average {str} -- Type of average for scores. If None: 'binary' will be picked for binary, and 'macro' for non-binary inputs. ('binary', 'micro', 'macro') (default: {None})
+            average {str} -- Type of average for scores.
+                If None: 'binary' will be picked for binary, and 'macro' for non-binary inputs.
+                ('binary', 'micro', 'macro') (default: {None})
             sample_weights {list} -- Optional list of weights for each sample of y_true/y_pred (default: {None})
-            ignore_binary_average {bool} -- If true, then the average metrics will not be shown in the case of a binary classification (default: {True})
+            ignore_binary_average {bool} -- If true, then the average metrics will not be shown
+                in the case of a binary classification (default: {True})
         """
         assert average in ('micro', 'macro', 'binary', None)
         assert isinstance(y_true, np.ndarray), "y_true must be an numpy array."

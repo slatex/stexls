@@ -108,11 +108,13 @@ class TokenWithLocation:
             TokenWithLocation.from_node(oarg.value)
             for oarg in oargs
             if oarg.name is None
+            if oarg.value
         ]
         named = {
             oarg.name.text[:-1]: TokenWithLocation.from_node(oarg.value)
             for oarg in oargs
             if oarg.name is not None
+            if oarg.value
         }
         return unnamed, named
 

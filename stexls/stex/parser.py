@@ -531,7 +531,7 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 class GStructureIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'gstructure(\*)?')
 
-    def __init__(self, location: vscode.Location, mhrepos: TokenWithLocation, module: TokenWithLocation):
+    def __init__(self, location: vscode.Location, mhrepos: Optional[TokenWithLocation], module: TokenWithLocation):
         super().__init__(location)
         self.mhrepos = mhrepos
         self.module = module

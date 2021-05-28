@@ -13,8 +13,8 @@ from typing import (Any, Callable, Collection, Dict, List, Optional, Sequence,
                     Set, Tuple, Union)
 
 from .. import vscode
-from ..util import roman_numerals
 from ..latex import parser
+from ..util import roman_numerals
 from . import exceptions, symbols, util
 
 __all__ = (

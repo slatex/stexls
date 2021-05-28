@@ -779,6 +779,7 @@ class Compiler:
             obj.diagnostics.parent_must_be_root_semantic_location_check(
                 view.location.range, 'view')
 
+        binding: Optional[symbols.BindingSymbol] = None
         if view.env == 'gviewnl':
             assert view.module is not None, "view.module must be set in gviewnl"
             assert view.lang is not None, "view.lang must be set in gviewnl"
@@ -787,7 +788,32 @@ class Compiler:
                 obj.diagnostics.file_name_mismatch(
                     view.module.range, expected_name, obj.file.stem)
 
-        if view.env == 'gviewnl':
+            # Create binding symbols
+            binding = symbols.BindingSymbol(
+                location=view.location.replace(
+                    positionOrRange=view.module.range),
+                module=view.module.text,
+                lang=view.lang.text,
+            )
+            context.add_child(binding)
+
+            # Create container scope
+            obj.add_dependency(
+                Dependency(
+                    range=binding.location.range,
+                    scope=binding,
+                    module_name=view.module.text,
+                    module_type_hint=symbols.ModuleType.MODSIG,
+                    file_hint=binding.location.path.parent /
+                    (view.module.text + '.tex'),
+                    export=True))
+            obj.add_reference(
+                references.Reference(
+                    range=binding.location.range,
+                    scope=binding,
+                    name=[view.module.text],
+                    reference_type=ReferenceType.MODSIG))
+
             source_file_hint = parser.GImportIntermediateParseTree.build_path_to_imported_module(
                 self.root_dir,
                 view.location.path,
@@ -819,33 +845,39 @@ class Compiler:
             raise exceptions.CompilerError(
                 f'Unexpected environment: "{view.env}"')
 
-        source_dep = Dependency(
+        source_dep = obj.add_dependency(Dependency(
             range=view.source_module.range,
             scope=context,
             module_name=view.source_module.text,
             # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=source_file_hint,
-            export=True)
-        obj.add_dependency(source_dep)
-        ref = references.Reference(source_dep.range, context, [
-            source_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE, parent=source_dep)
-        obj.add_reference(ref)
+            export=True),
+            disable_diagnostic=view.env.startswith('gview'))
+        obj.add_reference(
+            references.Reference(
+                view.source_module.range, context,
+                [view.source_module.text],
+                ReferenceType.MODSIG | references.ReferenceType.MODULE,
+                parent=source_dep))
 
-        target_dep = Dependency(
+        target_dep = obj.add_dependency(Dependency(
             range=view.target_module.range,
             scope=context,
             module_name=view.target_module.text,
             # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=target_file_hint,
-            export=True)
-        obj.add_dependency(target_dep)
-        ref = references.Reference(target_dep.range, context, [
-            target_dep.module_name], ReferenceType.MODSIG | references.ReferenceType.MODULE, parent=target_dep)
-        obj.add_reference(ref)
+            export=True),
+            disable_diagnostic=view.env.startswith('gview'))
+        obj.add_reference(
+            references.Reference(
+                view.target_module.range,
+                context, [view.target_module.text],
+                ReferenceType.MODSIG | references.ReferenceType.MODULE,
+                parent=target_dep))
 
-        return None
+        return binding
 
     def _compile_viewsig(self, obj: StexObject, context: symbols.Symbol, viewsig: parser.ViewSigIntermediateParseTree):
         if not isinstance(context, symbols.RootSymbol):
@@ -856,6 +888,14 @@ class Compiler:
         if viewsig.module.text != obj.file.stem:
             obj.diagnostics.file_name_mismatch(
                 viewsig.module.range, viewsig.module.text, obj.file.stem)
+
+        module = symbols.ModuleSymbol(
+            module_type=symbols.ModuleType.MODSIG,
+            location=viewsig.location.replace(
+                positionOrRange=viewsig.module.range),
+            name=viewsig.module.text
+        )
+        context.add_child(module)
 
         source_dep = Dependency(
             range=viewsig.source_module.range,
@@ -888,7 +928,7 @@ class Compiler:
             parent=target_dep)
         obj.add_reference(ref)
 
-        return None
+        return module
 
     def _compile_enter(self, obj: StexObject, context: List[Tuple[parser.IntermediateParseTree, symbols.Symbol]], tree: parser.IntermediateParseTree):
         """ This manages the enter operation of the intermediate parse tree into relevant environemnts.

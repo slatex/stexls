@@ -193,7 +193,7 @@ class Seq2SeqModel(base.Model):
             glove_n_components=glove_n_components,
             val_split=val_split,
             test_split=test_split,
-            cache_dir=cache_dir,
+            cache_dir=cache_dir or '.',
             progress=progress)
 
         class_count_counter = Counter(int(a) for b in y_train for a in b)

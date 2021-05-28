@@ -791,7 +791,7 @@ class SymIntermediateParserTree(IntermediateParseTree):
 
 
 class SymdefIntermediateParseTree(IntermediateParseTree):
-    PATTERN = re.compile(r'symdef(\*)?')
+    PATTERN = re.compile(r'(var|sym)def(\*)?')
 
     def __init__(
             self,
@@ -799,10 +799,12 @@ class SymdefIntermediateParseTree(IntermediateParseTree):
             name: TokenWithLocation,
             unnamed_oargs: List[TokenWithLocation],
             named_oargs: Dict[str, TokenWithLocation],
+            var_or_sym: str,
             asterisk: bool):
         super().__init__(location)
         self.name: TokenWithLocation = name
         self.noverb = _NoverbHandler(unnamed_oargs, named_oargs)
+        self.var_or_sym = var_or_sym
         self.asterisk: bool = asterisk
 
     @classmethod
@@ -820,7 +822,8 @@ class SymdefIntermediateParseTree(IntermediateParseTree):
             name=named.get('name', name),
             unnamed_oargs=unnamed,
             named_oargs=named,
-            asterisk=match.group(1) is not None,
+            var_or_sym=match.group(1),
+            asterisk=match.group(2) is not None,
         )
 
     def __repr__(self):

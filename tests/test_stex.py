@@ -143,6 +143,23 @@ class TestCompiler(TestCase, MockGlossary):
         self.assertEqual(sym2.name, 'value')
         self.assertListEqual(obj.diagnostics.diagnostics, [])
 
+    def test_compile_vardef(self):
+        file = self.write_modsig(r'\vardef{value}')
+        obj = Compiler(self.root, self.source).compile(file)
+        sym, = obj.symbol_table.find((self.module_name, 'value'))
+        self.assertEqual(sym.name, 'value')
+        self.assertListEqual(obj.diagnostics.diagnostics, [])
+
+    def test_compile_duplicate_vardef(self):
+        file = self.write_modsig(r'''
+            \vardef{value}
+            \vardef{value}''')
+        obj = Compiler(self.root, self.source).compile(file)
+        sym1, sym2, = obj.symbol_table.find((self.module_name, 'value'))
+        self.assertEqual(sym1.name, 'value')
+        self.assertEqual(sym2.name, 'value')
+        self.assertListEqual(obj.diagnostics.diagnostics, [])
+
     def test_compile_symdef_name(self):
         file = self.write_modsig(
             r'\symdef[name=value]{argument will be ignored}')

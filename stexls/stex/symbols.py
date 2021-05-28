@@ -263,7 +263,6 @@ class Symbol:
                 'Attempting to add child symbol which already has a parent.')
         if child.name in self.children:
             for prev_child in self.children[child.name]:
-                # TODO: Is the following too broad? In general, we can have symbols of different types with the same name and they should be treated independently.
                 if child.reference_type != prev_child.reference_type:
                     continue
                 if not alternative:

@@ -698,7 +698,7 @@ class TrefiIntermediateParseTree(IntermediateParseTree):
         tokens = list(map(TokenWithLocation.from_node, e.rargs))
         try:
             i = roman_numerals.roman2int(match.group(3))
-        except IndexError:
+        except ValueError:
             raise exceptions.CompilerError(
                 f'Invalid environment (are the roman numerals correct?): {e.env_name}')
         return TrefiIntermediateParseTree(

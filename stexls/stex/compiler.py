@@ -774,13 +774,8 @@ class Compiler:
         return None
 
     def _compile_view(self, obj: StexObject, context: symbols.Symbol, view: parser.ViewIntermediateParseTree):
-        if not isinstance(context, symbols.RootSymbol):
-            # TODO: Semantic location check
-            obj.diagnostics.parent_must_be_root_semantic_location_check(
-                view.location.range, 'view')
-
         binding: Optional[symbols.BindingSymbol] = None
-        if view.env == 'gviewnl':
+        if view.env.startswith('gview'):
             assert view.module is not None, "view.module must be set in gviewnl"
             assert view.lang is not None, "view.lang must be set in gviewnl"
             expected_name = f'{view.module.text}.{view.lang.text}'
@@ -796,6 +791,7 @@ class Compiler:
                 lang=view.lang.text,
             )
             context.add_child(binding)
+            context = binding
 
             # Create container scope
             obj.add_dependency(
@@ -815,32 +811,35 @@ class Compiler:
                     reference_type=ReferenceType.MODSIG))
 
             source_file_hint = parser.GImportIntermediateParseTree.build_path_to_imported_module(
-                self.root_dir,
-                view.location.path,
-                view.fromrepos.text if view.fromrepos else None,
-                view.source_module.text)
+                root=self.root_dir,
+                current_file=view.location.path,
+                repo=view.fromrepos.text if view.fromrepos else None,
+                module=view.source_module.text)
             target_file_hint = parser.GImportIntermediateParseTree.build_path_to_imported_module(
-                self.root_dir,
-                view.location.path,
-                view.torepos.text if view.torepos else None,
-                view.target_module.text)
-        elif view.env == 'mhview':
+                root=self.root_dir,
+                current_file=view.location.path,
+                repo=view.torepos.text if view.torepos else None,
+                module=view.target_module.text)
+        elif view.env.startswith('mhview'):
+            scope = symbols.ScopeSymbol(view.location, name=view.env)
+            context.add_child(scope)
+            context = scope
             source_file_hint = parser.ImportModuleIntermediateParseTree.build_path_to_imported_module(
-                self.root_dir,
-                view.location.path,
-                view.fromrepos.text if view.fromrepos else None,
-                view.frompath.text if view.frompath else None,
-                None,
-                None,
-                view.source_module.text)
+                root=self.root_dir,
+                current_file=view.location.path,
+                mhrepo=view.fromrepos.text if view.fromrepos else None,
+                path=view.frompath.text if view.frompath else view.source_module.text,
+                dir=None,
+                load=None,
+                module=view.source_module.text)
             target_file_hint = parser.ImportModuleIntermediateParseTree.build_path_to_imported_module(
-                self.root_dir,
-                view.location.path,
-                view.torepos.text if view.torepos else None,
-                view.topath.text if view.topath else None,
-                None,
-                None,
-                view.target_module.text)
+                root=self.root_dir,
+                current_file=view.location.path,
+                mhrepo=view.torepos.text if view.torepos else None,
+                path=view.topath.text if view.topath else view.target_module.text,
+                dir=None,
+                load=None,
+                module=view.target_module.text)
         else:
             raise exceptions.CompilerError(
                 f'Unexpected environment: "{view.env}"')
@@ -853,7 +852,7 @@ class Compiler:
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=source_file_hint,
             export=True),
-            disable_diagnostic=view.env.startswith('gview'))
+            disable_diagnostic=True)
         obj.add_reference(
             references.Reference(
                 view.source_module.range, context,
@@ -869,7 +868,7 @@ class Compiler:
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=target_file_hint,
             export=True),
-            disable_diagnostic=view.env.startswith('gview'))
+            disable_diagnostic=True)
         obj.add_reference(
             references.Reference(
                 view.target_module.range,
@@ -877,7 +876,7 @@ class Compiler:
                 ReferenceType.MODSIG | references.ReferenceType.MODULE,
                 parent=target_dep))
 
-        return binding
+        return context
 
     def _compile_viewsig(self, obj: StexObject, context: symbols.Symbol, viewsig: parser.ViewSigIntermediateParseTree):
         if not isinstance(context, symbols.RootSymbol):

@@ -383,7 +383,7 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
 
 class ViewIntermediateParseTree(IntermediateParseTree):
     # TODO: possibly mhview should be separate -- the same way as module is separated from mhmodnl
-    PATTERN = re.compile(r'mhview|gviewnl')
+    PATTERN = re.compile(r'mhview(nl)?|gviewnl')
 
     def __init__(
             self,
@@ -420,7 +420,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
         _, named = TokenWithLocation.parse_oargs(e.oargs)
         module = None
         lang = None
-        if e.env_name == 'gviewnl':
+        if e.env_name.startswith('gviewnl'):
             if len(e.rargs) != 4:
                 raise exceptions.CompilerError(
                     f'Argument count mismatch: gviewnl requires 4 arguments, found {len(e.rargs)}.')
@@ -430,7 +430,7 @@ class ViewIntermediateParseTree(IntermediateParseTree):
                         f'{illegal_arg} argument not allowed in gviewnl.')
             module = TokenWithLocation.from_node(e.rargs[0])
             lang = TokenWithLocation.from_node(e.rargs[1])
-        elif e.env_name == 'mhview':
+        elif e.env_name.startswith('mhview'):
             if len(e.rargs) != 2:
                 raise exceptions.CompilerError(
                     f'Argument count mismatch: mhview requires 2 arguments, found {len(e.rargs)}.')

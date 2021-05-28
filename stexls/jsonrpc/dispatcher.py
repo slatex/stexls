@@ -59,15 +59,12 @@ class Dispatcher:
         message = RequestObject(id, method, params)
         return self.connection.send_request(message)
 
-    def notification(self, method: str, params: Optional[Union[List[Any], Tuple[Any, ...], Dict[str, Any]]] = None) -> Awaitable[None]:
+    def notification(self, method: str, params: Optional[Union[List[Any], Tuple[Any, ...], Dict[str, Any]]] = None):
         """ Sends a notification.
 
         Args:
             method (str): Remote method name.
             params (Union[list, dict, None], optional): Valid json-rpc parameters. Defaults to None.
-
-        Returns:
-            Dummy awaitable so that the caller can yield and let the server send the notification.
         """
         log.debug('Dispatching notification %s(%s).', method, params)
         message = NotificationObject(method, params)

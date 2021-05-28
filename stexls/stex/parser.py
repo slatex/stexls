@@ -116,7 +116,7 @@ class TokenWithLocation:
         }
         return unnamed, named
 
-    def split(self, index: int, offset: int = 0) -> Optional[Tuple[TokenWithLocation, TokenWithLocation]]:
+    def split(self, index: int, offset: int = 0) -> Tuple[TokenWithLocation, TokenWithLocation]:
         ''' Splits the token at the specified index.
 
         Arguments:

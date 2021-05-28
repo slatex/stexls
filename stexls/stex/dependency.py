@@ -14,7 +14,7 @@ class Dependency:
             module_name: str,
             module_type_hint: symbols.ModuleType,
             file_hint: Path,
-            export: bool):
+            export: bool = True):
         """ Container for data required to resolve module dependencies / imports.
 
         Parameters:

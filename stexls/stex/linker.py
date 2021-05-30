@@ -7,6 +7,7 @@ from pathlib import Path
 from time import time
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
+from stexls.stex.reference_type import ReferenceType
 from stexls.stex.references import Reference
 
 from .. import vscode
@@ -51,7 +52,8 @@ class Linker:
             dependency: Dependency of the object `obj`
             imported: The Object that contains the file and module specified in @dependency
         '''
-        resolved = imported.symbol_table.lookup(dependency.module_name)
+        resolved = imported.symbol_table.lookup(
+            dependency.module_name, accepted_ref_type=ReferenceType.ANY_MODULE)
         if len(resolved) > 1:
             obj.diagnostics.unable_to_link_with_non_unique_module(
                 dependency.range, dependency.module_name, imported.file, related=[
@@ -61,7 +63,7 @@ class Linker:
             return
         if not resolved and obj.file == dependency.file_hint:
             resolved = dependency.scope.lookup(
-                dependency.module_name, allow_lookup_through_module=True)
+                dependency.module_name, allow_lookup_through_module=True, accepted_ref_type=ReferenceType.ANY_MODULE)
         if not resolved:
             obj.diagnostics.undefined_module_not_exported_by_file(
                 dependency.range, dependency.module_name, imported.file)

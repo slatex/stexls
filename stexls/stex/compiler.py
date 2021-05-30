@@ -790,11 +790,6 @@ class Compiler:
         if view.env.startswith('gview'):
             assert view.module is not None, "view.module must be set in gviewnl"
             assert view.lang is not None, "view.lang must be set in gviewnl"
-            expected_name = f'{view.module.text}.{view.lang.text}'
-            if expected_name != obj.file.stem:
-                obj.diagnostics.file_name_mismatch(
-                    view.module.range, expected_name, obj.file.stem)
-
             # Create binding symbols
             binding = symbols.BindingSymbol(
                 location=view.location.replace(

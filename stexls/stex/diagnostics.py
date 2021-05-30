@@ -251,12 +251,19 @@ class Diagnostics:
         diagnostic = Diagnostic(range, message, severity, code)
         self.diagnostics.append(diagnostic)
 
-    def unable_to_link_with_non_unique_module(self, range: vscode.Range, module_name: str, file: Path):
+    def unable_to_link_with_non_unique_module(self, range: vscode.Range, module_name: str, file: Path, related: List[Location] = None):
         ' Error that should be impossible, but raised when a module is defined multiple times and some module attempts to import it. '
         message = f'Module "{module_name}" not unique in "{file}"'
         severity = DiagnosticSeverity.Error
         code = DiagnosticCodeName.UNIQUE_DEPENDENCY_NAME.value
-        diagnostic = Diagnostic(range, message, severity, code)
+        related_info: List[DiagnosticRelatedInformation] = []
+        if related:
+            for loc in related:
+                info = DiagnosticRelatedInformation(
+                    loc, 'Module definition found here.')
+                related_info.append(info)
+        diagnostic = Diagnostic(range, message, severity,
+                                code, relatedInformation=related_info)
         self.diagnostics.append(diagnostic)
 
     def undefined_symbol(

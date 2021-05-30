@@ -54,7 +54,10 @@ class Linker:
         resolved = imported.symbol_table.lookup(dependency.module_name)
         if len(resolved) > 1:
             obj.diagnostics.unable_to_link_with_non_unique_module(
-                dependency.range, dependency.module_name, imported.file)
+                dependency.range, dependency.module_name, imported.file, related=[
+                    sym.location
+                    for sym in resolved
+                ])
             return
         if not resolved:
             obj.diagnostics.undefined_module_not_exported_by_file(

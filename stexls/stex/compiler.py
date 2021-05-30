@@ -483,21 +483,21 @@ class Compiler:
         return None
 
     def _compile_modsig(self, obj: StexObject, context: symbols.Symbol, modsig: parser.ModsigIntermediateParseTree):
+        name_location = modsig.location.replace(
+            positionOrRange=modsig.name.range)
         if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
             obj.diagnostics.parent_must_be_root_semantic_location_check(
-                modsig.location.range, 'modsig')
-        name_location = modsig.location.replace(
-            positionOrRange=modsig.name.range)
+                name_location.range, 'modsig')
         if obj.file.stem != modsig.name.text:
             obj.diagnostics.file_name_mismatch(
-                modsig.location.range, modsig.name.text, obj.file.stem)
+                name_location.range, modsig.name.text, obj.file.stem)
         module = symbols.ModuleSymbol(
             module_type=symbols.ModuleType.MODSIG,
             location=name_location,
             name=modsig.name.text)
         try:
-            context.add_child(module)
+            context.add_child(module, alternative=True)
             return module
         except exceptions.DuplicateSymbolDefinedError:
             log.exception('%s: Failed to compile modsig %s.',
@@ -505,35 +505,35 @@ class Compiler:
         return None
 
     def _compile_modnl(self, obj: StexObject, context: symbols.Symbol, modnl: parser.ModnlIntermediateParseTree):
+        name_location = modnl.location.replace(
+            positionOrRange=modnl.name.range)
         if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
             obj.diagnostics.parent_must_be_root_semantic_location_check(
-                modnl.location.range, 'modnl')
+                name_location.range, 'modnl')
         expected_file_stem = f'{modnl.name.text}.{modnl.lang.text}'
         if obj.file.stem != expected_file_stem:
             obj.diagnostics.file_name_mismatch(
-                modnl.location.range, expected_file_stem, obj.file.stem)
+                name_location.range, expected_file_stem, obj.file.stem)
         binding = symbols.BindingSymbol(
             modnl.location, modnl.name.text, str(modnl.lang))
         try:
-            context.add_child(binding)
+            context.add_child(binding, alternative=True)
         except exceptions.DuplicateSymbolDefinedError:
             log.exception('%s: Failed to compile language binding of %s.',
                           modnl.location.format_link(), modnl.name.text)
             return None
-        # Important, the context must be changed here to the binding, else the dependency and reference won't be resolved correctly
-        context = binding
         # Add dependency to the file the module definition must be located in
         dep = Dependency(
             range=modnl.name.range,
-            scope=context,
+            scope=binding,
             module_name=modnl.name.text,
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=modnl.path,
             export=True)
         obj.add_dependency(dep)
         # Add the reference from the module name to the parent module
-        ref = references.Reference(modnl.name.range, context, [
+        ref = references.Reference(modnl.name.range, binding, [
             modnl.name.text], ReferenceType.MODSIG)
         obj.add_reference(ref)
         return binding

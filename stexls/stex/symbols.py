@@ -114,6 +114,18 @@ class Symbol:
         self.location = location
         self.access_modifier: AccessModifier = AccessModifier.PUBLIC
 
+    @property
+    def parents(self) -> Iterable[Symbol]:
+        """ Returns iterable with all parents to this symbol.
+
+        Returns:
+            Iterable[Symbol]: List of all parents, beginning with this
+                symbols' parent.
+        """
+        if self.parent:
+            return [self.parent, *self.parent.parents]
+        return []
+
     def get_symbols_for_lookup(self) -> Dict[str, Tuple[Symbol, ...]]:
         """ Returns a dictionary of symbol name to tuple of all symbols with that name.
         The returned symbols are all symbols that are available with a lookup operation on

@@ -697,6 +697,7 @@ class Compiler:
 
     def _compile_symdef(self, obj: StexObject, context: symbols.Symbol, symdef: parser.SymdefIntermediateParseTree):
         current_module = context.get_current_module()
+        # Also include binding because of vardefs that appear in modnl envs
         current_binding = context.get_current_binding()
         if not current_module and not current_binding:
             # TODO: Semantic location check

@@ -108,7 +108,7 @@ class Symbol:
         """
         assert location is not None, "Invalid symbol location"
         assert isinstance(name, str), "Member 'name' is not of type str"
-        self.name = name
+        self.name: str = name
         self.parent: Optional[Symbol] = None
         self.children: Dict[str, List[Symbol]] = dict()
         self.location = location

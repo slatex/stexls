@@ -332,7 +332,7 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
         super().__init__(location)
         self.name = name
         self.lang = lang
-        self.mh_mode = mh_mode
+        self.mh = mh_mode
 
     def find_parent_module_name(self) -> str:
         return self.name.text
@@ -370,14 +370,14 @@ class ModnlIntermediateParseTree(IntermediateParseTree):
             raise exceptions.CompilerError(
                 f'Argument count mismatch (expected 2, found {len(e.rargs)}).')
         return ModnlIntermediateParseTree(
-            e.location,
-            TokenWithLocation.from_node(e.rargs[0]),
-            TokenWithLocation.from_node(e.rargs[1]),
+            location=e.location,
+            name=TokenWithLocation.from_node(e.rargs[0]),
+            lang=TokenWithLocation.from_node(e.rargs[1]),
             mh_mode=match.group(1) == 'mh',
         )
 
     def __repr__(self):
-        mh = 'mh' if self.mh_mode else ''
+        mh = 'mh' if self.mh else ''
         return f'[{mh}Modnl {self.name.text} lang={self.lang.text}]'
 
 

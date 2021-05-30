@@ -693,23 +693,32 @@ class Compiler:
 
     def _compile_symdef(self, obj: StexObject, context: symbols.Symbol, symdef: parser.SymdefIntermediateParseTree):
         current_module = context.get_current_module()
-        if not current_module:
+        current_binding = context.get_current_binding()
+        if not current_module and not current_binding:
             # TODO: Semantic location check
             obj.diagnostics.module_not_found_semantic_location_check(
                 symdef.location.range, 'symdef')
             return
-        symbol = symbols.DefSymbol(
-            symbols.DefType.SYMDEF,
-            symdef.location,
-            symdef.name.text,
-            noverb=symdef.noverb.is_all,
-            noverbs=symdef.noverb.langs,
-            access_modifier=context.get_visible_access_modifier())
-        try:
-            current_module.add_child(symbol, alternative=True)
-        except exceptions.InvalidSymbolRedifinitionException as err:
-            obj.diagnostics.invalid_redefinition(
-                symbol.location.range, err.other_location, err.info)
+        if current_module or current_binding:
+            symbol = symbols.DefSymbol(
+                symbols.DefType.SYMDEF,
+                symdef.location,
+                symdef.name.text,
+                noverb=symdef.noverb.is_all,
+                noverbs=symdef.noverb.langs,
+                access_modifier=context.get_visible_access_modifier())
+            try:
+                (current_module or current_binding).add_child(
+                    symbol, alternative=True)
+            except exceptions.InvalidSymbolRedifinitionException as err:
+                obj.diagnostics.invalid_redefinition(
+                    symbol.location.range, err.other_location, err.info)
+        elif current_binding:
+            obj.add_reference(references.Reference(
+                symdef.location.range,
+                current_binding,
+                name=[current_binding.name, symdef.name.text],
+                reference_type=references.ReferenceType.ANY_DEFINITION))
 
     def _compile_importmodule(self, obj: StexObject, context: symbols.Symbol, importmodule: parser.ImportModuleIntermediateParseTree):
         # TODO: Semantic location check
@@ -882,7 +891,7 @@ class Compiler:
         if not isinstance(context, symbols.RootSymbol):
             # TODO: Semantic location check
             obj.diagnostics.parent_must_be_root_semantic_location_check(
-                viewsig.location.range,  'viewsig')
+                viewsig.location.range, 'viewsig')
 
         if viewsig.module.text != obj.file.stem:
             obj.diagnostics.file_name_mismatch(

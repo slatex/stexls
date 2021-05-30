@@ -45,6 +45,9 @@ class InitializationOptions:
     enable_linting_of_related_files: bool = False
     num_jobs: int = 1
     delay: float = 1
+    trefier_download_link: str = ''
+    trefier_file_size_limit_kb: int = 50
+    linter_file_size_limit_kb: int = 100
 
     @staticmethod
     def from_json(obj: dict):
@@ -56,6 +59,11 @@ class InitializationOptions:
                 obj['enableLintingOfRelatedFiles']),
             num_jobs=int(obj['numJobs']),
             delay=float(obj['delay']),
+            trefier_download_link=str(obj.get('trefierDownloadLink', '')),
+            trefier_file_size_limit_kb=int(
+                obj.get('trefierFileSizeLimitKB', 50)),
+            linter_file_size_limit_kb=int(
+                obj.get('linterFileSizeLimitKB', 100)),
         )
 
 
@@ -173,7 +181,11 @@ class Server(Dispatcher):
             await self.load_trefier_model()
         self.linter = Linter(
             workspace=self.workspace,
-            outdir=outdir)
+            outdir=outdir,
+            trefier_file_size_limit_kb=(
+                self.initialization_options.trefier_file_size_limit_kb),
+            linter_file_size_limit_kb=(
+                self.initialization_options.linter_file_size_limit_kb))
         if self.version is not None:
             self.linter.compiler.check_version(self.version)
         self.completion_engine = CompletionEngine(self.linter.linker)
@@ -212,14 +224,16 @@ class Server(Dispatcher):
         }
 
     async def load_trefier_model(self):
-        " Loads the tagger model from the given @self.path_to_trefier_model path and updates self.trefier_model. "
-
+        """ Download and loads the trefier model. """
         model_path = _get_default_trefier_model_path()
         log.info('Loading trefier model from: %s', model_path)
         try:
             from stexls.trefier.models.seq2seq import Seq2SeqModel
             if not model_path.is_file():
-                model_url = 'https://nc.kwarc.info/s/2CFLwK3sNBfd6WW/download'
+                model_url = self.initialization_options.trefier_download_link
+                if not model_url:
+                    log.warning('Trefier download link is not set.')
+                    return
                 from ..util.download import maybe_download_and_extract
                 self.show_message(type=vscode.MessageType.Info,
                                   message=f'Downloading trefier model to {str(model_path)!r}.')
@@ -573,7 +587,8 @@ class ProgressBar:
             await self._on_finished_event
         args: Dict[str, Any] = {}
         if self.total is not None and iteration_progress_count is not None:
-            args['percentage'] = int(100*iteration_progress_count/self.total)
+            args['percentage'] = int(
+                100 * iteration_progress_count / self.total)
         if message is not None:
             args['message'] = message
         if cancellable is not None:

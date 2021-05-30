@@ -75,8 +75,8 @@ class Linter:
     def __init__(self,
                  workspace: Workspace,
                  outdir: Path = None,
-                 max_trefier_file_size_kb: int = 50,
-                 max_lint_file_size_kb: int = 100):
+                 trefier_file_size_limit_kb: int = 50,
+                 linter_file_size_limit_kb: int = 100):
         """ Initializes a linter object.
 
         Parameters:
@@ -97,9 +97,9 @@ class Linter:
         # The linked object buffer bufferes all linked objects
         self.linked_object_buffer: Dict[Path, StexObject] = dict()
         # Maximum file size that the trefier is applied to
-        self.max_trefier_file_size_kb = max_trefier_file_size_kb
+        self.trefier_file_size_limit_kb = trefier_file_size_limit_kb
         # Maximum file size the linter is allowed to lint
-        self.max_lint_file_size_kb = max_lint_file_size_kb
+        self.linter_file_size_limit_kb = linter_file_size_limit_kb
 
     def get_files_that_require_recompilation(self) -> Dict[Path, Optional[str]]:
         ' Filters out the files that need recompilation and returns them together with their buffered content. '
@@ -204,7 +204,7 @@ class Linter:
         '''
         if file.is_file():
             size = file.stat().st_size // 1024
-            if self.max_lint_file_size_kb > 0 and self.max_lint_file_size_kb < size:
+            if self.linter_file_size_limit_kb > 0 and self.linter_file_size_limit_kb < size:
                 # Guard linting too large files
                 log.warning(
                     'Skipping linting of large file of size %iKB: %s', size, str(file))
@@ -213,7 +213,7 @@ class Linter:
             ln = self.linker.link(file, objects, self.compiler)
             if model is None:
                 pass
-            elif self.max_trefier_file_size_kb > 0 and self.max_trefier_file_size_kb < size:
+            elif self.trefier_file_size_limit_kb > 0 and self.trefier_file_size_limit_kb < size:
                 # Guard trefying too large files
                 log.warning(
                     'Rejecting to use trefier on large file of size %iKB: "%s"', size, str(file))

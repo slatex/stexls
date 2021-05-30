@@ -22,6 +22,7 @@ class ReferenceType(Flag):
     SYMDEF = 1 << 7
     SYM = 1 << 8
     ANY_DEFINITION = DEF | DREF | SYMDEF | SYM
+    ANY_MODULE = MODULE | MODSIG
 
     def contains_any_of(self, other) -> bool:
         """ Returns true if any reference types in "other" are contained in this.
@@ -34,7 +35,7 @@ class ReferenceType(Flag):
             >>> (ReferenceType.MODULE|ReferenceType.MODSIG).contains_any_of(ReferenceType.DEF|ReferenceType.SYMDEF)
             False
         """
-        for exp in range(0, 1+other.value):
+        for exp in range(0, 1 + other.value):
             mask = 1 << exp
             if mask > other.value:
                 break
@@ -50,7 +51,7 @@ class ReferenceType(Flag):
             '"binding", "def", "dref", "symdef" or "sym"'
         """
         names: List[str] = []
-        for exp in range(0, 1+self.value):
+        for exp in range(0, 1 + self.value):
             mask = 1 << exp
             if mask > self.value:
                 break

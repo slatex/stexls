@@ -222,16 +222,14 @@ class StexObject:
         f += '\n' + '\n'.join(list_of_formatted_strings)
         return f
 
-    def add_dependency(self, dep: Dependency, disable_diagnostic: bool = False):
+    def add_dependency(self, dep: Dependency):
         """ Registers a dependency that the owner file has to the in the dependency written file and module.
 
-        If the dependency is already added, a warning for redundand imports is generated instead.
-        If `disable_diagnostic` is set, it is still checked if the dependency already exist,
-        but the diagnostic for that case is not added.
+        If the dependency is already imported an redundant import check will be generated, unless
+        the dependency also specifies the `Dependency.disable_redundant_import_diagnostic` flag.
 
         Parameters:
             dep (Dependency): Information about the dependency.
-            disable_diagnostic (bool, optional): Disable `redundant_import_check` diagnostic generation.
 
         Returns:
             Dependency: The input argument for chaining. If the dependency was rejected
@@ -239,7 +237,7 @@ class StexObject:
         """
         for dep0 in self.dependencies:
             if dep0.check_if_same_module_imported(dep):
-                if disable_diagnostic:
+                if dep.disable_redundant_import_diagnostic:
                     return dep0
                 # Skip adding this dependency
                 previously_imported_at = vscode.Location(
@@ -865,8 +863,8 @@ class Compiler:
             # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=source_file_hint,
-            export=True),
-            disable_diagnostic=True)
+            export=True,
+            disable_redundant_import_diagnostic=True))
         obj.add_reference(
             references.Reference(
                 view.source_module.range, context,
@@ -881,8 +879,8 @@ class Compiler:
             # TODO: Dependency module type hint as a flag (so we can do MODSIG | MODULE)
             module_type_hint=symbols.ModuleType.MODSIG,
             file_hint=target_file_hint,
-            export=True),
-            disable_diagnostic=True)
+            export=True,
+            disable_redundant_import_diagnostic=True))
         obj.add_reference(
             references.Reference(
                 view.target_module.range,

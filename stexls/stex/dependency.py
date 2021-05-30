@@ -14,7 +14,8 @@ class Dependency:
             module_name: str,
             module_type_hint: symbols.ModuleType,
             file_hint: Path,
-            export: bool = True):
+            export: bool = True,
+            disable_redundant_import_diagnostic: bool = False):
         """ Container for data required to resolve module dependencies / imports.
 
         Parameters:
@@ -28,6 +29,8 @@ class Dependency:
                 exported by.
             export: If True, this dependency should be exported, and visisible to modules that import this object.
                 TODO: Check if "export" is a good term, because it's only set to false by 'usemodule'
+            disable_redundant_import_diagnostic (bool, optional): Option that disables
+                the generation of redundant import diagnostics.
         """
         self.range = range
         self.scope = scope
@@ -35,6 +38,7 @@ class Dependency:
         self.module_type_hint = module_type_hint
         self.file_hint = file_hint
         self.export = export
+        self.disable_redundant_import_diagnostic = disable_redundant_import_diagnostic
 
     def pretty_format(self, file: Path = None):
         ' A simple formatting method for debugging. '

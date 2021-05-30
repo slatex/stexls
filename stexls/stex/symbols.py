@@ -328,6 +328,10 @@ class Symbol:
         identifier = tuple(identifier)
         # Accumulate bounds of the lookup
         # These are the symbols that will allow forward finding
+        # The bounds are all parents of this, including this,
+        # but as soon as a module or binding is found we stop.
+        # This is because symbols must not be able to be looked
+        # up through a module definition
         bounds: List[Symbol] = [self]
         while bounds[-1].parent:
             if (not allow_lookup_through_module
@@ -336,24 +340,18 @@ class Symbol:
             bounds.append(bounds[-1].parent)
         # Find the identifier inside the bounds
         resolved: List[Symbol] = []
-        for bound in bounds:
+        for bound in [self, *self.parents]:
             result_of_bound = None
             if lookup_result:
                 result_of_bound = lookup_result.clone()
             resolved.extend(
                 symbol
-                for symbol in bound.find((
-                    # Skip thte first identifier if they match here.
-                    identifier[1:]
-                    if (
-                        # Bound and symbol identifier length must both be larger than 1
-                        1 < len(bound.qualified) <= len(identifier)
-                        # And the first identifier must match this bound's name
-                        and identifier[0] == bound.qualified[-1]
-                    )
-                    else identifier
-                ), lookup_result=result_of_bound)
+                for symbol in bound.find(
+                    identifier=identifier, lookup_result=result_of_bound)
                 if not accepted_ref_type or symbol.reference_type in accepted_ref_type
+                # The resolved symbols must be children of any symbol
+                # in the bounds array.
+                if any(map(lambda parent: parent in bounds, symbol.parents))
             )
             if lookup_result is not None:
                 assert result_of_bound is not None

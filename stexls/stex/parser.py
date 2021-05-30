@@ -531,10 +531,10 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 class GStructureIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'gstructure(\*)?')
 
-    def __init__(self, location: vscode.Location, mhrepos: Optional[TokenWithLocation], module: TokenWithLocation):
+    def __init__(self, location: vscode.Location, mhrepos: Optional[TokenWithLocation], source_module: TokenWithLocation):
         super().__init__(location)
         self.mhrepos = mhrepos
-        self.module = module
+        self.source_module = source_module
 
     @classmethod
     def from_environment(cls, e: parser.Environment) -> Optional[GStructureIntermediateParseTree]:
@@ -544,15 +544,15 @@ class GStructureIntermediateParseTree(IntermediateParseTree):
         if len(e.rargs) != 2:
             raise exceptions.CompilerError(
                 f'gstructure environment requires at least 2 Arguments but {len(e.rargs)} found.')
-        _, named = TokenWithLocation.parse_oargs(e.oargs)
+        unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return GStructureIntermediateParseTree(
             location=e.location,
-            mhrepos=named.get('mhrepos'),
-            module=TokenWithLocation.from_node(e.rargs[1])
+            mhrepos=unnamed[0] if unnamed else None,
+            source_module=TokenWithLocation.from_node(e.rargs[1])
         )
 
     def __repr__(self) -> str:
-        return f'[GStructure "{self.module}"]'
+        return f'[GStructure "{self.source_module}"]'
 
 
 class DefiIntermediateParseTree(IntermediateParseTree):

@@ -559,7 +559,9 @@ class Compiler:
         return None
 
     def _compile_tassign(self, obj: StexObject, context: symbols.Symbol, tassign: parser.TassignIntermediateParseTree):
-        if not isinstance(tassign.parent, (parser.ViewSigIntermediateParseTree, parser.ViewIntermediateParseTree)):
+        if not isinstance(tassign.parent, (
+                parser.ViewSigIntermediateParseTree,
+                parser.ViewIntermediateParseTree)):
             obj.diagnostics.semantic_location_check(
                 tassign.location.range, tassign.torv + 'assign', 'Only allowed inside "viewsig" or "view" environment.')
             return
@@ -582,8 +584,12 @@ class Compiler:
         obj.add_reference(references.Reference(tassign.source_symbol.range, context, [
             source_module.text, tassign.source_symbol.text], ReferenceType.ANY_DEFINITION, parent=source_module_reference))
         if tassign.torv == 'v':
-            obj.add_reference(references.Reference(tassign.target_term.range, context, [
-                tassign.parent.target_module.text, tassign.target_term.text], ReferenceType.ANY_DEFINITION))
+            if isinstance(tassign.parent, parser.GStructureIntermediateParseTree):
+                obj.diagnostics.semantic_location_check(
+                    tassign.location.range, 'vassign', 'GStructure does not provide a target module.')
+            else:
+                obj.add_reference(references.Reference(tassign.target_term.range, context, [
+                    tassign.parent.target_module.text, tassign.target_term.text], ReferenceType.ANY_DEFINITION))
 
     def _compile_trefi(self, obj: StexObject, context: symbols.Symbol, trefi: parser.TrefiIntermediateParseTree):
         if trefi.drefi:
@@ -777,12 +783,31 @@ class Compiler:
         context.add_child(scope)
         return scope
 
-    def _compile_gstructure(self, obj: StexObject, context: symbols.Symbol, tree: parser.GStructureIntermediateParseTree):
-        # TODO: Compile gstructure and return either a Scope symbol or create a new GStructureSymbol class.
-        # TODO: If content of the gstructure environment is not important,
-        #       do not return anything, and delete the "next_context = " line in Compiler._enter.
-
-        # Hint: Da gstrucutre nur als toplevel vorkommen kann, sollte für den context immer gelten context.name == '__root__'.
+    def _compile_gstructure(self, obj: StexObject, context: symbols.Symbol, gstruct: parser.GStructureIntermediateParseTree):
+        # I want to get it at least somewhat working, this is not a correct implementation
+        # More related to gstructure is in `_compile_tassign`
+        module = context.get_current_module() or context.get_current_binding() or context
+        file_hint = parser.GImportIntermediateParseTree(
+            location=gstruct.location,
+            module=gstruct.source_module,
+            repository=gstruct.mhrepos,
+            export=False,
+            asterisk=False).path_to_imported_file(self.root_dir)
+        dep = obj.add_dependency(Dependency(
+            range=gstruct.source_module.range,
+            module_name=gstruct.source_module.text,
+            file_hint=file_hint,
+            scope=module,
+            module_type_hint=symbols.ModuleType.MODSIG,
+            disable_redundant_import_diagnostic=True,
+        ))
+        obj.add_reference(references.Reference(
+            range=gstruct.source_module.range,
+            scope=module,
+            name=[gstruct.source_module.text],
+            parent=dep,
+            reference_type=references.ReferenceType.MODSIG,
+        ))
         return None
 
     def _compile_view(self, obj: StexObject, context: symbols.Symbol, view: parser.ViewIntermediateParseTree):
@@ -803,7 +828,7 @@ class Compiler:
             # Create container scope
             obj.add_dependency(
                 Dependency(
-                    range=binding.location.range,
+                    range=view.module.range,
                     scope=binding,
                     module_name=view.module.text,
                     module_type_hint=symbols.ModuleType.MODSIG,
@@ -812,7 +837,7 @@ class Compiler:
                     export=True))
             obj.add_reference(
                 references.Reference(
-                    range=binding.location.range,
+                    range=view.module.range,
                     scope=binding,
                     name=[view.module.text],
                     reference_type=ReferenceType.MODSIG))
@@ -955,25 +980,30 @@ class Compiler:
             elif isinstance(tree, parser.ModuleIntermediateParseTree):
                 next_context = self._compile_module(obj, current_context, tree)
             elif isinstance(tree, parser.TassignIntermediateParseTree):
-                self._compile_tassign(obj, current_context, tree)
+                next_context = self._compile_tassign(
+                    obj, current_context, tree)
             elif isinstance(tree, parser.TrefiIntermediateParseTree):
-                self._compile_trefi(obj, current_context, tree)
+                next_context = self._compile_trefi(obj, current_context, tree)
             elif isinstance(tree, parser.DefiIntermediateParseTree):
-                self._compile_defi(obj, current_context, tree)
+                next_context = self._compile_defi(obj, current_context, tree)
             elif isinstance(tree, parser.SymIntermediateParserTree):
-                self._compile_sym(obj, current_context, tree)
+                next_context = self._compile_sym(obj, current_context, tree)
             elif isinstance(tree, parser.SymdefIntermediateParseTree):
-                self._compile_symdef(obj, current_context, tree)
+                next_context = self._compile_symdef(obj, current_context, tree)
             elif isinstance(tree, parser.ImportModuleIntermediateParseTree):
-                self._compile_importmodule(obj, current_context, tree)
+                next_context = self._compile_importmodule(
+                    obj, current_context, tree)
             elif isinstance(tree, parser.GImportIntermediateParseTree):
-                self._compile_gimport(obj, current_context, tree)
+                next_context = self._compile_gimport(
+                    obj, current_context, tree)
             elif isinstance(tree, parser.GStructureIntermediateParseTree):
-                self._compile_gstructure(obj, current_context, tree)
+                next_context = self._compile_gstructure(
+                    obj, current_context, tree)
             elif isinstance(tree, parser.ViewIntermediateParseTree):
-                self._compile_view(obj, current_context, tree)
+                next_context = self._compile_view(obj, current_context, tree)
             elif isinstance(tree, parser.ViewSigIntermediateParseTree):
-                self._compile_viewsig(obj, current_context, tree)
+                next_context = self._compile_viewsig(
+                    obj, current_context, tree)
         except Exception as err:
             log.critical('An unexpected error happned during compilation.')
             obj.diagnostics.exception(

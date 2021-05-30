@@ -708,8 +708,13 @@ class Compiler:
                 noverbs=symdef.noverb.langs,
                 access_modifier=context.get_visible_access_modifier())
             try:
-                (current_module or current_binding).add_child(
-                    symbol, alternative=True)
+                if current_module:
+                    target: symbols.Symbol = current_module
+                elif current_binding:
+                    target = current_binding
+                if target:
+                    target.add_child(
+                        symbol, alternative=True)
             except exceptions.InvalidSymbolRedifinitionException as err:
                 obj.diagnostics.invalid_redefinition(
                     symbol.location.range, err.other_location, err.info)

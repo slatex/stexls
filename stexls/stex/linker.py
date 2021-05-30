@@ -59,6 +59,9 @@ class Linker:
                     for sym in resolved
                 ])
             return
+        if not resolved and obj.file == dependency.file_hint:
+            resolved = dependency.scope.lookup(
+                dependency.module_name, allow_lookup_through_module=True)
         if not resolved:
             obj.diagnostics.undefined_module_not_exported_by_file(
                 dependency.range, dependency.module_name, imported.file)

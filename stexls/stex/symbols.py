@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import uuid
 from enum import Enum, Flag
-from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import (Callable, Dict, Iterable, Iterator, List, Optional, Set,
+                    Tuple, Union)
 
 from stexls import vscode
 from stexls.stex.exceptions import (DuplicateSymbolDefinedError,
@@ -305,7 +306,8 @@ class Symbol:
             self,
             identifier: Union[str, List[str], Tuple[str, ...]],
             accepted_ref_type: Optional[ReferenceType] = None,
-            lookup_result: Optional[LookupResult] = None) -> List[Symbol]:
+            lookup_result: Optional[LookupResult] = None,
+            allow_lookup_through_module: bool = False) -> List[Symbol]:
         """ Symbol lookup searches for symbols with a given identifier in this symbol's children and all ancestor's children.
         A "lookup" is search operation that can change the root to a parent.
 
@@ -314,6 +316,8 @@ class Symbol:
             accepted_ref_type (ReferenceType, optional): Optional reference type. Others will be filtered out.
             lookup_result (LookupResult, optional): Stores lookup maximum resolved depth.
                 Used to raise or suppress errors based on how much was resolved.
+            allow_lookup_through_module (bool, optional):
+                If enabled allows lookup through parent module and binding symbols. Defaults to False.
 
         Returns:
             All symbols with the specified id.
@@ -326,6 +330,9 @@ class Symbol:
         # These are the symbols that will allow forward finding
         bounds: List[Symbol] = [self]
         while bounds[-1].parent:
+            if (not allow_lookup_through_module
+                    and isinstance(bounds[-1], (ModuleSymbol, BindingSymbol))):
+                break
             bounds.append(bounds[-1].parent)
         # Find the identifier inside the bounds
         resolved: List[Symbol] = []
@@ -335,7 +342,17 @@ class Symbol:
                 result_of_bound = lookup_result.clone()
             resolved.extend(
                 symbol
-                for symbol in bound.find(identifier, lookup_result=result_of_bound)
+                for symbol in bound.find((
+                    # Skip thte first identifier if they match here.
+                    identifier[1:]
+                    if (
+                        # Bound and symbol identifier length must both be larger than 1
+                        1 < len(bound.qualified) <= len(identifier)
+                        # And the first identifier must match this bound's name
+                        and identifier[0] == bound.qualified[-1]
+                    )
+                    else identifier
+                ), lookup_result=result_of_bound)
                 if not accepted_ref_type or symbol.reference_type in accepted_ref_type
             )
             if lookup_result is not None:

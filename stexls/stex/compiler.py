@@ -674,13 +674,15 @@ class Compiler:
                 symbol.location.range, err.name, err.previous_location)
 
     def _compile_symdef(self, obj: StexObject, context: symbols.Symbol, symdef: parser.SymdefIntermediateParseTree):
-        current_module = context.get_current_module()
-        # Also include binding because of vardefs that appear in modnl envs
-        current_binding = context.get_current_binding()
-        if not current_module and not current_binding:
-            # TODO: Semantic location check
+        module = context.get_current_module()
+        if not module:
+            if symdef.var_or_sym == 'var':
+                # Ignore errors for vardef in bindings
+                # TODO: Add behaviour for vardef in mhmodnl
+                return
             obj.diagnostics.module_not_found_semantic_location_check(
                 symdef.location.range, 'symdef')
+            return
         symbol = symbols.DefSymbol(
             symbols.DefType.SYMDEF,
             symdef.location,
@@ -688,19 +690,11 @@ class Compiler:
             noverb=symdef.noverb.is_all,
             noverbs=symdef.noverb.langs,
             access_modifier=context.get_visible_access_modifier())
-        module = context.get_current_module()
-        if module:
-            try:
-                module.add_child(symbol, alternative=True)
-            except exceptions.InvalidSymbolRedifinitionException as err:
-                obj.diagnostics.invalid_redefinition(
-                    symbol.location.range, err.other_location, err.info)
-        else:
-            obj.add_reference(references.Reference(
-                symdef.location.range,
-                context,
-                name=[symdef.name.text],
-                reference_type=references.ReferenceType.ANY_DEFINITION))
+        try:
+            module.add_child(symbol, alternative=True)
+        except exceptions.InvalidSymbolRedifinitionException as err:
+            obj.diagnostics.invalid_redefinition(
+                symbol.location.range, err.other_location, err.info)
 
     def _compile_importmodule(self, obj: StexObject, context: symbols.Symbol, importmodule: parser.ImportModuleIntermediateParseTree):
         # TODO: Semantic location check

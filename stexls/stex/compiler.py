@@ -795,10 +795,17 @@ class Compiler:
                 module=view.module.text,
                 lang=view.lang.text,
             )
-            context.add_child(binding)
-            # Change context here because of shared
-            # symbols after if statement
-            context = binding
+            try:
+                context.add_child(binding)
+                # Change context here because of shared
+                # symbols after if statement
+                context = binding
+            except exceptions.DuplicateSymbolDefinedError as err:
+                obj.diagnostics.duplicate_symbol_definition(
+                    view.module.range, err.name, err.previous_location)
+            except exceptions.InvalidSymbolRedifinitionException as err:
+                obj.diagnostics.invalid_redefinition(
+                    view.module.range, err.other_location, err.info)
 
             # Create container scope
             obj.add_dependency(

@@ -6,7 +6,7 @@ from typing import (Callable, Dict, Iterable, Iterator, List, Optional, Set,
                     Tuple, Union)
 
 from stexls import vscode
-from stexls.stex.exceptions import (DuplicateSymbolDefinedError,
+from stexls.stex.exceptions import (CompilerError, DuplicateSymbolDefinedError,
                                     InvalidSymbolRedifinitionException)
 from stexls.util.format import format_enumeration
 
@@ -126,6 +126,12 @@ class Symbol:
         if self.parent:
             return [self.parent, *self.parent.parents]
         return []
+
+    @property
+    def root_symbol(self) -> Symbol:
+        if self.parent:
+            return self.parent.root_symbol
+        raise CompilerError('Unable to locate symbol table root.')
 
     def get_symbols_for_lookup(self) -> Dict[str, Tuple[Symbol, ...]]:
         """ Returns a dictionary of symbol name to tuple of all symbols with that name.
@@ -516,6 +522,10 @@ class RootSymbol(Symbol):
 
     def __init__(self, location: vscode.Location):
         super().__init__(location, RootSymbol.ROOT_NAME)
+
+    @property
+    def root_symbol(self) -> Symbol:
+        return self
 
     @property
     def qualified(self) -> Tuple[str, ...]:

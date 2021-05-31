@@ -531,10 +531,10 @@ class ModuleIntermediateParseTree(IntermediateParseTree):
 class GStructureIntermediateParseTree(IntermediateParseTree):
     PATTERN = re.compile(r'gstructure(\*)?')
 
-    def __init__(self, location: vscode.Location, mhrepos: Optional[TokenWithLocation], source_module: TokenWithLocation):
+    def __init__(self, location: vscode.Location, mhrepos: Optional[TokenWithLocation], module: TokenWithLocation):
         super().__init__(location)
         self.mhrepos = mhrepos
-        self.source_module = source_module
+        self.module = module
 
     @classmethod
     def from_environment(cls, e: parser.Environment) -> Optional[GStructureIntermediateParseTree]:
@@ -547,12 +547,12 @@ class GStructureIntermediateParseTree(IntermediateParseTree):
         unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
         return GStructureIntermediateParseTree(
             location=e.location,
-            mhrepos=unnamed[0] if unnamed else None,
-            source_module=TokenWithLocation.from_node(e.rargs[1])
+            mhrepos=unnamed[0] if unnamed else named.get('mhrepos'),
+            module=TokenWithLocation.from_node(e.rargs[1])
         )
 
     def __repr__(self) -> str:
-        return f'[GStructure "{self.source_module}"]'
+        return f'[GStructure "{self.module}"]'
 
 
 class DefiIntermediateParseTree(IntermediateParseTree):
@@ -1073,22 +1073,12 @@ class TassignIntermediateParseTree(IntermediateParseTree):
         source_symbol = TokenWithLocation.from_node(e.rargs[0])
         target_term = TokenWithLocation.from_node(e.rargs[1])
         if '?' in source_symbol.text:
-            if len(e.oargs) > 0:
-                raise exceptions.CompilerError(
-                    'Unexpected optional argument expected.')
             try:
                 source_module, source_symbol = source_symbol.split(
                     source_symbol.text.index('?'), 1)
             except Exception:
                 raise exceptions.CompilerError(
                     'Unexpected source symbol format.')
-        elif len(e.oargs) > 1:
-            raise exceptions.CompilerError(
-                'At most 1 optional argument expected.')
-        else:
-            unnamed, named = TokenWithLocation.parse_oargs(e.oargs)
-            if len(unnamed) > 0:
-                source_module = unnamed[0]
         return TassignIntermediateParseTree(
             location=e.location,
             torv=match.group('at'),

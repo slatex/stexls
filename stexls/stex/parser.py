@@ -147,11 +147,13 @@ class TokenWithLocation:
         ltext = self.text[:index]
         rtext = self.text[index + offset:]
         lrange, rrange = self.range.split(index)
+        rrange = rrange.replace(
+            start=rrange.start.translate(characters=offset))
         return TokenWithLocation(ltext, lrange), TokenWithLocation(rtext, rrange)
 
     @staticmethod
     def from_node(node: parser.Node) -> TokenWithLocation:
-        return TokenWithLocation(node.text_inside, node.location.range)
+        return TokenWithLocation(node.text_inside, node.content_range)
 
     @staticmethod
     def from_node_union(nodes: Sequence[parser.Node], separator: str = ',') -> Optional[TokenWithLocation]:
@@ -1075,7 +1077,7 @@ class TassignIntermediateParseTree(IntermediateParseTree):
         if '?' in source_symbol.text:
             try:
                 source_module, source_symbol = source_symbol.split(
-                    source_symbol.text.index('?'), 1)
+                    source_symbol.text.index('?'), offset=1)
             except Exception:
                 raise exceptions.CompilerError(
                     'Unexpected source symbol format.')

@@ -346,6 +346,7 @@ class Symbol:
             bounds.append(bounds[-1].parent)
         # Find the identifier inside the bounds
         resolved: List[Symbol] = []
+        bound: Symbol
         for bound in [self, *self.parents]:
             result_of_bound = None
             if lookup_result:
@@ -357,7 +358,7 @@ class Symbol:
                 if not accepted_ref_type or symbol.reference_type in accepted_ref_type
                 # The resolved symbols must be children of any symbol
                 # in the bounds array.
-                if any(map(lambda parent: parent in bounds, symbol.parents))
+                if any(map(lambda parent: parent in bounds, [symbol, *symbol.parents]))
             )
             if lookup_result is not None:
                 assert result_of_bound is not None

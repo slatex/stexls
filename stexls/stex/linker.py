@@ -78,6 +78,7 @@ class Linker:
             except (exceptions.InvalidSymbolRedifinitionException, exceptions.DuplicateSymbolDefinedError):
                 # TODO: I'm not sure that this error here necessarily has a redundant import as consequence
                 # TODO: Theres currently no way of finding out what imported the redundant module.
+                # TODO: This check doesn't seem to be working as intended...
                 if not dependency.disable_redundant_import_diagnostic:
                     obj.diagnostics.redundant_import_check(
                         dependency.range, dependency.module_name)

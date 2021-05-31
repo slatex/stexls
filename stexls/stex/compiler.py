@@ -918,7 +918,8 @@ class Compiler:
                 self.root_dir, viewsig.location.path,
                 viewsig.fromrepos.text if viewsig.fromrepos else None,
                 viewsig.source_module.text),
-            export=True)
+            export=True,
+            disable_redundant_import_diagnostic=True)
         obj.add_dependency(source_dep)
         ref = references.Reference(
             range=source_dep.range,
@@ -937,7 +938,8 @@ class Compiler:
                 self.root_dir, viewsig.location.path,
                 viewsig.torepos.text if viewsig.torepos else None,
                 viewsig.target_module.text),
-            export=True)
+            export=True,
+            disable_redundant_import_diagnostic=True)
         obj.add_dependency(target_dep)
         ref = references.Reference(
             range=target_dep.range,
